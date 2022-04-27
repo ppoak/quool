@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from ..tools import *
+from tools import *
 
 
 class AnalystError(FrameWorkError):

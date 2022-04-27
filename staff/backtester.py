@@ -1,5 +1,5 @@
 import pandas as pd
-from ..tools import *
+from tools import *
 
 @pd.api.extensions.register_dataframe_accessor("relocator")
 @pd.api.extensions.register_series_accessor("relocator")

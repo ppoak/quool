@@ -1,0 +1,79 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "current file",
+			"type": "python",
+			"request": "launch",
+			"program": "${file}",
+			"console": "integratedTerminal",
+			"justMyCode": true
+		},
+		{
+			"name": "__init__",
+			"type": "python",
+			"request": "launch",
+			"module": "__init__"
+		},
+		{
+			"name": "tools/common",
+			"type": "python",
+			"request": "launch",
+			"module": "tools.common"
+		},
+		{
+			"name": "tools/core",
+			"type": "python",
+			"request": "launch",
+			"module": "tools.core"
+		},
+		{
+			"name": "tools/__init__",
+			"type": "python",
+			"request": "launch",
+			"module": "tools.__init__"
+		},
+		{
+			"name": "staff/fetcher",
+			"type": "python",
+			"request": "launch",
+			"module": "staff.fetcher"
+		},
+		{
+			"name": "staff/processor",
+			"type": "python",
+			"request": "launch",
+			"module": "staff.processor"
+		},
+		{
+			"name": "staff/analyst",
+			"type": "python",
+			"request": "launch",
+			"module": "staff.analyst"
+		},
+		{
+			"name": "staff/backtester",
+			"type": "python",
+			"request": "launch",
+			"module": "staff.backtester"
+		},
+		{
+			"name": "staff/artist",
+			"type": "python",
+			"request": "launch",
+			"module": "staff.artist"
+		},
+		{
+			"name": "staff/calculator",
+			"type": "python",
+			"request": "launch",
+			"module": "staff.calculator"
+		},
+		{
+			"name": "staff/__init__",
+			"type": "python",
+			"request": "launch",
+			"module": "staff.__init__"
+		}
+	]
+}
