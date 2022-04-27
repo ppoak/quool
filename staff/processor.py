@@ -162,8 +162,8 @@ class PreProcessor(Worker):
             mad = (data - median).abs().median()
             mad = mad.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
             mad = pd.DataFrame(mad, index=data.index, columns=data.columns)
-            madup = mad_ + n * mad
-            maddown = mad_ - n * mad
+            madup = mad + n * mad
+            maddown = mad - n * mad
             data[data > madup] = madup
             data[data < maddown] = maddown
             return data
