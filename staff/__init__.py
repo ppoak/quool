@@ -9,7 +9,9 @@ from .analyst import (
 )
 
 from .fetcher import (
-    Filer
+    Filer,
+    Database,
+    StockUS
 )
 
 from .calculator import (
@@ -27,6 +29,8 @@ __all__ = [
     'Regressor',
     'Describer',
     'Filer',
+    'Database',
+    'StockUS',
     'Calculator',
     'PreProcessor',
     ]
