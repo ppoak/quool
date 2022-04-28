@@ -553,6 +553,43 @@ class Database(object):
         )
         return data
 
+    @classmethod
+    def income_sheet(cls, start: str = None, end = None,
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
+        data = cls._get_panel_data(
+            start = start,
+            end = end,
+            date_col = 'report_period',
+            code = code,
+            code_col = 'code',
+            fields = fields,
+            conditions = conditions,
+            table = 'income_sheet',
+            database = cls.stock,
+            index = ['report_period', 'code']
+        )
+        return data
+
+    @classmethod
+    def cashflow_sheet(cls, start: str = None, end = None,
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
+        data = cls._get_panel_data(
+            start = start,
+            end = end,
+            date_col = 'report_period',
+            code = code,
+            code_col = 'code',
+            fields = fields,
+            conditions = conditions,
+            table = 'cashflow_sheet',
+            database = cls.stock,
+            index = ['report_period', 'code']
+        )
+        return data
+
+
 class StockUS():
     
     root = "https://api.stock.us/api/v1/"
