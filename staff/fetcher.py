@@ -188,18 +188,22 @@ class Database(object):
             fields = '*'
         
         query = f'select {fields} from {table}'
+        query += f' where ' if any([date_col, code, conditions, conditions_]) else ''
         
-        if start or end:
-            query += f' where ( {date_col} between "{start}" and "{end}" )'
+        if date_col:
+            query += f' ( {date_col} between "{start}" and "{end}" )'
             
         if code:
-            query += ' and ' + '(' + ' or '.join([rf'{code_col} like "%%{c}%%"' for c in code]) + ')'
+            query += ' and ' if any([date_col]) else ''
+            query += '(' + ' or '.join([rf'{code_col} like "%%{c}%%"' for c in code]) + ')'
         
         if conditions:
-            query += ' and ' + '(' + ' and '.join(conditions) + ')'
+            query += ' and ' if any([date_col, code]) else ''
+            query += '(' + ' and '.join(conditions) + ')'
         
         if conditions_:
-            query += ' and ' + '(' + ' or '.join(conditions_) + ')'
+            query += ' and ' if any([date_col, code, conditions]) else ''
+            query += '(' + ' or '.join(conditions_) + ')'
         
         data = pd.read_sql(query, database)
         
@@ -279,7 +283,7 @@ class Database(object):
         fields: list, the field names you want to get
         conditions: list, a series of conditions like "code = '000001.SZ'" listed in a list
         '''
-        cls._get_panel_data(
+        data = cls._get_panel_data(
             start = None,
             end = None, 
             date_col = None,
@@ -292,6 +296,7 @@ class Database(object):
             database = cls.stock,
             index = ['s_info_windcode']
         )
+        return data
 
     @classmethod
     def index_market_daily(cls, start: str = None, end: str = None,

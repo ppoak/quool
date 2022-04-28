@@ -15,7 +15,7 @@ class Regressor(Worker):
     and so on.
     '''
     
-    def ols(self, other: pd.Series = None, x_col: str = None, y_col: str = None):
+    def ols(self, y: pd.Series = None, x_col: str = None, y_col: str = None):
         '''OLS Regression Function
         ---------------------------
 
@@ -34,12 +34,16 @@ class Regressor(Worker):
             res.columns = ['coef', 't']
             return res
 
-        param_status = (other is not None, x_col is not None, y_col is not None)
+        param_status = (y is not None, x_col is not None, y_col is not None)
 
         if param_status == (True, True, True):
             raise AnalystError('ols', "You can assign either other or x_col and y_col, but not both.")
         elif param_status == (True, False, False):
-            data = pd.merge(self.data, other, left_index=True, right_index=True)
+            if self.type_ == Worker.PN:
+                y.index.names = self.data.index.names
+            else:
+                y.index.name = self.data.index.name
+            data = pd.merge(self.data, y, left_index=True, right_index=True)
         elif param_status == (False, True, True):
             data = self.data.loc[:, x_col + [y_col]]
         else:
@@ -66,6 +70,12 @@ class Describer(Worker):
         tvalue: bool, whether to return t-value of a time-seriesed correlation coefficient
         '''
         if other is not None:
+            other = other.copy()
+            if self.type_ == Worker.PN:
+                other.index.names = self.data.index.names
+            else:
+                other.index.name = self.data.name
+            
             data = pd.merge(self.data, other, left_index=True, right_index=True)
         else:
             data = self.data
@@ -83,17 +93,23 @@ class Describer(Worker):
         else:
             return data.corr(method=method)
 
-    def ic(self, other: pd.Series = None, method: str = 'spearman'):
+    def ic(self, forward: pd.Series = None, method: str = 'spearman'):
         '''To calculate ic value
         ------------------------
 
         other: series, the forward column
         method: str, 'spearman' means rank ic
         '''
-        if other is not None:
-            data = pd.merge(self.data, other, left_index=True, right_index=True)
+        if forward is not None:
+            forward = forward.copy()
+            if self.type_ == Worker.PN:
+                forward.index.names = self.data.index.names
+            else:
+                forward.index.name = self.data.name
+            
+            data = pd.merge(self.data, forward, left_index=True, right_index=True)
         else:
-            data = self.data
+            data = self.data.copy()
         
         if self.type_ == Worker.PN:
             ic = data.groupby(level=0).corr(method=method)
