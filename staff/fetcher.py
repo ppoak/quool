@@ -267,7 +267,7 @@ class Database(object):
             conditions = conditions,
             table = 'index_market_daily',
             database = cls.stock,
-            index = ['trade_date', 'code']
+            index = ['trade_date', 'index_code']
         )
         return data
 
