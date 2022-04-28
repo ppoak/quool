@@ -175,12 +175,9 @@ class Database(object):
         
         start = start or '20100101'
         end = end or cls.today
-        if isinstance(code, str):
-            code = [code]
-        if isinstance(conditions, str):
-            conditions = [conditions]
-        if isinstance(conditions_, str):
-            conditions_ = [conditions_]
+        code = item2list(code)
+        conditions = item2list(conditions)
+        conditions_ = item2list(conditions_)
         
         if fields:
             fields = ','.join(fields)
@@ -243,6 +240,50 @@ class Database(object):
         )
         return data
 
+    @classmethod
+    def nearby_n_trade_date(cls, date: str, n: int) -> datetime.datetime:
+        '''Get last n trading dates
+        -------------------------------------
+        
+        date: str, datetime or date, the given date
+        n: int, the number of dates around the given date,
+            negative value means before
+        return: list, a list of dates
+        '''
+        cover_date = str2time(date) + datetime.timedelta(days=n * 9 + 2)
+        if n < 0:
+            dates = cls.trade_date(cover_date, date)
+        else:
+            dates = cls.trade_date(date, cover_date)
+        if len(dates) < abs(n + 1):
+            return None
+        elif n > 0:
+            return dates[n]
+        else:
+            return dates[n - 1]
+    
+    @classmethod
+    def index_hs300_close_weight(cls, start: str = None,
+        end: str = None, code: 'str | list' = None,
+        fields: 'list | str' = None,
+        conditions: 'str | list' = None,
+        conditions_: 'str | list' = None) -> pd.DataFrame:
+        '''Get HS300 weight when market is closed'''
+        data = cls._get_panel_data(
+            start = start,
+            end = end,
+            date_col = 'trade_dt',
+            code = code,
+            code_col = 's_info_windcode',
+            fields = fields,
+            conditions = conditions,
+            conditions_ = conditions_,
+            index = ['trade_dt', 's_info_windcode'],
+            table = 'index_hs300_close_weight',
+            database = cls.stock,
+        )
+        return data
+    
     @classmethod
     def market_daily(cls, start: str = None, end: str = None,
         code: 'str | list' = None, fields: list = None,
