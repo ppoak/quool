@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import pandas as pd
 from tools import *
@@ -213,11 +214,48 @@ class PreProcessor(Worker):
             if n is None:
                 n = 0.1
             return self.data.groupby(groupers).apply(_drop_odd)
+    
+    def fill_miss(self, method = 'pad_zero', grouper = None):
+
+        def _pad_with_zero(data):
+            data = data.copy()
+            data = data.fillna(0)
+            return data
             
+        def _pad_with_mean(data):
+            data = data.copy()
+            mean = data.mean(axis=0)
+            mean = mean.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
+            mean = pd.DataFrame(mean, columns=data.columns, index=data.index)
+            data = data.fillna(mean)
+            return data
+
+        def _pad_with_median(data):
+            data = data.copy()
+            median = data.median(axis=0)
+            median = median.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
+            median = pd.DataFrame(median, columns=data.columns, index=data.index)
+            data = data.fillna(median)
+            return data
+
+        groupers = [pd.Grouper(level=0)]
+        
+        if self.type_ == Worker.PN and grouper:
+            groupers += [grouper]
+
+        if method == 'pad_zero':
+            return self.data.groupby(groupers).apply(_pad_with_zero)
+
+        elif method == 'pad_mean':
+            return self.data.groupby(groupers).apply(_pad_with_mean)
+        
+        elif method == 'pad_median':
+            return self.data.groupby(groupers).apply(_pad_with_median)
 
 if __name__ == "__main__":
     import numpy as np
-    price = pd.DataFrame(np.random.rand(500, 4), columns=['open', 'high', 'low', 'close'],
-        index=pd.MultiIndex.from_product([pd.date_range('20100101', periods=100), list('abced')]))
-    print(price.preprocessor.deextreme(method='drop_odd', n = 0.2))
+    price = pd.DataFrame(np.random.rand(100, 4), columns=['open', 'high', 'low', 'close'],
+        index=pd.MultiIndex.from_product([pd.date_range('20100101', periods=20), list('abced')]))
+    price.iloc[0, 2] = np.nan
+    print(price.preprocessor.fill_miss('pad_zero'))
     
