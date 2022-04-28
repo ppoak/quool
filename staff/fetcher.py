@@ -212,7 +212,7 @@ class Database(object):
     @classmethod
     def trade_date(cls, start: str = None,
         end: str = None, freq: str = 'daily',
-        weekday: bool = False, month: bool = False) -> list[str]:
+        weekday: bool = False, month: bool = False) -> pd.DataFrame:
         '''get trade date during a period
         ---------------------------------
 
@@ -221,8 +221,9 @@ class Database(object):
         freq: str, frequency in either 'daily', 'weekly' or 'monthly'
         '''
         table = f'trade_date_{freq}'
-        fields = 'trade_date' + ', weekday' if weekday else '' + \
-            ', month' if month else ''
+        fields = ['trade_date']
+        fields += ['weekday'] if weekday else []
+        fields += ['month'] if month else []
         data = cls._get_panel_data(
             start = start,
             end = end,
@@ -236,6 +237,7 @@ class Database(object):
             database = cls.stock,
             index = None
         )
+        return data
 
     @classmethod
     def market_daily(cls, start: str = None, end: str = None,
