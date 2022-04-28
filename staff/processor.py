@@ -146,7 +146,7 @@ class PreProcessor(Worker):
         
         groupers = [pd.Grouper(level=0)]
 
-        if self.type_ == Worker.PN and grouper:
+        if self.type_ == Worker.PN and grouper is not None:
             groupers += [grouper]
 
         if method == 'zscore':
@@ -197,7 +197,7 @@ class PreProcessor(Worker):
 
         groupers = [pd.Grouper(level=0)]
         
-        if self.type_ == Worker.PN and grouper:
+        if self.type_ == Worker.PN and grouper is not None:
             groupers += [grouper]
 
         if method == 'md_correct':
@@ -240,7 +240,7 @@ class PreProcessor(Worker):
 
         groupers = [pd.Grouper(level=0)]
         
-        if self.type_ == Worker.PN and grouper:
+        if self.type_ == Worker.PN and grouper is not None:
             groupers += [grouper]
 
         if method == 'pad_zero':
