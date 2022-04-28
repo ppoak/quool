@@ -33,7 +33,8 @@ for pyfile in py_files:
         "name": pyfile,
         "type": "python",
         "request": "launch",
-        "module": pymodule
+        "module": f'pandasquant.{pymodule}',
+        "cwd": "${workspaceFolder}/..",
     }
     DEBUG_CONFIG['configurations'].append(config)
 
