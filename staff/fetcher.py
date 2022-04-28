@@ -1,7 +1,7 @@
 import os
 import datetime
 import pandas as pd
-from tools import *
+from ..tools import *
 from functools import lru_cache
 from sqlalchemy.pool import NullPool
 from sqlalchemy import create_engine
@@ -163,11 +163,14 @@ class Database(object):
     @classmethod
     def _get_panel_data(cls, start: str, end: str, date_col: str,
         code: 'str | list', code_col: str, fields: list, 
-        table: str, database, index: list) -> pd.DataFrame:
+        conditions: 'str | list', table: str,
+        database, index: list) -> pd.DataFrame:
         start = start or '20100101'
         end = end or cls.today
         if isinstance(code, str):
             code = [code]
+        if isinstance(conditions, str):
+            conditions = [conditions]
         
         if fields:
             fields = ','.join(fields)
@@ -175,10 +178,13 @@ class Database(object):
             fields = '*'
         
         query = f'select {fields} from {table}' \
-            f' where {date_col} between "{start}" and "{end}"' \
+            f' where ( {date_col} between "{start}" and "{end}" )' \
             
         if code:
-            query += ' and ' + ' or '.join([rf'{code_col} like "%%{c}%%"' for c in code])
+            query += ' and ' + '(' + ' or '.join([rf'{code_col} like "%%{c}%%"' for c in code]) + ')'
+        
+        if conditions:
+            query += ' and ' + '(' + ' or '.join([rf'{c}' for c in conditions]) + ')'
         
         data = pd.read_sql(query, database)
         
@@ -215,7 +221,8 @@ class Database(object):
 
     @classmethod
     def market_daily(cls, start: str = None, end: str = None,
-        code: 'str | list' = None, fields: list = None) -> pd.DataFrame:
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         '''get market data in daily frequency
         -------------------------------------
 
@@ -230,6 +237,7 @@ class Database(object):
             code = code,
             code_col = "code",
             fields = fields,
+            conditions = conditions,
             table = 'market_daily',
             database = cls.stock,
             index = ['trade_date', 'code']
@@ -238,7 +246,8 @@ class Database(object):
 
     @classmethod
     def index_market_daily(cls, start: str = None, end: str = None,
-        code: 'str | list' = None, fields: list = None) -> pd.DataFrame:
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         '''get index market data in daily frequency
         -------------------------------------
 
@@ -255,6 +264,7 @@ class Database(object):
             code = code,
             code_col = "index_code",
             fields = fields,
+            conditions = conditions,
             table = 'index_market_daily',
             database = cls.stock,
             index = ['trade_date', 'code']
@@ -263,7 +273,8 @@ class Database(object):
 
     @classmethod
     def plate_info(cls, start: str = None, end: str = None, 
-        code: 'list | str' = None, fields: list = None) -> pd.DataFrame:
+        code: 'list | str' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         '''get plate info in daily frequency
         -------------------------------------
 
@@ -279,6 +290,7 @@ class Database(object):
             code = code,
             code_col = "code",
             fields = fields,
+            conditions = conditions,
             table = 'plate_info',
             database = cls.stock,
             index = ['trade_date', 'code']
@@ -287,7 +299,8 @@ class Database(object):
 
     @classmethod
     def derivative_indicator(cls, start: str = None, end: str = None,
-        code: 'str | list' = None, fields: list = None) -> pd.DataFrame:
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         '''get derivative indicator in daily frequecy
         ---------------------------------------------
 
@@ -303,6 +316,7 @@ class Database(object):
             code = code,
             code_col = "wind_code",
             fields = fields,
+            conditions = conditions,
             table = 'derivative_indicator',
             database = cls.stock,
             index = ['trade_date', 'code']
@@ -311,7 +325,8 @@ class Database(object):
     
     @classmethod
     def active_opdep(cls, start: 'str' = None, end: 'str' = None,
-        code: 'list | str' = None, fields: list = None) -> pd.DataFrame:
+        code: 'list | str' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         """
         Get Longhubang data
         -------------------
@@ -325,6 +340,7 @@ class Database(object):
             code = code,
             code_col = "buy_stock_code",
             fields = fields,
+            conditions = conditions,
             table = 'plate_info',
             database = cls.stock,
             index = ['trade_date', 'code']
@@ -387,7 +403,7 @@ class Database(object):
     
     @classmethod
     def shhk_transaction(cls, start: str = None, end: str = None,
-        fields: list = None) -> pd.DataFrame:
+        fields: list = None, conditions: 'str | list' = None) -> pd.DataFrame:
         '''Get north money buy data
         ---------------------------
 
@@ -401,6 +417,7 @@ class Database(object):
             code = None,
             code_col = None,
             fields = fields,
+            conditions = conditions,
             table = 'shhk_transaction',
             database = cls.stock,
             index = ['trade_date']
@@ -409,7 +426,7 @@ class Database(object):
 
     @classmethod
     def szhk_transaction(cls, start: str = None, end: str = None,
-        fields: list = None) -> pd.DataFrame:
+        fields: list = None, conditions: 'str | list' = None) -> pd.DataFrame:
         '''Get north money buy data
         ---------------------------
 
@@ -423,6 +440,7 @@ class Database(object):
             code = None,
             code_col = None,
             fields = fields,
+            conditions = conditions,
             table = 'szhk_transaction',
             database = cls.stock,
             index = ['trade_date']
@@ -431,7 +449,8 @@ class Database(object):
 
     @classmethod
     def lgt_holdings_api(cls, start: str = None, end: str = None,
-        code: 'str | list' = None, fields: list = None) -> pd.DataFrame:
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         '''Get lugutong holdings data from api
         -----------------------------
 
@@ -447,6 +466,7 @@ class Database(object):
             code = code,
             code_col = 'wind_code',
             fields = fields,
+            conditions = conditions,
             table = 'lgt_holdings_api',
             database = cls.stock,
             index = ['trade_date', 'wind_code']
@@ -455,7 +475,8 @@ class Database(object):
 
     @classmethod
     def lgt_holdings_em(cls, start: str = None, end: str = None, 
-        code: 'list | str' = None, fields: list = None) -> pd.DataFrame:
+        code: 'list | str' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         '''Get lugutong holdings data from em
         -----------------------------
 
@@ -471,6 +492,7 @@ class Database(object):
             code = code,
             code_col = 'wind_code',
             fields = fields,
+            conditions = conditions,
             table = 'lgt_holdings_em',
             database = cls.stock,
             index = ['trade_date', 'security_code']
@@ -479,7 +501,8 @@ class Database(object):
 
     @classmethod
     def oversea_institution_holding(cls, start: str = None, end: str = None,
-        code: 'str | list' = None, fields: list = None) -> pd.DataFrame:
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         data = cls._get_panel_data(
             start = start,
             end = end,
@@ -487,6 +510,7 @@ class Database(object):
             code = code,
             code_col = 'wind_code',
             fields = fields,
+            conditions = conditions,
             table = 'oversea_institution_holding',
             database = cls.stock,
             index = ['hold_date', 'secucode']
@@ -495,7 +519,8 @@ class Database(object):
 
     @classmethod
     def dividend(cls, start: str = None, end = None, 
-        code: 'str | list' = None, fields: list = None) -> pd.DataFrame:
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
         data = cls._get_panel_data(
             start = start,
             end = end,
@@ -503,11 +528,67 @@ class Database(object):
             code = code,
             code_col = 'code',
             fields = fields,
+            conditions = conditions,
             table = 'dividend',
             database = cls.stock,
             index = ['trade_date', 'code']
         )
         return data 
+
+    @classmethod
+    def balance_sheet(cls, start: str = None, end = None,
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
+        data = cls._get_panel_data(
+            start = start,
+            end = end,
+            date_col = 'report_period',
+            code = code,
+            code_col = 'code',
+            fields = fields,
+            conditions = conditions,
+            table = 'balance_sheet',
+            database = cls.stock,
+            index = ['report_period', 'code']
+        )
+        return data
+
+    @classmethod
+    def income_sheet(cls, start: str = None, end = None,
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
+        data = cls._get_panel_data(
+            start = start,
+            end = end,
+            date_col = 'report_period',
+            code = code,
+            code_col = 'code',
+            fields = fields,
+            conditions = conditions,
+            table = 'income_sheet',
+            database = cls.stock,
+            index = ['report_period', 'code']
+        )
+        return data
+
+    @classmethod
+    def cashflow_sheet(cls, start: str = None, end = None,
+        code: 'str | list' = None, fields: list = None,
+        conditions: 'str | list' = None) -> pd.DataFrame:
+        data = cls._get_panel_data(
+            start = start,
+            end = end,
+            date_col = 'report_period',
+            code = code,
+            code_col = 'code',
+            fields = fields,
+            conditions = conditions,
+            table = 'cashflow_sheet',
+            database = cls.stock,
+            index = ['report_period', 'code']
+        )
+        return data
+
 
 class StockUS():
     
@@ -548,5 +629,7 @@ if __name__ == '__main__':
     # print(price)
     
     database = Database('kali', 'kali123')
-    data = database.market_daily(code=('000001.SZ', '000002.SZ'), start='20210101', end='20211231')
-    print(data)
+    data = database.balance_sheet(code=('000001.SZ', '000002.SZ'), start='20210101', 
+        end='20211231', fields=['code', 'report_period', 'acct_rcv'],
+        conditions=['statement_type = 408001000'])
+    print(data.describe())
