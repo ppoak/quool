@@ -1,4 +1,3 @@
-import math
 import numpy as np
 import pandas as pd
 from ..tools import *
@@ -96,7 +95,7 @@ class Converter(Worker):
             
         return diff
 
-    def dummy2category(self, dummy_col: str = None, name: str = 'group'):
+    def dummy2category(self, dummy_col: list = None, name: str = 'group'):
         if not self.is_frame:
             raise ProcessorError('dummy2category', 'Can only convert dataframe to category')
             
@@ -106,9 +105,10 @@ class Converter(Worker):
         columns = pd.DataFrame(
             dummy_col.values.reshape((1, -1))\
             .repeat(self.data.shape[0], axis=0),
-            index=self.data.index, columns=self.data.columns
+            index=self.data.index, columns=dummy_col
         )
-        category = columns[self.data.loc[:, dummy_col].astype('bool')]\
+        # fill nan value with 0, because bool(np.nan) is true
+        category = columns[self.data.loc[:, dummy_col].fillna(0).astype('bool')]\
             .replace(np.nan, '').astype('str').sum(axis=1)
         category.name = name
         return category
