@@ -1,4 +1,8 @@
 import os
+import re
+import sys
+import time
+import pymysql
 import datetime
 import pandas as pd
 from ..tools import *
@@ -709,6 +713,95 @@ class Database(object):
             index = ['report_period', 'code']
         )
         return data
+
+@pd.api.extensions.register_dataframe_accessor("databaser")
+@pd.api.extensions.register_series_accessor("databaser")
+class Databaser(Worker):
+
+    def __sql_cols(df, usage="sql"):
+        '''internal usage: get sql columns from dataframe df'''
+        cols = tuple(df.columns)
+        if usage == "sql":
+            cols_str = str(cols).replace("'", "`")
+            if len(df.columns) == 1:
+                cols_str = cols_str[:-2] + ")"  # to process dataframe with only one column
+            return cols_str
+        elif usage == "format":
+            base = "'%%(%s)s'" % cols[0]
+            for col in cols[1:]:
+                base += ", '%%(%s)s'" % col
+            return base
+        elif usage == "values":
+            base = "%s=VALUES(%s)" % (cols[0], cols[0])
+            for col in cols[1:]:
+                base += ", `%s`=VALUES(`%s`)" % (col, col)
+            return base
+
+    def to_sql(self, table, database, kind="update", chunksize=2000, debug=False):
+        """Save current dataframe to database, only support for mysql
+        --------------------------------------
+
+        table: str, table to insert data;
+        database: DBAPI Instance
+        kind: str, optional {"update", "replace", "ignore"}, default "update" specified the way to update
+            "update": "INSERT ... ON DUPLICATE UPDATE ...", 
+            "replace": "REPLACE ...",
+            "ignore": "INSERT IGNORE ..."
+        chunksize: int, size of records to be inserted each time;
+        """
+        # we should ensure data is in a frame form and no index can be assigned
+        if not self.is_frame:
+            data = self.to_frame()
+        else:
+            data = self.data.reset_index()
+        
+        table = ".".join(["`" + x + "`" for x in table.split(".")])
+
+        data = data.fillna("None")
+        data = data.applymap(lambda x: re.sub('([\'\"\\\])', '\\\\\g<1>', str(x)))
+        cols_str = self.__sql_cols(data)
+        sqls = []
+        for i in range(0, len(data), chunksize):
+            # print("chunk-{no}, size-{size}".format(no=str(i/chunksize), size=chunksize))
+            tmp = data[i: i + chunksize]
+
+            if kind == "replace":
+                sql_base = f"REPLACE INTO {table} {cols_str}"
+
+            elif kind == "update":
+                sql_base = f"INSERT INTO {table} {cols_str}"
+                sql_update = f" ON DUPLICATE KEY UPDATE {self.__sql_cols(tmp, 'values')}"
+
+            elif kind == "ignore":
+                sql_base = f"INSERT IGNORE INTO {table} {cols_str}"
+
+            sql_val = self.__sql_cols(tmp, "format")
+            vals = tuple([sql_val % x for x in tmp.to_dict("records")])
+            sql_vals = " VALUES ({x})".format(x=vals[0])
+            for i in range(1, len(vals)):
+                sql_vals += ", ({x})".format(x=vals[i])
+            sql_vals = sql_vals.replace("'None'", "NULL")
+
+            sql_main = sql_base + sql_vals
+            if kind == "update":
+                sql_main += sql_update
+
+            if sys.version_info.major == 2:
+                sql_main = sql_main.replace("u`", "`")
+            if sys.version_info.major == 3:
+                sql_main = sql_main.replace("%", "%%")
+
+            if debug is False:
+                try:
+                    database.execute(sql_main)
+                except pymysql.err.InternalError as e:
+                    print("ENCOUNTERING ERROR: {e}, RETRYING".format(e=e))
+                    time.sleep(10)
+                    database.execute(sql_main)
+            else:
+                sqls.append(sql_main)
+        if debug:
+            return sqls
 
 class StockUS():
     
