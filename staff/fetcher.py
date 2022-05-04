@@ -144,6 +144,27 @@ class Filer(Worker):
         
         return datas
 
+    def to_parquet(self, path, append: bool = True, 
+        compression: str = 'snappy', index: bool = None, **kwargs):
+        '''A enhanced function enables parquet file appending to existing file
+        -----------------------------------------------------------------------
+        
+        path: path to the parquet file
+        append: whether to append to the existing file
+        compression: compression method
+        index: whether to write index to the parquet file
+        '''
+        import pyarrow
+
+        if append:
+            original_data = pd.read_parquet(path)
+            data = pd.concat([original_data, self.data])
+            data = pyarrow.Table.from_pandas(data)
+            with pyarrow.parquet.ParquetWriter(path, data.schema, compression=compression) as writer:
+                writer.write_table(table=data)
+        else:
+            self.data.to_parquet(path, compression=compression, index=index, **kwargs)
+        
 class Database(object):
 
     def __init__(self, user: str, password: str):
@@ -841,8 +862,9 @@ if __name__ == '__main__':
     # price = fetcher.cn_price('000001.SZ', '20100101', '20200101')
     # print(price)
     
-    database = Database('kali', 'kali123')
-    data = database.balance_sheet(code=('000001.SZ', '000002.SZ'), start='20210101', 
-        end='20211231', fields=['code', 'report_period', 'acct_rcv'],
-        conditions=['statement_type = 408001000'])
-    print(data.describe())
+    data0 = pd.DataFrame({'a': [1, 2, 3, 4, 5], 'b': [1, 2, 3, 4, 5]}, index=['a', 'b', 'c', 'd', 'e'])
+    data1 = pd.DataFrame({'a': [2, 4, 6, 8, 0], 'b': [1, 2, 3, 4, 5]}, index=['f', 'g', 'h', 'i', 'j'])
+    data0.to_parquet('test.parquet')
+    data1.filer.to_parquet('test.parquet', append=True)
+    data = pd.read_parquet('test.parquet')
+    print(data)
