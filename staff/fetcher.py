@@ -1,14 +1,11 @@
 import os
 import re
 import sys
-import time
-import pymysql
 import datetime
 import pandas as pd
+import sqlalchemy as sql
 from ..tools import *
 from functools import lru_cache
-from sqlalchemy.pool import NullPool
-from sqlalchemy import create_engine
 
 
 @pd.api.extensions.register_dataframe_accessor("filer")
@@ -172,12 +169,12 @@ class Database(object):
         Database.password = password
 
         base = "mysql+pymysql://{user}:{password}@127.0.0.1/{database}?charset=utf8"
-        Database.stock = create_engine(base.format(user=user, password=password, database="stock"),
-            poolclass=NullPool, connect_args={"charset": "utf8", "connect_timeout": 10})
-        Database.fund = create_engine(base.format(user=user, password=password, database="fund"),
-            poolclass=NullPool, connect_args={"charset": "utf8", "connect_timeout": 10})
-        Database.factor = create_engine(base.format(user=user, password=password, database="factor"),
-            poolclass=NullPool, connect_args={"charset": "utf8", "connect_timeout": 10})
+        Database.stock = sql.create_engine(base.format(user=user, password=password, database="stock"),
+            poolclass=sql.pool.NullPool, connect_args={"charset": "utf8", "connect_timeout": 10})
+        Database.fund = sql.create_engine(base.format(user=user, password=password, database="fund"),
+            poolclass=sql.pool.NullPool, connect_args={"charset": "utf8", "connect_timeout": 10})
+        Database.factor = sql.create_engine(base.format(user=user, password=password, database="factor"),
+            poolclass=sql.pool.NullPool, connect_args={"charset": "utf8", "connect_timeout": 10})
         
         today = datetime.datetime.today()
         if today.hour > 20:
@@ -739,12 +736,12 @@ class Database(object):
 @pd.api.extensions.register_series_accessor("databaser")
 class Databaser(Worker):
 
-    def __sql_cols(df, usage="sql"):
+    def __sql_cols(self, data, usage="sql"):
         '''internal usage: get sql columns from dataframe df'''
-        cols = tuple(df.columns)
+        cols = tuple(data.columns)
         if usage == "sql":
             cols_str = str(cols).replace("'", "`")
-            if len(df.columns) == 1:
+            if len(data.columns) == 1:
                 cols_str = cols_str[:-2] + ")"  # to process dataframe with only one column
             return cols_str
         elif usage == "format":
@@ -757,13 +754,19 @@ class Databaser(Worker):
             for col in cols[1:]:
                 base += ", `%s`=VALUES(`%s`)" % (col, col)
             return base
+        elif usage == "excluded":
+            base = "%s=excluded.%s" % (cols[0], cols[0])
+            for col in cols[1:]:
+                base += ', `%s`=excluded.`%s`' % (col, col)
+            return base
 
-    def to_sql(self, table, database, kind="update", chunksize=2000, debug=False):
-        """Save current dataframe to database, only support for mysql
-        --------------------------------------
+    def to_sql(self, table: str, database: sql.engine.base.Engine, index: bool = True,
+        on_duplicate: str = "update", chunksize: int = 2000):
+        """Save current dataframe to database, only support for mysql and sqlite
+        ------------------------------------------------------------------------
 
         table: str, table to insert data;
-        database: DBAPI Instance
+        database: Sqlalchemy Engine object
         kind: str, optional {"update", "replace", "ignore"}, default "update" specified the way to update
             "update": "INSERT ... ON DUPLICATE UPDATE ...", 
             "replace": "REPLACE ...",
@@ -773,28 +776,72 @@ class Databaser(Worker):
         # we should ensure data is in a frame form and no index can be assigned
         if not self.is_frame:
             data = self.to_frame()
-        else:
+        if index:
+            if isinstance(self.data.index, pd.MultiIndex):
+                shape = len(self.data.index.levshape)
+            else:
+                shape = 1
             data = self.data.reset_index()
+            index_col = data.columns[:shape]
+            index_col = '(%s)' % ', '.join(index_col)
+
+        engine_type = database.name
+        # check whether table exists
+        if engine_type == "sqlite":
+            with database.connect() as conn:
+                check = database.execute("SELECT name FROM sqlite_master"
+                    " WHERE type='table' AND name='%s'" % table).fetchall()
+        elif engine_type == "mysql": 
+            with database.connect() as conn:
+                check = database.execute("SHOW TABLES LIKE '%s'" % table).fetchall()       
+        
+        # if table does not exist, create table
+        if not check:
+            data.to_sql(table, database, index=False)
+            if engine_type == "mysql":
+                with database.connect() as conn:
+                    conn.execute("ALTER TABLE %s ADD  (%s)" % (table, index_col))
+            elif engine_type == "sqlite":
+                # unluckily sqlite3 donesn't support alter table, 
+                # so we have to drop and recreate
+                # https://www.yiibai.com/sqlite/primary-key.html
+                with database.connect() as conn:
+                    sql_create = conn.execute("select sql from sqlite_master where tbl_name = '%s'"
+                         % table).fetchall()[0][0]
+                    conn.execute("ALTER TABLE %s RENAME TO %s_temp" % (table, table))
+                    sql_create_index = sql_create.replace(")", ", PRIMARY KEY %s)" % index_col)
+                    conn.execute(sql_create_index)
+                    conn.execute("INSERT INTO %s SELECT * FROM %s_temp" % (table, table))
+                    conn.execute("DROP TABLE %s_temp" % table)
+            return
         
         table = ".".join(["`" + x + "`" for x in table.split(".")])
 
         data = data.fillna("None")
         data = data.applymap(lambda x: re.sub('([\'\"\\\])', '\\\\\g<1>', str(x)))
         cols_str = self.__sql_cols(data)
-        sqls = []
         for i in range(0, len(data), chunksize):
             # print("chunk-{no}, size-{size}".format(no=str(i/chunksize), size=chunksize))
             tmp = data[i: i + chunksize]
 
-            if kind == "replace":
-                sql_base = f"REPLACE INTO {table} {cols_str}"
+            if on_duplicate == "replace":
+                if engine_type == 'mysql':
+                    sql_base = f"REPLACE INTO {table} {cols_str}"
+                elif engine_type == 'sqlite':
+                    sql_base = f"INSERT OR REPLACE INTO {table} {cols_str}"
 
-            elif kind == "update":
+            elif on_duplicate == "update":
                 sql_base = f"INSERT INTO {table} {cols_str}"
-                sql_update = f" ON DUPLICATE KEY UPDATE {self.__sql_cols(tmp, 'values')}"
+                if engine_type == "mysql":
+                    sql_update = f" ON DUPLICATE KEY UPDATE {self.__sql_cols(tmp, 'values')}"
+                elif engine_type == "sqlite":
+                    sql_update = f" ON CONFLICT DO UPDATE SET {self.__sql_cols(tmp, 'excluded')}"
 
-            elif kind == "ignore":
-                sql_base = f"INSERT IGNORE INTO {table} {cols_str}"
+            elif on_duplicate == "ignore":
+                if engine_type == "mysql":
+                    sql_base = f"INSERT IGNORE INTO {table} {cols_str}"
+                elif engine_type == "sqlite":
+                    sql_base = f"INSERT OR IGNORE INTO {table} {cols_str}"
 
             sql_val = self.__sql_cols(tmp, "format")
             vals = tuple([sql_val % x for x in tmp.to_dict("records")])
@@ -804,26 +851,16 @@ class Databaser(Worker):
             sql_vals = sql_vals.replace("'None'", "NULL")
 
             sql_main = sql_base + sql_vals
-            if kind == "update":
+            if on_duplicate == "update":
                 sql_main += sql_update
 
             if sys.version_info.major == 2:
                 sql_main = sql_main.replace("u`", "`")
             if sys.version_info.major == 3:
                 sql_main = sql_main.replace("%", "%%")
-
-            if debug is False:
-                try:
-                    database.execute(sql_main)
-                except pymysql.err.InternalError as e:
-                    print("ENCOUNTERING ERROR: {e}, RETRYING".format(e=e))
-                    time.sleep(10)
-                    database.execute(sql_main)
-            else:
-                sqls.append(sql_main)
-        if debug:
-            return sqls
-
+            with database.connect() as conn:
+                conn.execute(sql_main)
+        
 class StockUS():
     
     root = "https://api.stock.us/api/v1/"
@@ -861,10 +898,11 @@ if __name__ == '__main__':
     # fetcher = StockUS("guflrppo3jct4mon7kw13fmv3dsz9kf2")
     # price = fetcher.cn_price('000001.SZ', '20100101', '20200101')
     # print(price)
+    import numpy as np
+    data = pd.DataFrame(np.array([['cc', 'dd', 'czxvvx', 'd', 'e'], ['cc', 'b', 'ee', 'd', 'e']]).T,
+        columns=['name', 'addr'], index=[100, 101, 102, 103, 106])
+    data.index.name = 'id'
+    conn = sql.create_engine('sqlite:///./test.db')
+    # conn = sql.create_engine('mysql+pymysql://windreader:password1@221.226.96.114:10087/wind')
+    data.databaser.to_sql('c', conn, on_duplicate='replace')
     
-    data0 = pd.DataFrame({'a': [1, 2, 3, 4, 5], 'b': [1, 2, 3, 4, 5]}, index=['a', 'b', 'c', 'd', 'e'])
-    data1 = pd.DataFrame({'a': [2, 4, 6, 8, 0], 'b': [1, 2, 3, 4, 5]}, index=['f', 'g', 'h', 'i', 'j'])
-    data0.to_parquet('test.parquet')
-    data1.filer.to_parquet('test.parquet', append=True)
-    data = pd.read_parquet('test.parquet')
-    print(data)
