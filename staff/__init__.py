@@ -11,7 +11,7 @@ from .analyst import (
 from .fetcher import (
     Filer,
     Database,
-    DataBaser,
+    Databaser,
     StockUS,
 )
 
@@ -31,7 +31,7 @@ __all__ = [
     'Describer',
     'Filer',
     'Database',
-    'DataBaser',
+    'Databaser',
     'StockUS',
     'Calculator',
     'PreProcessor',

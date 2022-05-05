@@ -778,12 +778,10 @@ class Databaser(Worker):
             data = self.to_frame()
         if index:
             if isinstance(self.data.index, pd.MultiIndex):
-                shape = len(self.data.index.levshape)
+                index_col = '(`' + '`, `'.join(self.data.index.names) + '`)'
             else:
-                shape = 1
+                index_col = f'(`{self.data.index.name}`)'
             data = self.data.reset_index()
-            index_col = data.columns[:shape]
-            index_col = '(%s)' % ', '.join(index_col)
 
         engine_type = database.name
         # check whether table exists
