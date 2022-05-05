@@ -774,14 +774,18 @@ class Databaser(Worker):
         chunksize: int, size of records to be inserted each time;
         """
         # we should ensure data is in a frame form and no index can be assigned
+        data = self.data.copy()
         if not self.is_frame:
-            data = self.to_frame()
+            data = data.to_frame()
         if index:
             if isinstance(self.data.index, pd.MultiIndex):
                 index_col = '(`' + '`, `'.join(self.data.index.names) + '`)'
             else:
                 index_col = f'(`{self.data.index.name}`)'
-            data = self.data.reset_index()
+            if data.index.has_duplicates:
+                print('[!] Warning: index has duplicates, will be ignored except the first one')
+                data = data[~data.index.duplicated(keep='first')]
+            data = data.reset_index()
 
         engine_type = database.name
         # check whether table exists

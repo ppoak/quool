@@ -11,7 +11,7 @@ class ArtistError(FrameWorkError):
 class Gallery():
     '''Gallery is a context manager, so you can use it like this:
     
-    >> with Gallery(nrows=2, ncols=3, figsize=(12, 8), show=True, path='/tmp/test.png') as (fig, axes):
+    >>> with Gallery(nrows=2, ncols=3, figsize=(12, 8), show=True, path='/tmp/test.png') as (fig, axes):
             axes[0, 0].plot(range(10))
             axes[0, 1].plot(range(10))
             axes[0, 2].plot(range(10))
