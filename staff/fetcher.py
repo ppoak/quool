@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import datetime
+import akshare as ak
 import pandas as pd
 import sqlalchemy as sql
 from ..tools import *
@@ -58,23 +59,27 @@ class Filer(Worker):
         return datas
 
     @staticmethod
-    def read_csv_directory(path, perspective: str, **kwargs):
+    def read_csv_directory(path, perspective: str, name_pattern: str = None, **kwargs):
         '''A enhanced function for reading files in a directory to a panel DataFrame
         ----------------------------------------------------------------------------
 
         path: path to the directory
         perspective: 'datetime', 'asset', 'indicator'
+        name_pattern: pattern to match the file name, which will be extracted as index
         kwargs: other arguments for pd.read_csv
 
         **note: the name of the file in the directory will be interpreted as the 
         sign(column or index) to the data, so set it to the brief one
         '''
-        files = os.listdir(path)
+        files = sorted(os.listdir(path))
         datas = []
         
         if perspective == "indicator":
+            if name_pattern is None:
+                name_pattern = r'.*'
             for file in files:
-                name = os.path.splitext(file)[0]
+                basename = os.path.splitext(file)[0]
+                name = re.findall(name_pattern, basename)[0]
                 data = pd.read_csv(os.path.join(path, file), **kwargs)
                 data = data.stack()
                 data.name = name
@@ -82,16 +87,22 @@ class Filer(Worker):
             datas = pd.concat(datas, axis=1).sort_index()
 
         elif perspective == "asset":
+            if name_pattern is None:
+                name_pattern = r'[a-zA-Z\d]{6}\.[a-zA-Z]{2}|[a-zA-Z]{0,2}\..{6}'
             for file in files:
-                name = os.path.splitext(file)[0]
+                basename = os.path.splitext(file)[0]
+                name = re.findall(name_pattern, basename)[0]
                 data = pd.read_csv(os.path.join(path, file), **kwargs)
                 data.index = pd.MultiIndex.from_product([data.index, [name]])
                 datas.append(data)
             datas = pd.concat(datas).sort_index()
             
         elif perspective == "datetime":
+            if name_pattern is None:
+                name_pattern = r'\d{4}[./-]\d{2}[./-]\d{2}|\d{4}[./-]\d{2}[./-]\d{2}\s?\d{2}[:.]\d{2}[:.]\d{2}'
             for file in files:
-                name = os.path.splitext(file)[0]
+                basename = os.path.splitext(file)[0]
+                name = re.findall(name_pattern, basename)[0]
                 data = pd.read_csv(os.path.join(path, file), **kwargs)
                 data.index = pd.MultiIndex.from_product([pd.to_datetime([name]), data.index])
                 datas.append(data)
@@ -100,7 +111,7 @@ class Filer(Worker):
         return datas
 
     @staticmethod
-    def read_excel_directory(path, perspective: str, **kwargs):
+    def read_excel_directory(path, perspective: str, name_pattern: str = None, **kwargs):
         '''A enhanced function for reading files in a directory to a panel DataFrame
         ----------------------------------------------------------------------------
 
@@ -115,8 +126,11 @@ class Filer(Worker):
         datas = []
         
         if perspective == "indicator":
+            if name_pattern is None:
+                name_pattern = r'.*'
             for file in files:
-                name = os.path.splitext(file)[0]
+                basename = os.path.splitext(file)[0]
+                name = re.findall(name_pattern, basename)[0]
                 data = pd.read_excel(os.path.join(path, file), **kwargs)
                 data = data.stack()
                 data.name = name
@@ -124,16 +138,22 @@ class Filer(Worker):
             datas = pd.concat(datas, axis=1).sort_index()
 
         elif perspective == "asset":
+            if name_pattern is None:
+                name_pattern = r'[a-zA-Z\d]{6}\.[a-zA-Z]{2}|[a-zA-Z]{0,2}\..{6}'
             for file in files:
-                name = os.path.splitext(file)[0]
+                basename = os.path.splitext(file)[0]
+                name = re.search(name_pattern, basename).group()
                 data = pd.read_excel(os.path.join(path, file), **kwargs)
                 data.index = pd.MultiIndex.from_product([data.index, [name]])
                 datas.append(data)
             datas = pd.concat(datas).sort_index()
             
         elif perspective == "datetime":
+            if name_pattern is None:
+                name_pattern = r'\d{4}[./-]\d{2}[./-]\d{2}|\d{4}[./-]\d{2}[./-]\d{2}\s?\d{2}[:.]\d{2}[:.]\d{2}'
             for file in files:
-                name = os.path.splitext(file)[0]
+                basename = os.path.splitext(file)[0]
+                name = re.search(name_pattern, basename).group()
                 data = pd.read_excel(os.path.join(path, file), **kwargs)
                 data.index = pd.MultiIndex.from_product([pd.to_datetime([name]), data.index])
                 datas.append(data)

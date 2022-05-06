@@ -13,6 +13,7 @@ from .fetcher import (
     Database,
     Databaser,
     StockUS,
+    ak,
 )
 
 from .calculator import (
@@ -33,6 +34,7 @@ __all__ = [
     'Database',
     'Databaser',
     'StockUS',
+    'ak',
     'Calculator',
     'PreProcessor',
     ]
