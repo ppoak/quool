@@ -29,7 +29,7 @@ class Worker(object):
 
         self.is_frame = True if isinstance(self.data, pd.DataFrame) else False
         if self.data.empty:
-            print('[!] Dataframe or Series is empty')
+            raise ValueError('[!] Dataframe or Series is empty')
 
         is_ts = not isinstance(self.data.index, pd.MultiIndex) and isinstance(self.data.index, pd.DatetimeIndex)
         is_cs = not isinstance(self.data.index, pd.MultiIndex) and not isinstance(self.data.index, pd.DatetimeIndex)

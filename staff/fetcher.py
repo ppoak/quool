@@ -808,7 +808,7 @@ class Databaser(Worker):
                 # so we have to drop and recreate
                 # https://www.yiibai.com/sqlite/primary-key.html
                 with database.connect() as conn:
-                    sql_create = conn.execute("select sql from sqlite_master where tbl_name = '%s'"
+                    sql_create = conn.execute("SELECT sql FROM sqlite_master WHERE tbl_name = '%s'"
                          % table).fetchall()[0][0]
                     conn.execute("ALTER TABLE %s RENAME TO %s_temp" % (table, table))
                     sql_create_index = sql_create.replace(")", ", PRIMARY KEY %s)" % index_col)
@@ -820,7 +820,7 @@ class Databaser(Worker):
         table = ".".join(["`" + x + "`" for x in table.split(".")])
 
         data = data.fillna("None")
-        data = data.applymap(lambda x: re.sub('([\'\"\\\])', '\\\\\g<1>', str(x)))
+        data = data.applymap(lambda x: re.sub(r'([\'\"\\])', '\\\g<1>', str(x)))
         cols_str = self.__sql_cols(data)
         for i in range(0, len(data), chunksize):
             # print("chunk-{no}, size-{size}".format(no=str(i/chunksize), size=chunksize))
