@@ -1,3 +1,4 @@
+# support for pandas and numpy
 from pandas import *
 # this means covering pandas interfaces with numpy interfaces
 from numpy import *
@@ -16,3 +17,7 @@ import numpy.testing as npteseting
 
 from .staff import *
 from .tools import *
+
+# add data source akshare and baostock
+from akshare import *
+from baostock import *
