@@ -10,7 +10,7 @@ class CalculatorError(FrameWorkError):
 @pd.api.extensions.register_series_accessor("calculator")
 class Calculator(Worker):
     
-    def rolling(self, window: int, func, *args, grouper = None, **kwargs):
+    def rolling(self, window: int, func, *args, grouper = None, offset: int = 0, **kwargs):
         '''Provide rolling window func apply for pandas dataframe
         ----------------------------------------------------------
 
@@ -18,6 +18,7 @@ class Calculator(Worker):
         func: unit calculation function
         args: arguments apply to func
         grouper: the grouper applied in func
+        offset: int, the offset of the index, default 0 is the latest time
         kwargs: the keyword argument applied in func
         '''
         # in case of unsorted level and used level
@@ -47,9 +48,9 @@ class Calculator(Worker):
                     raise CalculatorError('rolling', 'the result of func must be a single indexed')
                 else:
                     window_result.index = pd.MultiIndex.from_product([[
-                        datetime_index[i]], window_result.index])
+                        datetime_index[i - offset]], window_result.index])
             else:
-                window_result = pd.DataFrame([window_result], index=[datetime_index[i]])
+                window_result = pd.DataFrame([window_result], index=[datetime_index[i - offset]])
 
             result.append(window_result)
         
