@@ -2,7 +2,6 @@ import json
 import time
 import random
 import requests
-import warnings
 import pandas as pd
 from lxml import etree
 from bs4 import BeautifulSoup
@@ -52,7 +51,6 @@ class Worker(object):
         check = (isinstance(datetime, str), isinstance(asset, str), isinstance(indicator, str))
         if check == (False, False, False):
             raise ValueError('Must assign at least one of dimension')
-
               
         if self.is_frame:
             if check == (False, True, True):
@@ -68,18 +66,15 @@ class Worker(object):
             elif check == (False, False, True):
                 return data.loc[(datetime, asset), indicator].unstack(level=1)
             elif check == (True, True, True):
-                warnings.warn('single value was selected')
+                print('[!] single value was selected')
                 return data.loc[(datetime, asset), indicator]
         else:
-            if check[-1]:
-                warnings.warn("Your data is not a dataframe, indicator will be ignored")
+            if check[-1] or not any(check):
+                print("[!] Your data is not a dataframe, indicator will be ignored")
+                return data.unstack()
             if check[0] and check[1]:
-                warnings.warn('single value was selected')
-                return data.loc[(datetime, asset)]
-            elif check[0]:
-                return data.loc[(datetime, asset)].droplevel(0)
-            elif check[1]:
-                return data.loc[(datetime, asset)]
+                print('[!] single value was selected')
+            return data.loc[(datetime, asset)]
 
 class Request(object):
 
