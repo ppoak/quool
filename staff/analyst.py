@@ -93,7 +93,7 @@ class Describer(Worker):
         else:
             return data.corr(method=method)
 
-    def ic(self, forward: pd.Series = None, method: str = 'spearman'):
+    def ic(self, forward: pd.Series = None, grouper = None, method: str = 'spearman'):
         '''To calculate ic value
         ------------------------
 
@@ -111,14 +111,26 @@ class Describer(Worker):
         else:
             data = self.data.copy()
         
+        groupers = [pd.Grouper(level=0)]
+        if grouper is not None:
+            groupers += item2list(grouper)
+        groupers_num = len(groupers)
+            
         if self.type_ == Worker.PN:
-            ic = data.groupby(level=0).corr(method=method)
-            ic = ic.loc[(slice(None), ic.columns[-1]), ic.columns[:-1]].droplevel(1)
+            ic = data.groupby(groupers).corr(method=method)
+            idx = (slice(None),) * groupers_num + (ic.columns[-1],)
+            ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num)
             return ic
 
         elif self.type_ == Worker.CS:
-            ic = data.corr(method=method)
-            ic = ic.loc[ic.columns[:-1], ic.columns[-1]]
+            if groupers_num < 2:
+                ic = data.corr(method=method)
+            else:
+                ic = data.groupby(groupers[1:]).corr(method=method)
+            idx = (slice(None),) * (groupers_num - 1) + (ic.columns[-1],)
+            if groupers_num < 2:
+                return ic.loc[idx, ic.columns[:-1]]
+            ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num - 1)
             return ic
         
         else:

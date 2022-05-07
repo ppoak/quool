@@ -1,3 +1,4 @@
+import re
 import datetime
 import pandas as pd
 
@@ -21,3 +22,7 @@ def item2list(item) -> list:
         return [item]
     else:
         return item
+
+def hump2snake(hump: str) -> str:
+    snake = re.sub(r'([a-z]|\d)([A-Z])', r'\1_\2', hump).lower()
+    return snake

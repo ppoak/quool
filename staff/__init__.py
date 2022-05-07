@@ -31,9 +31,10 @@ from .crawler import (
 # if failed, it means the provider is not installed
 try:
     from .provider import (
-        Database
+        Database,
+        Api
     )
-    optional_module = ['Database']
+    optional_module = ['Database', 'Api']
 
 except ImportError:
     print('[!] Data provider is not installed,' 
