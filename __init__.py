@@ -1,3 +1,5 @@
+# support for backtrader
+from backtrader import *
 # support for pandas and numpy
 from pandas import *
 # this means covering pandas interfaces with numpy interfaces

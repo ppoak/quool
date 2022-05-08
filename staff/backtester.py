@@ -1,4 +1,6 @@
+import datetime
 import pandas as pd
+import backtrader as bt
 from ..tools import *
 
 @pd.api.extensions.register_dataframe_accessor("relocator")
@@ -39,6 +41,55 @@ class Relocator(Worker):
                     lambda x: (x.iloc[:, 0] * x.iloc[:, 1]).sum() / x.iloc[:, 1].sum()
                 )
 
-@pd.api.extensions.register_dataframe_accessor("backtester")
-class Backtester(Worker):
-    pass
+class Strategy(bt.Strategy):
+    params = (
+        (..., ...),
+    )
+
+    def log(self, text: str, datetime: datetime.datetime = None, type_: str = 'info'):
+        '''Logging function'''
+        datetime = time2str(datetime) or self.data.datetime.date(0)
+        if type_ == 'info':
+            hint = '[*]'
+        elif type_ == 'warn':
+            hint = '[!]'
+        elif type_ == 'error':
+            hint = '[x]'
+        print(f'{hint} {datetime}: {text}')
+
+    def notify_order(self, order: bt.Order):
+        '''order notification'''
+        # order possible status:
+        # 'Created'、'Submitted'、'Accepted'、'Partial'、'Completed'、
+        # 'Canceled'、'Expired'、'Margin'、'Rejected'
+        # broker submitted or accepted order do nothing
+        if order.status in [order.Submitted, order.Accepted, order.Created]:
+            return
+
+        # broker completed order, just hint
+        elif order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(f'Buy at {order.executed.price:.2f}')
+            elif order.issell():
+                self.log(f'Sell at {order.executed.price:.2f}')
+            # record current bar number
+            self.bar_executed = len(self)
+
+        elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
+            self.log('Order canceled, margin, rejected or expired', type_='warn')
+
+        # except the submitted, accepted, and created status,
+        # other order status should reset order variable
+        self.order = None
+
+    def notify_trade(self, trade):
+        '''trade notification'''
+        if not trade.isclosed:
+            # trade closed, skip
+            return
+        # else, log it
+        self.log(f'Gross Profit: {trade.pnl:.2f}, Net Profit {trade.pnlcomm:.2f}')
+
+cerebro = bt.Cerebro()
+cerebro.broker.setcash(1000000.0)
+cerebro.broker.setcommission(commission=0.001)

@@ -27,6 +27,11 @@ from .crawler import (
     StockUS
 )
 
+from backtester import (
+    Strategy,
+    cerebro
+)
+
 # just try to import the provider
 # if failed, it means the provider is not installed
 try:
@@ -51,4 +56,6 @@ __all__ = [
     'StockUS',
     'Calculator',
     'PreProcessor',
+    'Strategy',
+    'cerebro',
     ] + optional_module
