@@ -27,7 +27,7 @@ from .crawler import (
     StockUS
 )
 
-from backtester import (
+from .backtester import (
     Strategy,
     cerebro
 )

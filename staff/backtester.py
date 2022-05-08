@@ -42,13 +42,11 @@ class Relocator(Worker):
                 )
 
 class Strategy(bt.Strategy):
-    params = (
-        (..., ...),
-    )
 
     def log(self, text: str, datetime: datetime.datetime = None, type_: str = 'info'):
         '''Logging function'''
-        datetime = time2str(datetime) or self.data.datetime.date(0)
+        datetime = datetime or self.data.datetime.date(0)
+        datetime = time2str(datetime)
         if type_ == 'info':
             hint = '[*]'
         elif type_ == 'warn':
@@ -85,7 +83,7 @@ class Strategy(bt.Strategy):
     def notify_trade(self, trade):
         '''trade notification'''
         if not trade.isclosed:
-            # trade closed, skip
+            # trade not closed, skip
             return
         # else, log it
         self.log(f'Gross Profit: {trade.pnl:.2f}, Net Profit {trade.pnlcomm:.2f}')
