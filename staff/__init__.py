@@ -56,5 +56,4 @@ __all__ = [
     'Calculator',
     'PreProcessor',
     'Strategy',
-    'cerebro',
     ] + optional_module

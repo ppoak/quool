@@ -10,6 +10,46 @@
 
 ![process](./process.svg)
 
+## 我们提供了什么？
+
+在pandasquant中有两类主要的功能，一类是成员，一类是独立于其他依赖包的功能或扩展。目前在pandas中包含了以下的成员
+
+- 分析师（analyst）
+
+    - regressor
+    - describer
+    - tester
+
+- 艺术家（artist）
+
+    - drawer
+
+- 回测者（backtester）
+
+    - relocator
+
+- 计算器（calculator）
+    
+    - calculator
+
+- 搬运工（fetcher）
+
+    - filer
+    - databaser
+
+- 处理器（processor）
+
+    - preprocessor
+    - converter
+
+- 数据供应商（provider）（因数据加密，暂不开源）
+
+每个部门中都有不同的成员，每个成员也有自己特有的功能，可以通过`数据.成员.方法()`的方式对pandasquant组件进行调用。例如，现需要将一组标准的日度OHLC数据转化成股票在3日内的收益率，可以如下实现：
+
+```python
+data.converter.price2ret(period='3d', open_column='open', close_column='close')
+```
+
 ## analyst
 
 analyst是pandasquant中负责对整理好的数据进行分析的“成员”，在经过数据整理、数据清洗、去极值标准化等一系列操作后，就需要对数据进行进一步的分析，例如计算因子的相关性、计算因子的IC或是使用Barra模型对因子进行回归分析等等，analyst为这一系列操作提供了便捷的接口。
