@@ -151,6 +151,30 @@ class Describer(Worker):
         else:
             raise AnalystError('ic', 'Timeseries data cannot be used to calculate ic value!')
 
+@pd.api.extensions.register_dataframe_accessor("tester")
+@pd.api.extensions.register_series_accessor("tester")
+class Tester(Worker):
+
+    def sigtest(self, h0: 'float | pd.Series' = 0):
+        '''To apply significant test (t-test, p-value) to see if the data is significant
+        -------------------------------------------------------------------------
+
+        h0: float or Series, the hypothesized value
+        '''
+        def _t(data):
+            mean = data.mean(axis=0)
+            std = data.std(axis=0)
+            size = data.shape[0] - 1
+            t = (mean - h0) / std * np.sqrt(size)
+            p = st.t.sf(np.abs(t), size) * 2
+            return pd.Series({'t': t.values[0], 'p': p[0]})
+        
+        if self.type_ == Worker.PN:
+            return self.data.groupby(level=1).apply(_t)
+        
+        else:
+            return _t(self.data)
+
 
 if __name__ == "__main__":
     panelframe = pd.DataFrame(np.random.rand(500, 5), index=pd.MultiIndex.from_product(
