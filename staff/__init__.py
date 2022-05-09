@@ -29,7 +29,6 @@ from .crawler import (
 
 from .backtester import (
     Strategy,
-    cerebro
 )
 
 # just try to import the provider

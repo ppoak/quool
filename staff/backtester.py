@@ -91,7 +91,3 @@ class Strategy(bt.Strategy):
             return
         # else, log it
         self.log(f'Gross Profit: {trade.pnl:.2f}, Net Profit {trade.pnlcomm:.2f}')
-
-cerebro = bt.Cerebro()
-cerebro.broker.setcash(1000000.0)
-cerebro.broker.setcommission(commission=0.001)
