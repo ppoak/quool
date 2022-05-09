@@ -46,30 +46,41 @@ class Converter(Worker):
 
         return (close_price - open_price) / open_price
 
-    def price2fwd(self, period: str, open_column: str = 'open', close_column: str = 'close'):
+    def price2fwd(self, period: 'str | int', open_column: str = 'open', close_column: str = 'close'):
         if self.type_ == Worker.PN and self.is_frame:
             # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
             # https://stackoverflow.com/questions/15799162/
-            close_price = self.data.groupby([
-                pd.Grouper(level=0, freq=period, label='left'),
-                pd.Grouper(level=1)
-            ]).last().loc[:, close_column]
-            open_price = self.data.groupby([
-                pd.Grouper(level=0, freq=period, label='left'),
-                pd.Grouper(level=1)
-            ]).first().loc[:, open_column]
+            if isinstance(period, str):
+                close_price = self.data.groupby([
+                    pd.Grouper(level=0, freq=period, label='left'),
+                    pd.Grouper(level=1)
+                ]).last().loc[:, close_column]
+                open_price = self.data.groupby([
+                    pd.Grouper(level=0, freq=period, label='left'),
+                    pd.Grouper(level=1)
+                ]).first().loc[:, open_column]
+            elif isinstance(period, int):
+                close_price = self.data.groupby(pd.Grouper(level=1))\
+                    .shift(-period).loc[:, close_column]
+                open_price = self.data.groupby(pd.Grouper(level=1))\
+                    .shift(-period).loc[:, open_column]
 
         elif self.type_ == Worker.PN and not self.is_frame:
             # if passing a series in panel form, assuming that
             # it is the only way to figure out a return
-            close_price = self.data.groupby([
-                pd.Grouper(level=0, freq=period, label='right'),
-                pd.Grouper(level=1)
-            ]).last()
-            open_price = self.data.groupby([
-                pd.Grouper(level=0, freq=period, label='right'),
-                pd.Grouper(level=1)
-            ]).first()
+            if isinstance(period, str):
+                close_price = self.data.groupby([
+                    pd.Grouper(level=0, freq=period, label='right'),
+                    pd.Grouper(level=1)
+                ]).last()
+                open_price = self.data.groupby([
+                    pd.Grouper(level=0, freq=period, label='right'),
+                    pd.Grouper(level=1)
+                ]).first()
+            elif isinstance(period, int):
+                close_price = self.data.groupby(pd.Grouper(level=1))\
+                    .shift(-period)
+                open_price = self.data.copy()
         
         elif self.type_ == Worker.TS:
             close_price = self.data.\

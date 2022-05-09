@@ -168,3 +168,5 @@ cython_debug/
 
 # 私密接口文件
 staff/provider.py
+
+.DS_Store

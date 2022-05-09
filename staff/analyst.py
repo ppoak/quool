@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+import scipy.stats as st
 from ..tools import *
 
 
@@ -29,9 +30,10 @@ class Regressor(Worker):
             x = sm.add_constant(x)
             model = sm.OLS(y, x).fit()
             t = pd.Series(model.tvalues)
+            p = pd.Series(model.pvalues)
             coef = pd.Series(model.params)
-            res = pd.concat([coef, t], axis=1)
-            res.columns = ['coef', 't']
+            res = pd.concat([coef, t, p], axis=1)
+            res.columns = ['coef', 't', 'p']
             return res
 
         param_status = (y is not None, x_col is not None, y_col is not None)
@@ -43,6 +45,10 @@ class Regressor(Worker):
                 y.index.names = self.data.index.names
             else:
                 y.index.name = self.data.index.name
+            if self.data.name is None:
+                self.data.name = 'ols_x'
+            if y.name is None:
+                y.name = 'ols_y'
             data = pd.merge(self.data, y, left_index=True, right_index=True)
         elif param_status == (False, True, True):
             data = self.data.loc[:, x_col + [y_col]]
@@ -76,6 +82,11 @@ class Describer(Worker):
             else:
                 other.index.name = self.data.name
             
+            if self.data.name is None:
+                self.data.name = 'corr_x'
+            if other.name is None:
+                other.name = 'corr_y'
+            
             data = pd.merge(self.data, other, left_index=True, right_index=True)
         else:
             data = self.data
@@ -107,6 +118,10 @@ class Describer(Worker):
             else:
                 forward.index.name = self.data.name
             
+            if self.data.name is None:
+                self.data.name = 'factor'
+            if forward.name is None:
+                forward.name = 'forward'
             data = pd.merge(self.data, forward, left_index=True, right_index=True)
         else:
             data = self.data.copy()

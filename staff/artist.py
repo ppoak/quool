@@ -34,7 +34,7 @@ class Gallery():
         axes = np.array(axes).reshape((self.nrows, self.ncols))
         self.fig = fig
         self.axes = axes
-        return (fig, axes)
+        return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         for ax in self.axes.reshape(-1):
@@ -76,7 +76,7 @@ class Drawer(Worker):
                 elif self.type_ == Worker.CS:
                     plotwised = self.data.copy().loc[asset]
             else:
-                if self.type == Worker.TS:
+                if self.type_ == Worker.TS:
                     plotwised = self.data.copy().loc[(datetime, indicator)]
                 elif self.type_ == Worker.CS:
                     plotwised = self.data.copy().loc[(asset, indicator)]

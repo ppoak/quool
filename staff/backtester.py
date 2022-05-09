@@ -36,6 +36,10 @@ class Relocator(Worker):
             # if other is not None, and data is a Series, we assume that weight is
             # the weight and data is the forward return
             else:
+                if self.data.name is None:
+                    self.data.name = 'forward'
+                if weight.name is None:
+                    weight.name = 'weight'
                 data = pd.merge(self.data, weight, left_index=True, right_index=True)
                 return data.groupby(level=0).apply(
                     lambda x: (x.iloc[:, 0] * x.iloc[:, 1]).sum() / x.iloc[:, 1].sum()
