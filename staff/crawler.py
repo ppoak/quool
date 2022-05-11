@@ -68,7 +68,31 @@ class Em:
         data = pd.DataFrame(data)
         data = data.rename(columns=dict(zip(data.columns, data.columns.map(lambda x: x.lower()))))
         data.onlist_date = pd.to_datetime(data.onlist_date)
-        return data
+        datas = pd.DataFrame()
+
+        for i in range(len(data)):
+            opdep_code = data.iloc[i, :]['operatedept_code']
+            params = {
+                "sortColumns": "TRADE_DATE,SECURITY_CODE",
+                "sortTypes": "-1,1",
+                "pageSize": 100000,
+                "pageNumber": 1,
+                "reportName": "RPT_OPERATEDEPT_TRADE_DETAILS",
+                "columns": "ALL",
+                "filter": f"(OPERATEDEPT_CODE={opdep_code})",
+                "source": "WEB",
+                "client": "WEB"
+            }
+
+            res = Request(cls.__data_center, params=params, headers=headers).get().json
+            data_details = res['result']['data']
+            data_details = pd.DataFrame(data_details)
+            data_details = data_details.rename(columns=dict(zip(data_details.columns, data_details.columns.map(lambda x: x.lower()))))
+            data_details['onlist_date'] = pd.to_datetime(data_details['onlist_date'])
+            # data_details = data_details.loc[data_details['onlist_date'] == date]
+            datas = pd.concat([datas, data_details], axis=0)
+        datas = datas.reset_index(drop=True)
+        return datas
 
 
 if __name__ == "__main__":

@@ -161,10 +161,16 @@ class PreProcessor(Worker):
             groupers += item2list(grouper)
 
         if method == 'zscore':
-            return self.data.groupby(groupers).apply(_zscore)
+            if self.type_ == Worker.PN:
+                return self.data.groupby(groupers).apply(_zscore)
+            else:
+                return _zscore(self.data)
 
         elif method == 'minmax':
-            return self.data.groupby(groupers).apply(_minmax)
+            if self.type_ == Worker.PN:
+                return self.data.groupby(groupers).apply(_minmax)
+            else:
+                return _minmax(self.data)
 
     def deextreme(self, method = 'md_correct', grouper = None, n = None):
 
@@ -211,20 +217,29 @@ class PreProcessor(Worker):
         if self.type_ == Worker.PN and grouper is not None:
             groupers += item2list(grouper)
 
-        if method == 'md_correct':
+        if method == 'md_correct' or method == 'mad':
             if n is None:
                 n = 5
-            return self.data.groupby(groupers).apply(_md_correct)
+            if self.type_ == Worker.PN:
+                return self.data.groupby(groupers).apply(_md_correct)
+            else:
+                return _md_correct(self.data)
 
-        elif method == 'std_correct':
+        elif method == 'std_correct' or method == 'std':
             if n is None:
                 n = 3
-            return self.data.groupby(groupers).apply(_std_correct)
+            if self.type_ == Worker.PN:
+                return self.data.groupby(groupers).apply(_std_correct)
+            else:
+                return _std_correct(self.data)
         
         elif method == 'drop_odd':
             if n is None:
                 n = 0.1
-            return self.data.groupby(groupers).apply(_drop_odd)
+            if self.type_ == Worker.PN:
+                return self.data.groupby(groupers).apply(_drop_odd)
+            else:
+                return _drop_odd(self.data)
     
     def fill_miss(self, method = 'pad_zero', grouper = None):
 
@@ -254,19 +269,29 @@ class PreProcessor(Worker):
         if self.type_ == Worker.PN and grouper is not None:
             groupers += item2list(grouper)
 
-        if method == 'pad_zero':
-            return self.data.groupby(groupers).apply(_pad_with_zero)
+        if method == 'pad_zero' or 'zero':
+            if self.type_ == Worker.PN:
+                return self.data.groupby(groupers).apply(_pad_with_zero)
+            else:
+                return _pad_with_zero(self.data)
 
         elif method == 'pad_mean':
-            return self.data.groupby(groupers).apply(_pad_with_mean)
+            if self.type_ == Worker.PN:
+                return self.data.groupby(groupers).apply(_pad_with_mean)
+            else:
+                return _pad_with_mean(self.data)
         
         elif method == 'pad_median':
-            return self.data.groupby(groupers).apply(_pad_with_median)
+            if self.type_ == Worker.PN:
+                return self.data.groupby(groupers).apply(_pad_with_median)
+            else:
+                return _pad_with_median(self.data)
 
 if __name__ == "__main__":
     import numpy as np
     price = pd.DataFrame(np.random.rand(100, 4), columns=['open', 'high', 'low', 'close'],
-        index=pd.MultiIndex.from_product([pd.date_range('20100101', periods=20), list('abced')]))
+        index = pd.date_range('20100101', periods=100))
+        # index=pd.MultiIndex.from_product([pd.date_range('20100101', periods=20), list('abced')]))
     price.iloc[0, 2] = np.nan
-    print(price.preprocessor.fill_miss('pad_zero'))
+    print(price.preprocessor.standarize('zscore'))
     
