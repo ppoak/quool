@@ -10,18 +10,18 @@ class ProcessorError(FrameWorkError):
 @pd.api.extensions.register_series_accessor("converter")
 class Converter(Worker):
     
-    def price2ret(self, period: str, open_column: str = 'close', close_column: str = 'close'):
+    def price2ret(self, period: str, open_col: str = 'close', close_col: str = 'close'):
         if self.type_ == Worker.PN and self.is_frame:
             # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
             # https://stackoverflow.com/questions/15799162/
             close_price = self.data.groupby([
                 pd.Grouper(level=0, freq=period, label='right'),
                 pd.Grouper(level=1)
-            ]).last().loc[:, close_column]
+            ]).last().loc[:, close_col]
             open_price = self.data.groupby([
                 pd.Grouper(level=0, freq=period, label='right'),
                 pd.Grouper(level=1)
-            ]).first().loc[:, open_column]
+            ]).first().loc[:, open_col]
 
         elif self.type_ == Worker.PN and not self.is_frame:
             # if passing a series in panel form, assuming that
@@ -46,7 +46,7 @@ class Converter(Worker):
 
         return (close_price - open_price) / open_price
 
-    def price2fwd(self, period: 'str | int', open_column: str = 'open', close_column: str = 'close'):
+    def price2fwd(self, period: 'str | int', open_col: str = 'open', close_col: str = 'close'):
         if self.type_ == Worker.PN and self.is_frame:
             # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
             # https://stackoverflow.com/questions/15799162/
@@ -54,16 +54,16 @@ class Converter(Worker):
                 close_price = self.data.groupby([
                     pd.Grouper(level=0, freq=period, label='left'),
                     pd.Grouper(level=1)
-                ]).last().loc[:, close_column]
+                ]).last().loc[:, close_col]
                 open_price = self.data.groupby([
                     pd.Grouper(level=0, freq=period, label='left'),
                     pd.Grouper(level=1)
-                ]).first().loc[:, open_column]
+                ]).first().loc[:, open_col]
             elif isinstance(period, int):
                 close_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(-period).loc[:, close_column]
+                    .shift(-period).loc[:, close_col]
                 open_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(-period).loc[:, open_column]
+                    .shift(-period).loc[:, open_col]
 
         elif self.type_ == Worker.PN and not self.is_frame:
             # if passing a series in panel form, assuming that

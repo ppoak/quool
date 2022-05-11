@@ -118,9 +118,9 @@ class Describer(Worker):
             else:
                 forward.index.name = self.data.name
             
-            if self.data.name is None:
+            if not self.is_frame and self.data.name is None:
                 self.data.name = 'factor'
-            if forward.name is None:
+            if isinstance(forward, pd.Series) and forward.name is None:
                 forward.name = 'forward'
             data = pd.merge(self.data, forward, left_index=True, right_index=True)
         else:

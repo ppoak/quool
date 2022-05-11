@@ -10,7 +10,8 @@ class CalculatorError(FrameWorkError):
 @pd.api.extensions.register_series_accessor("calculator")
 class Calculator(Worker):
     
-    def rolling(self, window: int, func, *args, grouper = None, offset: int = 0, **kwargs):
+    def rolling(self, window: int, func, *args, grouper = None, 
+        offset: int = 0, interval: int = 1, **kwargs):
         '''Provide rolling window func apply for pandas dataframe
         ----------------------------------------------------------
 
@@ -33,7 +34,7 @@ class Calculator(Worker):
             raise TypeError('rolling only support for panel or time series data')
         
         result = []
-        for i in range(window - 1, datetime_index.size):
+        for i in range(window - 1, datetime_index.size, interval):
             window_data = data.loc[datetime_index[i - window + 1]:datetime_index[i]].copy()
             window_data.index = window_data.index.remove_unused_levels()
 
