@@ -1,3 +1,4 @@
+import datetime
 import pandas as pd
 from functools import lru_cache
 from ..tools import *
@@ -35,3 +36,40 @@ class StockUS():
         price = price.set_index('date')
         return price
 
+class Em:
+    __data_center = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+
+    @classmethod
+    @lru_cache(maxsize=None, typed=False)
+    def active_opdep_em(cls, date: 'str | datetime.datetime') -> pd.DataFrame:
+        '''Update data for active oprate department
+        --------------------------------------------
+
+        date: str or datetime, the given date
+        return: pd.DataFrame, a dataframe containing information on eastmoney
+        '''
+        date = time2str(date)
+        params = {
+            "sortColumns": "TOTAL_NETAMT,ONLIST_DATE,OPERATEDEPT_CODE",
+            "sortTypes": "-1,-1,1",
+            "pageSize": 100000,
+            "pageNumber": 1,
+            "reportName": "RPT_OPERATEDEPT_ACTIVE",
+            "columns": "ALL",
+            "source": "WEB",
+            "client": "WEB",
+            "filter": f"(ONLIST_DATE>='{date}')(ONLIST_DATE<='{date}')"
+        }
+        headers = {
+            "Referer": "https://data.eastmoney.com/"
+        }
+        res = Request(cls.__data_center, headers=headers, params=params).get().json
+        data = res['result']['data']
+        data = pd.DataFrame(data)
+        data = data.rename(columns=dict(zip(data.columns, data.columns.map(lambda x: x.lower()))))
+        data.onlist_date = pd.to_datetime(data.onlist_date)
+        return data
+
+
+if __name__ == "__main__":
+    data = Em.active_opdep_em('20210104')
