@@ -51,7 +51,7 @@ class Regressor(Worker):
                 y.name = 'ols_y'
             data = pd.merge(self.data, y, left_index=True, right_index=True)
         elif param_status == (False, True, True):
-            data = self.data.loc[:, x_col + [y_col]]
+            data = self.data.loc[:, item2list(x_col) + [y_col]]
         else:
             raise AnalystError('ols', "You need to assign x_col and y_col both.")
 

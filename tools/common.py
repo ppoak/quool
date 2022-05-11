@@ -19,7 +19,7 @@ def str2time(date: 'str | datetime.datetime') -> datetime.datetime:
 
 def item2list(item) -> list:
     if item is None:
-        return item
+        return []
     elif not isinstance(item, (list, tuple, set, dict)):
         return [item]
     else:
