@@ -32,8 +32,8 @@ class Worker(object):
 
         is_ts = not isinstance(self.data.index, pd.MultiIndex) and isinstance(self.data.index, pd.DatetimeIndex)
         is_cs = not isinstance(self.data.index, pd.MultiIndex) and not isinstance(self.data.index, pd.DatetimeIndex)
-        is_panel = isinstance(self.data.index, pd.MultiIndex) and len(self.data.index.levshape) == 2 \
-                and isinstance(self.data.index.levels[0], pd.DatetimeIndex) and not isinstance(self.data.index.levels[1], pd.DatetimeIndex)
+        is_panel = isinstance(self.data.index, pd.MultiIndex) and len(self.data.index.levshape) >= 2 \
+                and isinstance(self.data.index.levels[0], pd.DatetimeIndex)
         
         if is_ts:
             self.type_ = Worker.TS

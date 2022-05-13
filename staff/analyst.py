@@ -16,7 +16,7 @@ class Regressor(Worker):
     and so on.
     '''
     
-    def ols(self, y: pd.Series = None, x_col: str = None, y_col: str = None):
+    def ols(self, y: pd.Series = None, x_col: 'str | list' = None, y_col: str = None):
         '''OLS Regression Function
         ---------------------------
 
@@ -59,6 +59,53 @@ class Regressor(Worker):
             return data.groupby(level=0).apply(_reg)
         else:
             return _reg(data)
+        
+    def logistic(self, y: pd.Series = None, x_col: 'str | list' = None, y_col: str = None):
+        '''Logistics Regression Function
+        ---------------------------
+
+        y: Series, assigned y value in a series form
+        x_col: list or str, a list of column names used for regression x values
+        y_col: str, the column name used for regression y values
+        '''
+        def _reg(data):
+            y = data.iloc[:, -1]
+            x = data.iloc[:, :-1]
+            x = sm.add_constant(x)
+            model = sm.Logit(y, x).fit()
+            t = pd.Series(model.tvalues)
+            p = pd.Series(model.pvalues)
+            coef = pd.Series(model.params)
+            res = pd.concat([coef, t, p], axis=1)
+            res.columns = ['coef', 't', 'p']
+            return res
+
+        param_status = (y is not None, x_col is not None, y_col is not None)
+
+        if param_status == (True, True, True):
+            raise AnalystError('logistics', "You can assign either other or x_col and y_col, but not both.")
+            
+        elif param_status == (True, False, False):
+            if self.type_ == Worker.PN:
+                y.index.names = self.data.index.names
+            else:
+                y.index.name = self.data.index.name
+            if self.data.name is None:
+                self.data.name = 'logistics_x'
+            if y.name is None:
+                y.name = 'logistics_y'
+            data = pd.merge(self.data, y, left_index=True, right_index=True)
+            
+        elif param_status == (False, True, True):
+            data = self.data.loc[:, item2list(x_col) + [y_col]]
+
+        else:
+            raise AnalystError('ols', "You need to assign x_col and y_col both.")
+
+        if self.type_ == Worker.PN:
+            return data.groupby(level=0).apply(_reg)
+        else:
+            return _reg(data)            
             
 @pd.api.extensions.register_dataframe_accessor("describer")
 @pd.api.extensions.register_series_accessor("describer")
