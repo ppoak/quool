@@ -10,6 +10,7 @@ from .common import (
     str2time,
     item2list,
     hump2snake,
+    nearest_report_period,
 )
 
 
@@ -22,4 +23,5 @@ __all__ = [
     'str2time',
     'item2list',
     'hump2snake',
+    'nearest_report_period',
     ]
