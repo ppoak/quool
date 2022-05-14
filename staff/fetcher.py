@@ -247,10 +247,10 @@ class Databaser(Worker):
         # if table does not exist, create table
         if not check:
             data.to_sql(table, database, index=False)
-            if engine_type == "mysql":
+            if engine_type == "mysql" and index:
                 with database.connect() as conn:
                     conn.execute("ALTER TABLE %s ADD  (%s)" % (table, index_col))
-            elif engine_type == "sqlite":
+            elif engine_type == "sqlite" and index:
                 # unluckily sqlite3 donesn't support alter table, 
                 # so we have to drop and recreate
                 # https://www.yiibai.com/sqlite/primary-key.html
@@ -271,7 +271,7 @@ class Databaser(Worker):
         cols_str = self.__sql_cols(data)
         for i in range(0, len(data), chunksize):
             # print("chunk-{no}, size-{size}".format(no=str(i/chunksize), size=chunksize))
-            tmp = data[i: i + chunksize]
+            tmp = data.iloc[i: i + chunksize]
 
             if on_duplicate == "replace":
                 if engine_type == 'mysql':
@@ -315,11 +315,9 @@ if __name__ == '__main__':
     # fetcher = StockUS("guflrppo3jct4mon7kw13fmv3dsz9kf2")
     # price = fetcher.cn_price('000001.SZ', '20100101', '20200101')
     # print(price)
+    from .provider import Stock
     import numpy as np
-    data = pd.DataFrame(np.array([['cc', 'dd', 'czxvvx', 'd', 'e'], ['cc', 'b', 'ee', 'd', 'e']]).T,
-        columns=['name', 'addr'], index=[100, 101, 102, 103, 106])
-    data.index.name = 'id'
-    conn = sql.create_engine('sqlite:///./test.db')
+    con = sql.create_engine('sqlite:///./data.nosync/stock.db')
+    Stock.trade_date('20200101', '20220101').databaser.to_sql('test', con)
     # conn = sql.create_engine('mysql+pymysql://windreader:password1@221.226.96.114:10087/wind')
-    data.databaser.to_sql('c', conn, on_duplicate='replace')
     
