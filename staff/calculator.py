@@ -57,3 +57,51 @@ class Calculator(Worker):
         
         result = pd.concat(result)
         return result
+
+    def group_map(self, grouper: ..., func: ..., processes: int = 4) -> 'pd.Series | pd.DataFrame':
+        from multiprocessing import Pool
+        '''multi-process map a function to each group
+        ----------------------------------------------
+
+        Due to the limitation of map function, the input of the func
+        parameter must be single parameter `data`, and the output of the
+        func parameter must be indexed with label
+        
+        grouper: the grouper applied in func,
+        func: the function applied to each group,
+        processes: the number of processes used, default 4
+        return: the result of func applied to each group
+        '''
+        pool = Pool(processes=processes)
+        groups = self.data.groupby(grouper)
+        results = pool.map_async(func, groups)
+        return pd.concat(results.get(), axis=0).sort_index()
+
+    def group_apply(self, grouper: ..., func: ..., *args, 
+        processes: int = 4, **kwargs) -> 'pd.Series | pd.DataFrame':
+        '''multi-process apply a function to each group
+        ----------------------------------------------
+
+        grouper: the grouper applied in func,
+        func: the function applied to each group,
+        processes: the number of processes used, default 4
+        return: the result of func applied to each group
+        '''
+        from multiprocessing import Pool
+        pool = Pool(processes=processes)
+        results = {}
+        groups = self.data.groupby(grouper)
+        for gn, g in groups:
+            results[gn] = pool.apply_async(func, args=(g, ) + args, kwds=kwargs)
+        pool.close()
+        pool.join()
+        data = []
+        for index, result in results.items():
+            tmp = result.get()
+            if isinstance(tmp, (pd.Series, pd.DataFrame)):
+                tmp.index = pd.MultiIndex.from_product([[index], tmp.index])
+            else:
+                tmp = pd.Series([tmp], index=[index])
+            data.append(tmp)
+        return pd.concat(data).sort_index()
+        
