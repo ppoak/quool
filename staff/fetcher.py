@@ -249,7 +249,7 @@ class Databaser(Worker):
             data.to_sql(table, database, index=False)
             if engine_type == "mysql" and index:
                 with database.connect() as conn:
-                    conn.execute("ALTER TABLE %s ADD  (%s)" % (table, index_col))
+                    conn.execute("ALTER TABLE %s ADD INDEX %s" % (table, index_col))
             elif engine_type == "sqlite" and index:
                 # unluckily sqlite3 donesn't support alter table, 
                 # so we have to drop and recreate
