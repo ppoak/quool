@@ -49,9 +49,9 @@ class Regressor(Worker):
                 self.data.name = 'ols_x'
             if y.name is None:
                 y.name = 'ols_y'
-            data = pd.merge(self.data, y, left_index=True, right_index=True)
+            data = pd.merge(self.data, y, left_index=True, right_index=True).dropna()
         elif param_status == (False, True, True):
-            data = self.data.loc[:, item2list(x_col) + [y_col]]
+            data = self.data.loc[:, item2list(x_col) + [y_col]].dropna()
         else:
             raise AnalystError('ols', "You need to assign x_col and y_col both.")
 
@@ -94,10 +94,10 @@ class Regressor(Worker):
                 self.data.name = 'logistics_x'
             if y.name is None:
                 y.name = 'logistics_y'
-            data = pd.merge(self.data, y, left_index=True, right_index=True)
+            data = pd.merge(self.data, y, left_index=True, right_index=True).dropna()
             
         elif param_status == (False, True, True):
-            data = self.data.loc[:, item2list(x_col) + [y_col]]
+            data = self.data.loc[:, item2list(x_col) + [y_col]].dropna()
 
         else:
             raise AnalystError('ols', "You need to assign x_col and y_col both.")
