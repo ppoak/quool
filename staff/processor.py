@@ -62,8 +62,11 @@ class Converter(Worker):
             elif isinstance(period, int):
                 close_price = self.data.groupby(pd.Grouper(level=1))\
                     .shift(-period).loc[:, close_col]
-                open_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(-period).loc[:, open_col]
+                if close_col == open_col:
+                    open_price = self.data.loc[:, open_col].copy()
+                else:
+                    open_price = self.data.groupby(pd.Grouper(level=1))\
+                        .shift(-1).loc[:, open_col]
 
         elif self.type_ == Worker.PN and not self.is_frame:
             # if passing a series in panel form, assuming that
@@ -78,15 +81,33 @@ class Converter(Worker):
                     pd.Grouper(level=1)
                 ]).first()
             elif isinstance(period, int):
-                close_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(-period)
+                close_price = self.data.groupby(pd.Grouper(level=1)).shift(-period)
                 open_price = self.data.copy()
         
-        elif self.type_ == Worker.TS:
-            close_price = self.data.\
-                resample(period, label='left').last()
-            open_price = self.data.\
-                resample(period, label='left').first()
+        elif self.type_ == Worker.TS and self.is_frame:
+            if isinstance(period, str):
+                close_price = self.data.\
+                    resample(period, label='left').last().loc[:, close_col]
+                open_price = self.data.\
+                    resample(period, label='left').first().loc[:, open_col]
+            elif isinstance(period, int):
+                close_price = self.data.\
+                    shift(-period).loc[:, close_col]
+                if close_col == open_col:
+                    open_price = self.data.loc[:, open_col].copy()
+                else:
+                    open_price = self.data.shift(-1).loc[:, open_col]
+        
+        elif self.type_ == Worker.TS and not self.is_frame:
+            if isinstance(period, str):
+                close_price = self.data.\
+                    resample(period, label='right').last()
+                open_price = self.data.\
+                    resample(period, label='right').first()
+            elif isinstance(period, int):
+                close_price = self.data.shift(-period)
+                open_price = self.data.copy()
+
         else:
             raise ProcessorError('price2fwd', 'Can only convert time series data to forward')
 
