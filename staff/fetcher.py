@@ -249,6 +249,19 @@ class Databaser(Worker):
             data.to_sql(table, database, index=False)
             if engine_type == "mysql" and index:
                 with database.connect() as conn:
+                    print(20*'*', index_col, 20*'*')
+                    index_col_cp = index_col
+                    index_col_cp = index_col_cp[1:-1] # remove ()
+                    col_ls = index_col_cp.split(',')
+                    skips = ['date', 'period']
+                    for col in col_ls:
+                        col = col.strip()
+                        for substring in skips:
+                            if col[1:-1].lower().find(substring) != -1:
+                                break
+                        else:
+                            conn.execute(f"ALTER TABLE `{table}` MODIFY `{col[1:-1]}` {sql.types.CHAR(length=20)}")
+                                
                     conn.execute("ALTER TABLE %s ADD INDEX %s" % (table, index_col))
             elif engine_type == "sqlite" and index:
                 # unluckily sqlite3 donesn't support alter table, 

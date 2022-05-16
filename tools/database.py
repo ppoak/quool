@@ -9,12 +9,12 @@ Config = configparser.ConfigParser()
 Config.read('./pandasquant/config.ini')
 engin_type = Config['database']['ENGINE_TYPE']
 
-path, dbname = Config['database']['PATH'], Config['database']['dbname_1']
+path, dbname_1 = Config['database']['PATH'], Config['database']['dbname_1']
 today = datetime.datetime.today() if datetime.datetime.today().hour >= 22 \
     else datetime.datetime.today() - datetime.timedelta(days=1)
     
 if engin_type == 'sqlite':
-    stockdb = sql.create_engine("sqlite:///%s/%s" % (path, dbname))
+    stockdb = sql.create_engine("sqlite:///%s/%s" % (path, dbname_1))
     # check whether the trade_date table exists
     is_trade_date_table_exists = stockdb.execute("SELECT name FROM sqlite_master"
         " WHERE type='table' AND name='trade_date'").fetchall()
@@ -22,11 +22,13 @@ if engin_type == 'sqlite':
         # table not exists
         pq.Api.trade_date(start='20070101', end='20231231').databaser.\
             to_sql('trade_date', stockdb, index=True, on_duplicate=True)
+            
     current_trade_dates = pd.read_sql(f"select trading_date from trade_date where trading_date <= '{today}' and trading_date >= '2022-05-10'", 
         stockdb, index_col="trading_date", parse_dates='trading_date').index
     current_report_dates = pd.date_range(start='2007-01-01', end=today, freq='Q')
+    
 elif engin_type == 'mysql+pymysql':
-    stockdb = sql.create_engine("mysql+pymysql://%s/%s?charset=utf8" % (path, dbname),
+    stockdb = sql.create_engine("mysql+pymysql://%s/%s?charset=utf8" % (path, dbname_1),
               connect_args={"charset": "utf8", "connect_timeout": 50})
     test_sql = f'SELECT table_name FROM information_schema.tables ' + \
                f'WHERE table_name = "trade_date"'
@@ -38,7 +40,10 @@ elif engin_type == 'mysql+pymysql':
         # table not exists
         pq.Api.trade_date(start='20070101', end='20231231').databaser.\
             to_sql('trade_date', stockdb, index=True, on_duplicate=True)
-    print(is_trade_date_table_exists)
+
+    current_trade_dates = pd.read_sql(f"select trading_date from trade_date where trading_date <= '{today}' and trading_date >= '2022-05-12'", 
+        stockdb, index_col="trading_date", parse_dates='trading_date').index
+    current_report_dates = pd.date_range(start='2020-01-01', end=today, freq='Q')
 
 
 tables = {     
@@ -112,7 +117,7 @@ tables = {
         "func": pq.Api.intensity_trend,
         "date_col": "trading_date",
         "check_date": current_trade_dates,
-        "database": stockdb
+        "database": stockdb,
     }
 }
 
@@ -132,8 +137,8 @@ def sqlite_check(conn: sql.engine.base.Engine, table: str, date_col: str):
         return tables[table]['check_date']
         
 def mysql_check(conn: sql.engine.base.Engine, table: str, date_col: str):
-    test_sql = f'SELECT * FROM information_schema.tables ' + \
-               f'WHERE table_name = "{table}"'
+    test_sql = f'SELECT table_name FROM information_schema.tables ' + \
+               f'WHERE table_schema = "{conn.url.database}" and table_name = "{table}"'
     table_status = conn.execute(test_sql).fetchone()
     if table_status:
         # table exists, check the date diffrence
@@ -150,9 +155,9 @@ def save_or_update():
     for table, conf in tables.items():
         print(f'[*] Getting latest data for {table} ...')
         if engin_type == 'sqlite':
-            diff = sqlite_check(table, conf['date_col'])
+            diff = sqlite_check(conf['database'], table, conf['date_col'])
         elif engin_type == 'mysql+pymysql':
-            diff = mysql_check(table, conf['date_col'])
+            diff = mysql_check(conf['database'], table, conf['date_col'])
         print(f'[*] {len(diff)} rows need to be updated')
         for day in diff:
             print(f'[*] Updating {day} in {table} ...')
@@ -161,8 +166,6 @@ def save_or_update():
         print(f'[+] Update {table} success')
     
     print(f'[+] All Tables are up to date now')
-    
-    mysql_check(stockdb, 'trade_date_weekly', 'a')
 
 if __name__ == "__main__":
     save_or_update()

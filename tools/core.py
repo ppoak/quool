@@ -48,8 +48,8 @@ class Worker(object):
         
         data = self.data.copy()
         
-        check = (isinstance(datetime, str), isinstance(asset, str), isinstance(indicator, str))
-        if check == (False, False, False):
+        check = (not isinstance(datetime, slice), not isinstance(asset, slice), not isinstance(indicator, slice))
+        if check == (False, False, False) and self.is_frame:
             raise ValueError('Must assign at least one of dimension')
               
         if self.is_frame:

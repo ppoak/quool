@@ -20,7 +20,7 @@ def str2time(date: 'str | datetime.datetime') -> datetime.datetime:
 def item2list(item) -> list:
     if item is None:
         return []
-    elif not isinstance(item, (list, tuple, set, dict, pd.Series)):
+    elif not isinstance(item, (list, tuple, set, dict)):
         return [item]
     else:
         return item
