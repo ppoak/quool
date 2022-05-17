@@ -23,9 +23,9 @@ if engin_type == 'sqlite':
         pq.Api.trade_date(start='20070101', end='20231231').databaser.\
             to_sql('trade_date', stockdb, index=True, on_duplicate=True)
             
-    current_trade_dates = pd.read_sql(f"select trading_date from trade_date where trading_date <= '{today}' and trading_date >= '2022-05-10'", 
+    current_trade_dates = pd.read_sql(f"select trading_date from trade_date where trading_date <= '{today}' and trading_date >= '2014-01-01'", 
         stockdb, index_col="trading_date", parse_dates='trading_date').index
-    current_report_dates = pd.date_range(start='2007-01-01', end=today, freq='Q')
+    current_report_dates = pd.date_range(start='2014-01-01', end=today, freq='Q')
     
 elif engin_type == 'mysql+pymysql':
     stockdb = sql.create_engine("mysql+pymysql://%s/%s?charset=utf8" % (path, dbname_1),
