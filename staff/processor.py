@@ -185,7 +185,7 @@ class PreProcessor(Worker):
             else:
                 grouper = pd.Grouper(level=0)
 
-        if method == 'zscore':
+        if 'zscore' in method:
             if self.type_ == Worker.PN:
                 return data.groupby(grouper).apply(_zscore)
             elif grouper is not None:
@@ -193,7 +193,7 @@ class PreProcessor(Worker):
             else:
                 return _zscore(data)
 
-        elif method == 'minmax':
+        elif 'minmax' in method:
             if self.type_ == Worker.PN:
                 return data.groupby(grouper).apply(_minmax)
             elif grouper is not None:
@@ -208,8 +208,8 @@ class PreProcessor(Worker):
             mad = (data - median).abs().median()
             mad = mad.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
             mad = pd.DataFrame(mad, index=data.index, columns=data.columns)
-            madup = mad + n * mad
-            maddown = mad - n * mad
+            madup = median + n * mad
+            maddown = median - n * mad
             data[data > madup] = madup
             data[data < maddown] = maddown
             return data
@@ -249,7 +249,7 @@ class PreProcessor(Worker):
             else:
                 grouper = pd.Grouper(level=0)
     
-        if method == 'md_correct' or method == 'mad':
+        if 'mad' in method:
             if n is None:
                 n = 5
             if self.type_ == Worker.PN:
@@ -260,7 +260,7 @@ class PreProcessor(Worker):
                 return _md_correct(data)
 
 
-        elif method == 'std_correct' or method == 'std':
+        elif 'std' in method:
             if n is None:
                 n = 3
             if self.type_ == Worker.PN:
@@ -270,7 +270,7 @@ class PreProcessor(Worker):
             else:
                 return _std_correct(data)
         
-        elif method == 'drop_odd':
+        elif 'drop' in method:
             if n is None:
                 n = 0.1
             if self.type_ == Worker.PN:
@@ -293,7 +293,7 @@ class PreProcessor(Worker):
             data = data.fillna(mean)
             return data
 
-        def _fill_mean(data):
+        def _fill_median(data):
             median = data.median(axis=0)
             median = median.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
             median = pd.DataFrame(median, columns=data.columns, index=data.index)
@@ -311,7 +311,7 @@ class PreProcessor(Worker):
             else:
                 grouper = pd.Grouper(level=0)
 
-        if method == 'fill_zero' or 'zero':
+        if 'zero' in method:
             if self.type_ == Worker.PN:
                 return data.groupby(grouper).apply(_fill_zero)
             elif grouper is not None:
@@ -319,7 +319,7 @@ class PreProcessor(Worker):
             else:
                 return _fill_zero(data)
 
-        elif method == 'fill_mean' or 'mean':
+        elif 'mean' in method:
             if self.type_ == Worker.PN:
                 return data.groupby(grouper).apply(_fill_mean)
             elif grouper is not None:
@@ -327,13 +327,13 @@ class PreProcessor(Worker):
             else:
                 return _fill_mean(data)
         
-        elif method == 'fill_median' or 'median':
+        elif 'median' in method:
             if self.type_ == Worker.PN:
-                return data.groupby(grouper).apply(_fill_mean)
+                return data.groupby(grouper).apply(_fill_median)
             elif grouper is not None:
-                return data.groupby(grouper).apply(_fill_mean)
+                return data.groupby(grouper).apply(_fill_median)
             else:
-                return _fill_mean(data)
+                return _fill_median(data)
 
 if __name__ == "__main__":
     import numpy as np

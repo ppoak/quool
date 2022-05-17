@@ -44,7 +44,8 @@ class Gallery():
             plt.savefig(self.path)
         if self.show:
             plt.show()
-            
+        
+        plt.close(self.fig)
         return False
 
 @pd.api.extensions.register_dataframe_accessor("drawer")
