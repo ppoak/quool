@@ -45,7 +45,7 @@ class Regressor(Worker):
                 y.index.names = self.data.index.names
             else:
                 y.index.name = self.data.index.name
-            if self.data.name is None:
+            if not self.is_frame and self.data.name is None:
                 self.data.name = 'ols_x'
             if y.name is None:
                 y.name = 'ols_y'
@@ -90,7 +90,7 @@ class Regressor(Worker):
                 y.index.names = self.data.index.names
             else:
                 y.index.name = self.data.index.name
-            if self.data.name is None:
+            if not self.is_frame and self.data.name is None:
                 self.data.name = 'logistics_x'
             if y.name is None:
                 y.name = 'logistics_y'
