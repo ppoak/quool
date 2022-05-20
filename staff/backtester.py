@@ -10,8 +10,7 @@ class BackTesterError(FrameWorkError):
 @pd.api.extensions.register_series_accessor("relocator")
 class Relocator(Worker):
 
-    def profit(self, weight: pd.Series = None, grouper: ... = None, 
-        weight_col: str = None, forward_col: str = None):
+    def profit(self, forward: pd.Series = None, weight_col: str = None, forward_col: str = None):
         '''calculate profit from weight and forward
         ---------------------------------------------
 
@@ -23,35 +22,45 @@ class Relocator(Worker):
         
         elif self.type_ == Worker.CS:
             raise BackTesterError('profit', 'We cannot calculate the profit by cross section data')
-        
-        groupers = [pd.Grouper(level=0)]
-        if grouper is not None:
-            groupers += item2list(grouper)
 
         if self.is_frame:
             if weight_col is None or forward_col is None:
-                raise ValueError('Please specify the weight and forward column')
-            return self.data.groupby(groupers).apply(lambda x:
+                raise BackTesterError('profit', 'Please specify the weight and forward column')
+            return self.data.groupby(level=0).apply(lambda x:
                 (x.loc[:, weight_col] * x.loc[:, forward_col]).sum()
                 / x.loc[:, weight_col].sum()
             )
         
         else:
-            # if you pass a Series in a panel form without weight, we assume that 
-            # value is the forward return and weights are all equal
-            if weight is None:
-                return self.data.groupby(groupers).mean()
-            # if other is not None, and data is a Series, we assume that weight is
-            # the weight and data is the forward return
+            if forward is None:
+                raise BackTesterError('profit', 'Please specify the forward return')
             else:
-                if self.data.name is None:
-                    self.data.name = 'forward'
-                if weight.name is None:
-                    weight.name = 'weight'
-                data = pd.merge(self.data, weight, left_index=True, right_index=True)
+                self.data.name = self.data.name or 'forward'
+                forward.name = forward.name or 'weight'
+                data = pd.concat([forward, self.data], axis=1)
                 return data.groupby(level=0).apply(
-                    lambda x: (x.iloc[:, 0] * x.iloc[:, 1]).sum() / x.iloc[:, 1].sum()
+                    lambda x: (x.iloc[:, 0] * x.iloc[:, -1]).sum() / x.iloc[:, -1].sum()
                 )
+        
+    def turnover(self):
+        '''calculate turnover'''
+        if self.type_ == Worker.TS:
+            raise BackTesterError('turnover', 'Please transform your data into multiindex data')
+        
+        elif self.type_ == Worker.CS:
+            raise BackTesterError('turnover', 'We cannot calculate the turnover by cross section data')
+
+        datetime_index = self.data.index.get_level_values(0).unique()
+        ret = pd.Series(index=datetime_index, dtype='float64')
+        ret.loc[datetime_index[0]] = 1
+        for i, d in enumerate(datetime_index[1:]):
+            delta_frame = pd.concat([self.data.loc[d], self.data.loc[datetime_index[i]]], 
+                axis=1, join='outer').fillna(0)
+            delta = delta_frame.iloc[:, 0] - delta_frame.iloc[:, -1]
+            delta = delta.abs().sum() / self.data.loc[datetime_index[i]].abs().sum()
+            ret.loc[d] = delta
+        return ret
+
 
 class Strategy(bt.Strategy):
 
