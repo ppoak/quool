@@ -41,7 +41,8 @@ class Gallery():
             ax.xaxis.set_major_locator(mticker.MaxNLocator())
 
         if self.path:
-            plt.savefig(self.path)
+            plt.savefig(self.path, pad_inches=0.0, 
+                dpi=self.fig.dpi, bbox_inches='tight')
         if self.show:
             plt.show()
         
@@ -88,7 +89,12 @@ class Drawer(Worker):
         if isinstance(plotwised.index, pd.DatetimeIndex):
             plotwised.index = plotwised.index.strftime(r'%Y-%m-%d')
 
-        plotwised.plot(kind=kind, **kwargs)
+        if kind == 'boxplot':
+            ax = plotwised.boxplot(**kwargs)
+            ax.figure.texts = []
+            ax.grid(False)
+        else:
+            plotwised.plot(kind=kind, **kwargs)
 
 
 if __name__ == "__main__":

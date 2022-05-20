@@ -1,5 +1,6 @@
 import datetime
 import pandas as pd
+import numpy as np
 import backtrader as bt
 from ..tools import *
 
@@ -40,10 +41,14 @@ class Relocator(Worker):
                 data = pd.concat([forward, self.data], axis=1)
                 return data.groupby(level=0).apply(
                     lambda x: (x.iloc[:, 0] * x.iloc[:, -1]).sum() / x.iloc[:, -1].sum()
-                )
+                    if not x.iloc[:, -1].sum() == 0 else np.nan)
         
-    def turnover(self):
-        '''calculate turnover'''
+    def turnover(self, side: str = 'both'):
+        '''calculate turnover
+        ---------------------
+
+        side: str, choice between "buy", "short" or "both"
+        '''
         if self.type_ == Worker.TS:
             raise BackTesterError('turnover', 'Please transform your data into multiindex data')
         
@@ -57,7 +62,12 @@ class Relocator(Worker):
             delta_frame = pd.concat([self.data.loc[d], self.data.loc[datetime_index[i]]], 
                 axis=1, join='outer').fillna(0)
             delta = delta_frame.iloc[:, 0] - delta_frame.iloc[:, -1]
-            delta = delta.abs().sum() / self.data.loc[datetime_index[i]].abs().sum()
+            if side == 'both':
+                delta = delta.abs().sum() / self.data.loc[datetime_index[i]].abs().sum()
+            if side == 'buy':
+                delta = delta[delta > 0].sum() / self.data.loc[datetime_index[i]].abs().sum()
+            if side == 'sell':
+                delta = -delta[delta < 0].sum() / self.data.loc[datetime_index[i]].abs().sum()
             ret.loc[d] = delta
         return ret
 
