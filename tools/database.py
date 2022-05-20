@@ -1,5 +1,4 @@
 import datetime
-import time
 import configparser
 import pandas as pd
 import pandasquant as pq
@@ -23,8 +22,8 @@ if engin_type == 'sqlite':
         pq.Api.trade_date(start='20070101', end='20231231').databaser.\
             to_sql('trade_date', stockdb, index=True, on_duplicate=True)
             
-    current_trade_dates = pd.read_sql(f"select trading_date from trade_date where trading_date <= '{today}' and trading_date >= '2014-01-01'", 
-        stockdb, index_col="trading_date", parse_dates='trading_date').index
+    current_trade_dates = pq.Stock.trade_date(end=today, 
+        fields='trading_date').trading_date.index
     current_report_dates = pd.date_range(start='2014-01-01', end=today, freq='Q')
     
 elif engin_type == 'mysql+pymysql':
@@ -127,8 +126,8 @@ def sqlite_check(conn: sql.engine.base.Engine, table: str, date_col: str):
         " WHERE type='table' AND name='%s'" % table).fetchall()
     if table_status:
         # table exists, check the date diffrence
-        sql = f"select distinct({date_col}) from {table}"
-        dates = pd.read_sql(sql, conn, index_col=date_col, parse_dates=True).index
+        query = f"select distinct({date_col}) from {table}"
+        dates = pd.read_sql(query, conn, index_col=date_col, parse_dates=True).index
         dates = pd.to_datetime(dates)
         diff = tables[table]['check_date'].difference(dates)
         return diff
