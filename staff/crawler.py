@@ -94,11 +94,10 @@ class Em:
         data = pd.DataFrame(data)
         data = data.rename(columns=dict(zip(data.columns, data.columns.map(lambda x: x.lower()))))
         data.onlist_date = pd.to_datetime(data.onlist_date)
-        data = data[['onlist_date', 'operatedept_code']]
+        data_parent = data[['onlist_date', 'operatedept_code']]
         datas = []
         for i in range(len(data)):
-            opdep_code = data.iloc[i, :]['operatedept_code']
-            print(opdep_code)
+            opdep_code = data_parent.iloc[i, :]['operatedept_code']
             params = {
                 "sortColumns": "TRADE_DATE,SECURITY_CODE",
                 "sortTypes": "-1,1",
@@ -225,8 +224,9 @@ class Em:
         datas.dim_date = pd.to_datetime(datas.dim_date)
         datas.dim_tradedate = pd.to_datetime(datas.dim_tradedate)
         datas = datas.loc[datas['dim_date'] == date]
-        return datas    
+        return datas
 
 if __name__ == "__main__":
-    data = Em.oversea_institution_holding('20220524')
+    data = Em.active_opdep_details('20220524')
     print(data)
+
