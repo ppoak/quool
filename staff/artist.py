@@ -22,7 +22,8 @@ class Gallery():
     '''
     
     def __init__(self, nrows: int, ncols: int, figsize: tuple = None,
-        show: bool = True, path: str = None) -> None:
+        show: bool = True, path: str = None, grouper=None) -> None:
+        self.grouper = grouper
         self.nrows = nrows
         self.ncols = ncols
         self.figsize = (12 * ncols, 8 * nrows)
@@ -37,8 +38,13 @@ class Gallery():
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        for ax in self.axes.reshape(-1):
-            ax.xaxis.set_major_locator(mticker.MaxNLocator())
+        if self.grouper is not None:
+            for ax in self.axes.reshape(-1):
+                ax.xaxis.label.set_visible(False)
+                ax.tick_params(labelrotation=90)
+        else:
+            for ax in self.axes.reshape(-1):
+                ax.xaxis.set_major_locator(mticker.MaxNLocator())
 
         if self.path:
             plt.savefig(self.path, pad_inches=0.0, 
