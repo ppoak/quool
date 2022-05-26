@@ -61,10 +61,10 @@ class Drawer(Worker):
     '''Drawer is a staff of pandasquant for visulaizing data'''
 
     def draw(self, kind: str, 
-        datetime: str = slice(None), 
-        asset: str = slice(None), 
-        indicator: str = slice(None), 
-        **kwargs):
+             datetime: str = slice(None), 
+             asset: str = slice(None), 
+             indicator: str = slice(None), 
+             **kwargs):
         '''Draw a image of the given slice of data
         ------------------------------------------
 
@@ -95,21 +95,19 @@ class Drawer(Worker):
         if isinstance(plotwised.index, pd.DatetimeIndex):
             plotwised.index = plotwised.index.strftime(r'%Y-%m-%d')
 
-        if kind == 'boxplot':
-            ax = plotwised.boxplot(**kwargs)
-            ax.figure.texts = []
-            ax.grid(False)
-        else:
-            plotwised.plot(kind=kind, **kwargs)
+        plotwised.plot(kind=kind, **kwargs)
 
 
 if __name__ == "__main__":
-    tsseries = pd.Series(np.random.rand(100), index=pd.date_range('20200101', periods=100), name='id8')
+    tsseries = pd.Series(np.random.randint(0, 4, size=500), index=pd.MultiIndex.from_product(
+        [pd.date_range('20200101', periods=100), list('abcde')]), name='id8')
     panelframe = pd.DataFrame(np.random.rand(500, 5), index=pd.MultiIndex.from_product(
-        [pd.date_range('20100101', periods=100), list('abcde')]
+        [pd.date_range('20200101', periods=100), list('abcde')]
     ), columns=['id1', 'id2', 'id3', 'id4', 'id5'])
-    with Gallery(1, 2, path='test.png') as (_, axes):
-        panelframe['id1'].drawer.draw('line', asset='a', color='red', ax=axes[0, 0])
-        tsseries.drawer.draw('line', ax=axes[0, 0].twinx())
-        panelframe.drawer.draw('bar', asset='c', ax=axes[0, 1], stacked=True)
+    panelframe['group'] = tsseries
+    with Gallery(1, 2, path='test.png') as g:
+        panelframe.drawer.draw('boxplot', ax=g.axes[0, 0], datetime='20200101')
+        panelframe['id1'].drawer.draw('line', asset='a', color='red', ax=g.axes[0, 0])
+        tsseries.drawer.draw('line', ax=g.axes[0, 0].twinx())
+        panelframe.drawer.draw('bar', asset='c', ax=g.axes[0, 1], stacked=True)
     
