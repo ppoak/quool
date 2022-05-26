@@ -26,7 +26,7 @@ class Gallery():
         self.xaxis_keep_mask = xaxis_keep_mask
         self.nrows = nrows
         self.ncols = ncols
-        self.figsize = (12 * ncols, 8 * nrows)
+        self.figsize = figsize or (12 * ncols, 8 * nrows)
         self.show = show
         self.path = path
 
