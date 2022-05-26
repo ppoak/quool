@@ -93,7 +93,6 @@ class Calculator(Worker):
         window: int, the rolling window length
         func: unit calculation function
         args: arguments apply to func
-        grouper: the grouper applied in func
         offset: int, the offset of the index, default 0 is the latest time
         kwargs: the keyword argument applied in func
         '''
