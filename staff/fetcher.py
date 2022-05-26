@@ -11,25 +11,34 @@ from ..tools import *
 class Filer(Worker):
     
     def to_multisheet_excel(self, path, perspective: str = 'indicator', **kwargs):
-        if self.type_ == Worker.PN and self.is_frame:
-            with pd.ExcelWriter(path) as writer:
-                if perspective == 'indicator':
+        if self.type_ == Worker.PN:
+            if isinstance(path, str):
+                writer = pd.ExcelWriter(path)
+            else:
+                writer = path
+            if perspective == 'indicator':
+                if self.is_frame:
                     for column in self.data.columns:
                         self.data[column].unstack(level=1).to_excel(writer, sheet_name=str(column), **kwargs)
+                else:
+                    self.data.unstack(level=1).to_excel(writer, sheet_name=str(self.data.name), **kwargs)
 
-                elif perspective == 'datetime':
-                    for date in self.data.index.levels[0]:
-                        self.data.loc[date].to_excel(writer, sheet_name=str(date), **kwargs)
-                    
-                elif perspective =='asset':
-                    for asset in self.data.index.levels[1]:
+            elif perspective == 'datetime':
+                for date in self.data.index.get_level_values(0).unique():
+                    self.data.loc[date].to_excel(writer, sheet_name=str(date), **kwargs)
+                
+            elif perspective =='asset':
+                if not self.is_frame:
+                    for asset in self.data.index.get_level_values(1).unique():
                         self.data.loc[(slice(None), asset)].to_excel(writer, sheet_name=str(asset), **kwargs)
-        
-        elif self.type_ == Worker.PN and not self.is_frame:
-            self.data.unstack().to_excel(path, **kwargs)
-        
+                else:
+                    for asset in self.data.index.get_level_values(1).unique():
+                        self.data.loc[(slice(None), asset), :].to_excel(writer, sheet_name=str(asset), **kwargs)
         else:
             self.data.to_excel(path, **kwargs)
+        
+        if isinstance(path, str):
+            writer.close()
 
     @staticmethod
     def read_excel(path, perspective: str = None, **kwargs):

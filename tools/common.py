@@ -25,6 +25,14 @@ def item2list(item) -> list:
     else:
         return item
 
+def item2tuple(item) -> list:
+    if item is None:
+        return ()
+    elif not isinstance(item, (list, tuple, set, dict)):
+        return (item, )
+    else:
+        return item
+        
 def hump2snake(hump: str) -> str:
     snake = re.sub(r'([a-z]|\d)([A-Z])', r'\1_\2', hump).lower()
     return snake
