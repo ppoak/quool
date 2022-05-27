@@ -8,34 +8,57 @@ from ..tools import *
 class StockUS():
     
     root = "https://api.stock.us/api/v1/"
+    category = {
+        "金工量化": 8,
+    }
 
-    def __init__(self, sessionid: str):
+    def __init__(self, sessionid: str = None):
         StockUS.sessionid = sessionid
         StockUS.headers = {
-            "Cookie": f"sessionid={sessionid}",
             "Host": "api.stock.us",
             "Origin": "https://stock.us"
         }
-    
+        if sessionid is not None:
+            StockUS.headers["Cookie"] = f"sessionid={sessionid}",
+            
     @classmethod
-    @lru_cache(maxsize=None, typed=False)
+    @redis_cache()
     def index_price(cls, index: str, start: str, end: str):
         url = cls.root + f"index-price?security_code={index}&start={start}&stop={end}"
         res = Request(url, headers=cls.headers).get().json
         price = pd.DataFrame(res['price'])
-        price['date'] = pd.to_datetime(price['date'])
+        price['date'] = price['date'].astype('datetime64[ns]')
         price = price.set_index('date')
         return price
     
     @classmethod
-    @lru_cache(maxsize=None, typed=False)
+    @redis_cache()
     def cn_price(cls, code: str, start: str, end: str):
         url = cls.root + f"cn-price?security_code={code}&start={start}&stop={end}"
         res = Request(url, headers=cls.headers).get().json
         price = pd.DataFrame(res['price'])
-        price['date'] = pd.to_datetime(price['date'])
+        price['date'] = price['date'].astype('datetime64[ns]')
         price = price.set_index('date')
         return price
+    
+    @classmethod
+    @redis_cache()
+    def research_report(cls, category: str = '金工量化', period: str = '1m', 
+                        q: str = '', org_name: str = '', author: str = '',
+                        xcf_years: str = '', search_fields: str = 'title',
+                        page: int = 1, page_size: int = 100):
+        url = cls.root + 'research/report-list'
+        params = (f'?category={cls.category[category]}&dates={period}&q={q}&org_name={org_name}'
+                  f'&author={author}&xcf_years={xcf_years}&search_fields={search_fields}'
+                  f'&page={page}&page_size={page_size}')
+        url += params
+        res = Request(url, headers=cls.headers).get().json
+        data = pd.DataFrame(res['data'])
+        data[['pub_date', 'pub_week']] = data[['pub_date', 'pub_week']].astype('datetime64[ns]')
+        data.authors = data.authors.map(
+            lambda x: ' '.join(list(map(lambda y: y['name'] + ('*' if y['prize'] else ''), x))))
+        data = data.set_index('id')
+        return data
 
 class Em:
     __data_center = "https://datacenter-web.eastmoney.com/api/data/v1/get"
@@ -227,6 +250,5 @@ class Em:
         return datas
 
 if __name__ == "__main__":
-    data = Em.active_opdep_details('20220524')
+    data = StockUS().research_report()
     print(data)
-
