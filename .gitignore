@@ -170,3 +170,8 @@ cython_debug/
 staff/provider.py
 
 .DS_Store
+
+# 本地化
+tools/ssh_tool.py
+tools/to_database.py
+pqconfig.ini
