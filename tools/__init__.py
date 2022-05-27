@@ -11,6 +11,7 @@ from .common import (
     item2list,
     hump2snake,
     nearest_report_period,
+    redis_cache,
 )
 
 
@@ -24,4 +25,5 @@ __all__ = [
     'item2list',
     'hump2snake',
     'nearest_report_period',
+    'redis_cache',
     ]
