@@ -1,3 +1,4 @@
+
 from .core import (
     FrameWorkError,
     Worker,
@@ -11,9 +12,15 @@ from .common import (
     item2list,
     hump2snake,
     nearest_report_period,
-    redis_cache,
 )
 
+from .common import REDISCON
+if REDISCON is not None:
+    from .common import redis_cache as cache
+else:
+    from functools import lru_cache as cache
+    print('[!] Your redis server is not started or installed,'
+          'some crawler will not response as quick as they can')
 
 __all__ = [
     'FrameWorkError',
@@ -25,5 +32,5 @@ __all__ = [
     'item2list',
     'hump2snake',
     'nearest_report_period',
-    'redis_cache',
+    'cache',
     ]

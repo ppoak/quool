@@ -7,7 +7,11 @@ import pandas as pd
 from functools import wraps
 
 
-REDISCON = redis.Redis(host='localhost', port=6379)
+try:
+    REDISCON = redis.Redis(host='localhost', port=6379)
+    REDISCON.get(name='test')
+except:
+    REDISCON = None
 DEBUG = False
 REDIS_TIME = 3600 * 2
 

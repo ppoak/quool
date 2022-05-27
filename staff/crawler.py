@@ -1,7 +1,5 @@
 import datetime
-from matplotlib.pyplot import bar_label
 import pandas as pd
-from functools import lru_cache
 from ..tools import *
 
 
@@ -22,7 +20,7 @@ class StockUS():
             StockUS.headers["Cookie"] = f"sessionid={sessionid}",
             
     @classmethod
-    @redis_cache()
+    @cache()
     def index_price(cls, index: str, start: str, end: str):
         url = cls.root + f"index-price?security_code={index}&start={start}&stop={end}"
         res = Request(url, headers=cls.headers).get().json
@@ -32,7 +30,7 @@ class StockUS():
         return price
     
     @classmethod
-    @redis_cache()
+    @cache()
     def cn_price(cls, code: str, start: str, end: str):
         url = cls.root + f"cn-price?security_code={code}&start={start}&stop={end}"
         res = Request(url, headers=cls.headers).get().json
@@ -42,7 +40,7 @@ class StockUS():
         return price
     
     @classmethod
-    @redis_cache()
+    @cache()
     def research_report(cls, category: str = '金工量化', period: str = '1m', 
                         q: str = '', org_name: str = '', author: str = '',
                         xcf_years: str = '', search_fields: str = 'title',
@@ -64,7 +62,7 @@ class Em:
     __data_center = "https://datacenter-web.eastmoney.com/api/data/v1/get"
 
     @classmethod
-    @lru_cache(maxsize=None, typed=False)
+    @cache()
     def active_opdep(cls, date: 'str | datetime.datetime') -> pd.DataFrame:
         '''Update data for active oprate department
         --------------------------------------------
@@ -95,7 +93,7 @@ class Em:
         return data
     
     @classmethod
-    @lru_cache(maxsize=None, typed=False)
+    @cache()
     def active_opdep_details(cls, date: 'str | datetime.datetime') -> pd.DataFrame:
         date = time2str(date)
         params = {
@@ -147,6 +145,7 @@ class Em:
         return datas
         
     @classmethod
+    @cache()
     def institution_trade(cls, date: 'str | datetime.datetime') -> pd.DataFrame:
         date = time2str(date)
         params = {
@@ -172,6 +171,7 @@ class Em:
         return data
         
     @classmethod
+    @cache()
     def oversea_institution_holding(cls, date: 'str | datetime.datetime') -> pd.DataFrame:
         import requests
         import numpy as np
@@ -217,6 +217,7 @@ class Em:
         return datas
     
     @classmethod
+    @cache()
     def stock_buyback(cls, date: 'str | datetime.datetime') -> pd.DataFrame:
         date = time2str(date)
         datas = []
