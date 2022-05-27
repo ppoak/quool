@@ -36,9 +36,10 @@ from .backtester import (
 try:
     from .provider import (
         Stock,
-        Api
+        Feed,
+        Api,
     )
-    optional_module = ['Stock', 'Api']
+    optional_module = ['Stock', 'Feed', 'Api']
 
 except ImportError:
     print('[!] Data provider is not installed,' 
