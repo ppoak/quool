@@ -163,7 +163,6 @@ class Em:
         for institution in institution_list:
             name = institution['PARTICIPANT_CODE']
             callbackfunc = 'jQuery1123032132491687413733_1646408202496'
-            url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
             for i in range(1, 10):
                 params = {
                     'callback': callbackfunc,
@@ -178,8 +177,10 @@ class Em:
                     'filter': f'(PARTICIPANT_CODE="{name}")' + \
                         f'(MARKET_CODE in ("001","003"))(HOLD_DATE=\'{date}\')',
                 }
-                res = requests.get(url, params=params)
-                res.raise_for_status()
+                headers = {
+                    "Referer": "https://data.eastmoney.com/"
+                }
+                res = Request(url=cls.__data_center, headers=headers, params=params).get().response
                 data = eval(res.text.replace('true', 'True').replace('false', 'False').\
                     replace('null', 'np.nan').replace(callbackfunc, '')[1:-2])
                 if data['result'] is not np.nan:
@@ -227,6 +228,6 @@ class Em:
         return datas
 
 if __name__ == "__main__":
-    data = Em.active_opdep_details('20220524')
+    data = Em.oversea_institution_holding('20220523')
     print(data)
 
