@@ -5,7 +5,7 @@ import requests
 import pandas as pd
 from lxml import etree
 from bs4 import BeautifulSoup
-
+from .common import redis_cache as cache
 
 class FrameWorkError(Exception):
     def __init__(self, func: str, hint: str) -> None:
@@ -104,6 +104,7 @@ class Request(object):
         }
         return base_header
 
+    @cache()
     def get(self):
         try:
             response = requests.get(self.url, headers=self.headers, **self.kwargs)
