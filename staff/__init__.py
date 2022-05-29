@@ -1,5 +1,3 @@
-optional_module = []
-
 from .artist import (
     Drawer,
     Gallery
@@ -39,22 +37,7 @@ try:
         Feed,
         Api,
     )
-    optional_module = ['Stock', 'Feed', 'Api']
 
 except ImportError:
     print('[!] Data provider is not installed,' 
         ' a lot of data sources may be unavailable')
-
-
-__all__ = [
-    'Drawer',
-    'Gallery',
-    'Regressor',
-    'Describer',
-    'Filer',
-    'Databaser',
-    'StockUS',
-    'Calculator',
-    'PreProcessor',
-    'Strategy',
-    ] + optional_module
