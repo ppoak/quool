@@ -50,9 +50,15 @@ class Converter(Worker):
     def price2fwd(self, period: 'str | int', open_col: str = 'open', 
         close_col: str = 'close', method: str = 'algret'):
         if self.type_ == Worker.PN and self.is_frame:
-            # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
-            # https://stackoverflow.com/questions/15799162/
-            if isinstance(period, str):
+            if isinstance(period, int):
+                close_price = self.data.groupby(pd.Grouper(level=1))\
+                    .shift(-period - 1).loc[:, close_col]
+                open_price = self.data.groupby(pd.Grouper(level=1))\
+                    .shift(-1).loc[:, open_col]
+
+            else:
+                # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
+                # https://stackoverflow.com/questions/15799162/
                 close_price = self.data.groupby([
                     pd.Grouper(level=0, freq=period, label='left'),
                     pd.Grouper(level=1)
@@ -61,16 +67,16 @@ class Converter(Worker):
                     pd.Grouper(level=0, freq=period, label='left'),
                     pd.Grouper(level=1)
                 ]).first().loc[:, open_col]
-            elif isinstance(period, int):
-                close_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(-period - 1).loc[:, close_col]
-                open_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(-1).loc[:, open_col]
+            
 
         elif self.type_ == Worker.PN and not self.is_frame:
-            # if passing a series in panel form, assuming that
-            # it is the only way to figure out a return
-            if isinstance(period, str):
+            if isinstance(period, int):
+                close_price = self.data.groupby(pd.Grouper(level=1)).shift(-period - 1)
+                open_price = self.data.groupby(pd.Grouper(level=1)).shift(-1)
+
+            else:
+                # if passing a series in panel form, assuming that
+                # it is the only way to figure out a return
                 close_price = self.data.groupby([
                     pd.Grouper(level=0, freq=period, label='right'),
                     pd.Grouper(level=1)
@@ -79,17 +85,16 @@ class Converter(Worker):
                     pd.Grouper(level=0, freq=period, label='right'),
                     pd.Grouper(level=1)
                 ]).first()
-            elif isinstance(period, int):
-                close_price = self.data.groupby(pd.Grouper(level=1)).shift(-period - 1)
-                open_price = self.data.groupby(pd.Grouper(level=1)).shift(-1)
+            
         
         elif self.type_ == Worker.TS:
-            if isinstance(period, str):
-                close_price = self.data.resample(period, label='left').last()
-                open_price = self.data.resample(period, label='left').first()
-            elif isinstance(period, int):
+            if isinstance(period, int):
                 close_price = self.data.shift(-period - 1)
                 open_price = self.data.shift(-1)
+
+            else:
+                close_price = self.data.resample(period, label='left').last()
+                open_price = self.data.resample(period, label='left').first()
 
         else:
             raise ProcessorError('price2fwd', 'Can only convert time series data to forward')

@@ -1,9 +1,19 @@
+"""Some common functions to be used in pandasquant,
+like convert some type of data into another type of data,
+or some common tools to get basic trading date infomation
+
+@author: ppoak
+@date: 2022-04-27
+@email: oakery@qq.com
+"""
+
 import re
 import datetime
 import pandas as pd
 
 
 def time2str(date: 'str | datetime.datetime | int | datetime.date') -> str:
+    """convert a datetime class to time-like string"""
     if isinstance(date, int):
         date = str(date)
     date = pd.to_datetime(date)
@@ -11,6 +21,7 @@ def time2str(date: 'str | datetime.datetime | int | datetime.date') -> str:
     return date
 
 def str2time(date: 'str | datetime.datetime') -> datetime.datetime:
+    """convert a time-like string to datetime class"""
     if isinstance(date, (str, datetime.date)):
         date = pd.to_datetime(date)
     elif isinstance(date, (float, int)):
@@ -18,27 +29,34 @@ def str2time(date: 'str | datetime.datetime') -> datetime.datetime:
     return date
 
 def item2list(item) -> list:
+    """convert a non list item to a list"""
     if item is None:
         return []
-    elif not isinstance(item, (list, tuple, set, dict)):
+    elif not isinstance(item, list):
         return [item]
     else:
         return item
 
 def item2tuple(item) -> list:
-    if item is None:
-        return ()
-    elif not isinstance(item, (list, tuple, set, dict)):
+    """convert a non tuple item to a tuple"""
+    if not isinstance(item, tuple):
         return (item, )
     else:
         return item
         
 def hump2snake(hump: str) -> str:
+    """convert hump name to snake name"""
     snake = re.sub(r'([a-z]|\d)([A-Z])', r'\1_\2', hump).lower()
     return snake
 
-def nearest_report_period(date: 'str | datetime.datetime | datetime.date',
+def latest_report_period(date: 'str | datetime.datetime | datetime.date',
     n: int = 1) -> 'str | list[str]':
+    """Get the nearest n report period
+    ----------------------------------
+
+    date: str, datetime or date, the given date
+    n: int, the number of report periods before the given date,
+    """
     date = str2time(date)
     this_year = date.year
     last_year = this_year - 1
