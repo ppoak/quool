@@ -238,7 +238,7 @@ class ProxyRequest(Request):
 
 
 class RedisCache:
-    def __init__(self, rediscon: ..., prefix: str = 'generic', expire: float = 3600):
+    def __init__(self, rediscon: ... = REDIS, prefix: str = 'generic', expire: float = 3600):
         self.prefix = prefix
         self.expire = expire
         try:
