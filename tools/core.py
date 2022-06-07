@@ -358,7 +358,7 @@ def chinese_holidays():
     page = 1
     holidays = []
     while not complete:
-        params = f'?field=date&holiday=99&page={page}&size=366'
+        params = f'?field=date&holiday_recess=1&cn=1&page={page}&size=366'
         url = root + params
         data = Request(url).get().json['data']
         if data['page'] * data['size'] >= data['total']:
