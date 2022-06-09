@@ -96,7 +96,7 @@ class Strategy(bt.Strategy):
             self.bar_executed = len(self)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
-            self.log('Order canceled, margin, rejected or expired', hint='warn')
+            self.log('Order canceled, margin, rejected or expired', hint='WARN')
 
         # except the submitted, accepted, and created status,
         # other order status should reset order variable
