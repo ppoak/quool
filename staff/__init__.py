@@ -28,7 +28,7 @@ from .crawler import (
 from .backtester import (
     Relocator,
     Strategy,
-    TradeTable,
+    OrderTable,
 )
 
 # just try to import the provider
