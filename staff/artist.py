@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+from matplotlib.widgets import MultiCursor
 from ..tools import *
 
 
@@ -35,6 +36,8 @@ class Gallery():
         axes = np.array(axes).reshape((self.nrows, self.ncols))
         self.fig = fig
         self.axes = axes
+        self.cursor = MultiCursor(fig.canvas, tuple(axes.reshape(-1)), 
+            useblit=True, color='grey', lw=0.5, horizOn=True, vertOn=True)
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
