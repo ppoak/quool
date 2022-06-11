@@ -41,16 +41,16 @@ class Gallery():
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.xaxis_keep_mask is not None:
-            for i, ax in enumerate(self.axes.reshape(-1)):
-                if self.xaxis_keep_mask[i]:
-                    ax.xaxis.label.set_visible(False)
-                    ax.tick_params(labelrotation=90)
-                else:
-                    ax.xaxis.set_major_locator(mticker.MaxNLocator())
-        else:
-            for ax in self.axes.reshape(-1):
-                ax.xaxis.set_major_locator(mticker.MaxNLocator())
+        # if self.xaxis_keep_mask is not None:
+        #     for i, ax in enumerate(self.axes.reshape(-1)):
+        #         if self.xaxis_keep_mask[i]:
+        #             ax.xaxis.label.set_visible(False)
+        #             ax.tick_params(labelrotation=90)
+        #         else:
+        #             ax.xaxis.set_major_locator(mticker.MaxNLocator())
+        # else:
+        #     for ax in self.axes.reshape(-1):
+        #         ax.xaxis.set_major_locator(mticker.MaxNLocator())
 
         if self.path:
             plt.savefig(self.path, pad_inches=0.0, 
@@ -98,10 +98,14 @@ class Drawer(Worker):
         if not isinstance(plotwised, (pd.Series, pd.DataFrame)):
             raise ArtistError('draw', 'Your slice data seems not to be a plotable data')
         
-        if isinstance(plotwised.index, pd.DatetimeIndex):
-            plotwised.index = plotwised.index.strftime(r'%Y-%m-%d')
-
-        plotwised.plot(kind=kind, **kwargs)
+        if kind == 'bar':
+            ax = kwargs.pop('ax', None)
+            if ax is not None:
+                ax.bar(plotwised.index, plotwised.values, **kwargs)
+            else:
+                plt.bar(plotwised.index, plotwised.values, **kwargs)
+        else:
+            plotwised.plot(kind=kind, **kwargs)
 
 
 if __name__ == "__main__":
@@ -112,7 +116,7 @@ if __name__ == "__main__":
     ), columns=['id1', 'id2', 'id3', 'id4', 'id5'])
     panelframe['group'] = tsseries
     with Gallery(1, 2, path='test.png') as g:
-        panelframe.drawer.draw('boxplot', ax=g.axes[0, 0], datetime='20200101')
+        panelframe.drawer.draw('box', ax=g.axes[0, 0], datetime='20200101')
         panelframe['id1'].drawer.draw('line', asset='a', color='red', ax=g.axes[0, 0])
         tsseries.drawer.draw('line', ax=g.axes[0, 0].twinx())
         panelframe.drawer.draw('bar', asset='c', ax=g.axes[0, 1], stacked=True)
