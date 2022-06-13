@@ -108,6 +108,47 @@ class Drawer(Worker):
             plotwised.plot(kind=kind, **kwargs)
 
 
+@pd.api.extensions.register_dataframe_accessor("printer")
+@pd.api.extensions.register_series_accessor("printer")
+class Printer(Worker):
+    
+    def display(self, datetime: str = slice(None), asset: str = slice(None),
+        indicator: str = slice(None), maxdisplay: int = 10, title: str = "Table"):
+        """Print the dataframe or series in a terminal
+        ------------------------------------------
+
+        formatter: pd.DataFrame, the formatter for the dataframe
+        """
+        if self.type_ == Worker.PN:
+            printwised = self._flat(datetime, asset, indicator)
+        
+        else:
+            if not self.is_frame:
+                if self.type_ == Worker.TS:
+                    printwised = self.data.copy().loc[datetime]
+                elif self.type_ == Worker.CS:
+                    printwised = self.data.copy().loc[asset]
+            else:
+                if self.type_ == Worker.TS:
+                    printwised = self.data.copy().loc[(datetime, indicator)]
+                elif self.type_ == Worker.CS:
+                    printwised = self.data.copy().loc[(asset, indicator)]
+
+        printwised = printwised.reset_index()
+        
+        # the table is too long (over 100 lines), the first and last can be printed
+        if printwised.shape[0] >= 100:
+            printwised = printwised.iloc[[i for i in range(maxdisplay + 1)] + [i for i in range(-maxdisplay, 0)]]
+            printwised.iloc[maxdisplay] = '...'
+        
+        table = Table(title=title)
+        for col in printwised.columns:
+            table.add_column(str(col), justify="center", no_wrap=True)
+        for row in printwised.index:
+            table.add_row(*printwised.loc[row].tolist())
+
+        Console.print(table)
+
 if __name__ == "__main__":
     tsseries = pd.Series(np.random.randint(0, 4, size=500), index=pd.MultiIndex.from_product(
         [pd.date_range('20200101', periods=100), list('abcde')]), name='id8')

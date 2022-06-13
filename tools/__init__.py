@@ -28,6 +28,7 @@ from .common import (
 from .io import (
     Console,
     Progress,
+    Table,
     reg_font,
 )
 
