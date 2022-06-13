@@ -78,7 +78,15 @@ class Strategy(bt.Strategy):
         '''Logging function'''
         datetime = datetime or self.data.datetime.date(0)
         datetime = time2str(datetime)
-        print(f'[{hint}] {datetime}: {text}')
+        if hint == "INFO":
+            color = "color"
+        elif hint == "WARN":
+            color = "yellow"
+        elif hint == "ERROR":
+            color = "red"
+        else:
+            color = "blue"
+        Console.print(f'[{color}][{hint}][/{color}] {datetime}: {text}')
 
     def notify_order(self, order: bt.Order):
         '''order notification'''

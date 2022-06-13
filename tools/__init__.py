@@ -25,6 +25,12 @@ from .common import (
     YEAR,
 )
 
+from .io import (
+    Console,
+    Progress,
+    reg_font,
+)
+
 
 try:
     REDIS.ping()
