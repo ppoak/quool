@@ -21,9 +21,8 @@ class Gallery():
     and at the same time, will set all timeseries index to be displayed in a human-readable format.
     '''
     
-    def __init__(self, nrows: int, ncols: int, figsize: tuple = None,
-        show: bool = True, path: str = None, xaxis_keep_mask: list = None) -> None:
-        self.xaxis_keep_mask = xaxis_keep_mask
+    def __init__(self, nrows: int, ncols: int, figsize: tuple = None, 
+        show: bool = True, path: str = None) -> None:
         self.nrows = nrows
         self.ncols = ncols
         self.figsize = figsize or (12 * ncols, 8 * nrows)
@@ -35,6 +34,7 @@ class Gallery():
         axes = np.array(axes).reshape((self.nrows, self.ncols))
         self.fig = fig
         self.axes = axes
+        self.ax = axes[0, 0]
         self.cursor = MultiCursor(fig.canvas, tuple(axes.reshape(-1)), 
             useblit=True, color='grey', lw=0.5, horizOn=True, vertOn=True)
         return self
