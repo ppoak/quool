@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 from matplotlib.widgets import MultiCursor
 from ..tools import *
 
@@ -41,17 +40,6 @@ class Gallery():
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # if self.xaxis_keep_mask is not None:
-        #     for i, ax in enumerate(self.axes.reshape(-1)):
-        #         if self.xaxis_keep_mask[i]:
-        #             ax.xaxis.label.set_visible(False)
-        #             ax.tick_params(labelrotation=90)
-        #         else:
-        #             ax.xaxis.set_major_locator(mticker.MaxNLocator())
-        # else:
-        #     for ax in self.axes.reshape(-1):
-        #         ax.xaxis.set_major_locator(mticker.MaxNLocator())
-
         if self.path:
             plt.savefig(self.path, pad_inches=0.0, 
                 dpi=self.fig.dpi, bbox_inches='tight')
@@ -134,7 +122,7 @@ class Printer(Worker):
                 elif self.type_ == Worker.CS:
                     printwised = self.data.copy().loc[(asset, indicator)]
 
-        printwised = printwised.reset_index()
+        printwised = printwised.reset_index().astype('str')
         
         # the table is too long (over 100 lines), the first and last can be printed
         if printwised.shape[0] >= 100:
@@ -156,9 +144,8 @@ if __name__ == "__main__":
         [pd.date_range('20200101', periods=100), list('abcde')]
     ), columns=['id1', 'id2', 'id3', 'id4', 'id5'])
     panelframe['group'] = tsseries
-    with Gallery(1, 2, path='test.png') as g:
-        panelframe.drawer.draw('box', ax=g.axes[0, 0], datetime='20200101')
-        panelframe['id1'].drawer.draw('line', asset='a', color='red', ax=g.axes[0, 0])
-        tsseries.drawer.draw('line', ax=g.axes[0, 0].twinx())
-        panelframe.drawer.draw('bar', asset='c', ax=g.axes[0, 1], stacked=True)
+    b = pd.DataFrame(np.random.rand(10, 2), index=pd.date_range('20200101', periods=10), columns=['a', 'b'])
+    with Gallery(1, 1) as g:
+        b.drawer.draw('bar', indicator='a', ax=g.axes[0, 0])
+        b.drawer.draw('line', indicator='b', ax=g.axes[0, 0].twinx())
     
