@@ -8,46 +8,6 @@ from ..tools import *
 class ArtistError(FrameWorkError):
     pass
 
-class Gallery():
-    '''Gallery is a context manager, so you can use it like this:
-    
-    >>> with Gallery(nrows=2, ncols=3, figsize=(12, 8), show=True, path='/tmp/test.png') as (fig, axes):
-            axes[0, 0].plot(range(10))
-            axes[0, 1].plot(range(10))
-            axes[0, 2].plot(range(10))
-    
-    it will automatically create a figure with assigned columns and rows in figsize,
-    and after plotting, it will automatically save the figure to path or show it in a window,
-    and at the same time, will set all timeseries index to be displayed in a human-readable format.
-    '''
-    
-    def __init__(self, nrows: int, ncols: int, figsize: tuple = None, 
-        show: bool = True, path: str = None) -> None:
-        self.nrows = nrows
-        self.ncols = ncols
-        self.figsize = figsize or (12 * ncols, 8 * nrows)
-        self.show = show
-        self.path = path
-
-    def __enter__(self):
-        fig, axes = plt.subplots(self.nrows, self.ncols, figsize=self.figsize)
-        axes = np.array(axes).reshape((self.nrows, self.ncols))
-        self.fig = fig
-        self.axes = axes
-        self.ax = axes[0, 0]
-        self.cursor = MultiCursor(fig.canvas, tuple(axes.reshape(-1)), 
-            useblit=True, color='grey', lw=0.5, horizOn=True, vertOn=True)
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.path:
-            plt.savefig(self.path, pad_inches=0.0, 
-                dpi=self.fig.dpi, bbox_inches='tight')
-        if self.show:
-            plt.show()
-        
-        plt.close(self.fig)
-        return False
 
 @pd.api.extensions.register_dataframe_accessor("drawer")
 @pd.api.extensions.register_series_accessor("drawer")
@@ -85,15 +45,8 @@ class Drawer(Worker):
         
         if not isinstance(plotwised, (pd.Series, pd.DataFrame)):
             raise ArtistError('draw', 'Your slice data seems not to be a plotable data')
-        
-        if kind == 'bar':
-            ax = kwargs.pop('ax', None)
-            if ax is not None:
-                ax.bar(plotwised.index, plotwised.values, **kwargs)
-            else:
-                plt.bar(plotwised.index, plotwised.values, **kwargs)
-        else:
-            plotwised.plot(kind=kind, **kwargs)
+
+        plotwised.plot(kind=kind, **kwargs)
 
 
 @pd.api.extensions.register_dataframe_accessor("printer")
@@ -138,14 +91,4 @@ class Printer(Worker):
         Console.print(table)
 
 if __name__ == "__main__":
-    tsseries = pd.Series(np.random.randint(0, 4, size=500), index=pd.MultiIndex.from_product(
-        [pd.date_range('20200101', periods=100), list('abcde')]), name='id8')
-    panelframe = pd.DataFrame(np.random.rand(500, 5), index=pd.MultiIndex.from_product(
-        [pd.date_range('20200101', periods=100), list('abcde')]
-    ), columns=['id1', 'id2', 'id3', 'id4', 'id5'])
-    panelframe['group'] = tsseries
-    b = pd.DataFrame(np.random.rand(10, 2), index=pd.date_range('20200101', periods=10), columns=['a', 'b'])
-    with Gallery(1, 1) as g:
-        b.drawer.draw('bar', indicator='a', ax=g.axes[0, 0])
-        b.drawer.draw('line', indicator='b', ax=g.axes[0, 0].twinx())
-    
+    pass
