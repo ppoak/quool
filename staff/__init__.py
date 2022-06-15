@@ -1,6 +1,5 @@
 from .artist import (
     Drawer,
-    Gallery
 )
 
 from .analyst import (

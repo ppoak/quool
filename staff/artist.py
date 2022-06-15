@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.widgets import MultiCursor
+import matplotlib.dates as mdates
+import mplfinance as mpf
+from matplotlib.widgets import Cursor
 from ..tools import *
 
 
@@ -28,25 +30,36 @@ class Drawer(Worker):
         indicator: str, the slice of indicator, default to all indicators
         kwargs: dict, the kwargs for the plot function
         '''
-        if self.type_ == Worker.PN:
-            plotwised = self._flat(datetime, asset, indicator)
-        
-        else:
-            if not self.is_frame:
-                if self.type_ == Worker.TS:
-                    plotwised = self.data.copy().loc[datetime]
-                elif self.type_ == Worker.CS:
-                    plotwised = self.data.copy().loc[asset]
-            else:
-                if self.type_ == Worker.TS:
-                    plotwised = self.data.copy().loc[(datetime, indicator)]
-                elif self.type_ == Worker.CS:
-                    plotwised = self.data.copy().loc[(asset, indicator)]
+        plotwised = self._flat(datetime, asset, indicator)
         
         if not isinstance(plotwised, (pd.Series, pd.DataFrame)):
             raise ArtistError('draw', 'Your slice data seems not to be a plotable data')
+        
+        ax = kwargs.pop('ax', None)
+        if ax is None:
+            _, ax = plt.subplots(1, 1, figsize=(12, 8))
 
-        plotwised.plot(kind=kind, **kwargs)
+        # bar plot
+        if isinstance(plotwised, pd.Series) and isinstance(plotwised.index, 
+            pd.DatetimeIndex) and kind == "bar":
+            ax.bar(plotwised.index, plotwised, **kwargs)
+        elif isinstance(plotwised, pd.DataFrame) and isinstance(plotwised.index,
+            pd.DatetimeIndex) and kind == "bar":
+            bot = 0
+            for col in plotwised.columns:
+                ax.bar(plotwised.index, plotwised[col], label=col, bottom=bot, **kwargs)
+                bot += plotwised[col]
+        
+        # candle plot
+        elif isinstance(plotwised, pd.DataFrame) and isinstance(plotwised.index,
+            pd.DatetimeIndex) and kind == "candle" and \
+            pd.Index(['open', 'high', 'low', 'close']).isin(plotwised.columns).all():
+            mpf.plot(plotwised, ax=ax, style='charles')
+                    
+        else:
+            plotwised.plot(kind=kind, **kwargs)
+
+        Cursor(ax, useblit=False, color='grey', lw=0.5, horizOn=True, vertOn=True)
 
 
 @pd.api.extensions.register_dataframe_accessor("printer")

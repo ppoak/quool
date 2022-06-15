@@ -54,34 +54,45 @@ class Worker(object):
         
         data = self.data.copy()
         
-        check = (not isinstance(datetime, slice), not isinstance(asset, slice), not isinstance(indicator, slice))
-        if check == (False, False, False) and self.is_frame:
-            raise ValueError('Must assign at least one of dimension')
-              
-        if self.is_frame:
-            if check == (False, True, True):
+        if self.type_ == Worker.PN:
+            check = (not isinstance(datetime, slice), 
+                     not isinstance(asset, slice), 
+                     not isinstance(indicator, slice))
+            if check == (False, False, False) and self.is_frame:
+                raise ValueError('Must assign at least one of dimension')
+            elif check == (False, True, True) and self.is_frame:
                 return data.loc[(datetime, asset), indicator].droplevel(1)
-            elif check == (True, False, True):
+            elif check == (True, False, True) and self.is_frame:
                 return data.loc[(datetime, asset), indicator].droplevel(0)
-            elif check == (True, True, False):
+            elif check == (True, True, False) and self.is_frame:
                 return data.loc[(datetime, asset), indicator]
-            elif check == (True, False, False):
+            elif check == (True, False, False) and self.is_frame:
                 return data.loc[(datetime, asset), indicator].droplevel(0)
-            elif check == (False, True, False):
+            elif check == (False, True, False) and self.is_frame:
                 return data.loc[(datetime, asset), indicator].droplevel(1)
-            elif check == (False, False, True):
+            elif check == (False, False, True) and self.is_frame:
                 return data.loc[(datetime, asset), indicator].unstack(level=1)
-            elif check == (True, True, True):
+            elif check == (True, True, True) and self.is_frame:
                 print('[!] single value was selected')
                 return data.loc[(datetime, asset), indicator]
-        else:
-            if check[-1] or not any(check):
+            elif (check[-1] or not any(check)) and not self.is_frame:
                 print("[!] Your data is not a dataframe, indicator will be ignored")
                 return data.unstack()
-            if check[0] and check[1]:
+            elif (check[0] and check[1]) and not self.is_frame:
                 print('[!] single value was selected')
-            return data.loc[(datetime, asset)]
-
+                return data.loc[(datetime, asset)]
+                
+        else:
+            if not self.is_frame:
+                if self.type_ == Worker.TS:
+                    return data.loc[datetime]
+                elif self.type_ == Worker.CS:
+                    return data.loc[asset]
+            else:
+                if self.type_ == Worker.TS:
+                    return data.loc[(datetime, indicator)]
+                elif self.type_ == Worker.CS:
+                    return data.loc[(asset, indicator)]
 
 class Request(object):
 
