@@ -57,7 +57,7 @@ class Drawer(Worker):
             mpf.plot(plotwised, ax=ax, style='charles')
                     
         else:
-            plotwised.plot(kind=kind, **kwargs)
+            plotwised.plot(kind=kind, ax=ax, **kwargs)
 
         Cursor(ax, useblit=False, color='grey', lw=0.5, horizOn=True, vertOn=True)
 

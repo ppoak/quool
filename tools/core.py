@@ -362,7 +362,7 @@ def get_proxy(page_size: int = 20):
     return proxies
 
 
-@RedisCache(rediscon=REDIS, prefix='holidays', expire=172800)
+@RedisCache(rediscon=REDIS, prefix='holidays', expire=31556926)
 def chinese_holidays():
     root = 'https://api.apihubs.cn/holiday/get'
     complete = False

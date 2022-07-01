@@ -18,10 +18,10 @@ class Relocator(Worker):
         weight_col: str, the column name of weight
         forward_col: str, the column name of forward
         '''
-        if self.hint == Worker.TS:
+        if self.type_ == Worker.TS:
             raise BackTesterError('profit', 'Please transform your data into multiindex data')
         
-        elif self.hint == Worker.CS:
+        elif self.type_ == Worker.CS:
             raise BackTesterError('profit', 'We cannot calculate the profit by cross section data')
 
         if self.is_frame:
