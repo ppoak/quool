@@ -312,11 +312,15 @@ class RedisCache:
             print(str(e))
             return False
 
+    @staticmethod
+    def md5key(func, *args, **kwargs):
+        return hashlib.md5(pickle.dumps((func.__name__, args, kwargs))).hexdigest()
+    
     def __call__(self, func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             if self.rediscon:
-                hash_key = hashlib.md5(pickle.dumps((func.__name__, args, kwargs))).hexdigest()
+                hash_key = self.md5key(func, *args, **kwargs)
                 cache = self.get_raw_cache(key=hash_key, prefix=self.prefix)
                 if cache:
                     # get cache successful
