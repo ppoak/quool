@@ -3,8 +3,7 @@ from .core import (
     Worker,
     Request,
     ProxyRequest,
-    REDIS,
-    RedisCache,
+    Cache,
     get_proxy,
     CBD,
     )
@@ -31,10 +30,3 @@ from .io import (
     Table,
     reg_font,
 )
-
-
-try:
-    REDIS.ping()
-except:
-    print('[!] Your redis server is not started or installed, '
-          'some crawler will not response as quick as they can')

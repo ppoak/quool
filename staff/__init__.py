@@ -29,16 +29,3 @@ from .backtester import (
     Strategy,
     OrderTable,
 )
-
-# just try to import the provider
-# if failed, it means the provider is not installed
-try:
-    from .provider import (
-        Stock,
-        Feed,
-        Api,
-    )
-
-except ImportError:
-    print('[!] Data provider is not installed,' 
-        ' a lot of data sources may be unavailable')

@@ -5,6 +5,7 @@ mplfinance
 backtrader
 statsmodels
 sqlalchemy
+diskcache
 requests
 lxml
 bs4

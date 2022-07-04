@@ -1,6 +1,7 @@
+import os
 import json
 import time
-import redis
+import diskcache
 import pickle
 import random
 import hashlib
@@ -10,8 +11,6 @@ from functools import wraps
 from lxml import etree
 from bs4 import BeautifulSoup
 
-
-REDIS = redis.Redis(host='localhost', port=6379)
 
 class FrameWorkError(Exception):
     def __init__(self, func: str, hint: str) -> None:
@@ -248,95 +247,65 @@ class ProxyRequest(Request):
         raise NotImplementedError
 
 
-class RedisCache:
-    def __init__(self, rediscon: ... = REDIS, prefix: str = 'generic', expire: float = 3600):
+class Cache:
+    cache = diskcache.Cache(os.path.join(os.getcwd(), 'cache'))
+
+    def __init__(self, cache: diskcache.core.Cache = None, 
+        prefix: str = 'generic', expire: float = 3600):
         self.prefix = prefix
         self.expire = expire
-        try:
-            rediscon.ping()
-            self.rediscon = rediscon
-        except:
-            self.rediscon = False
-
-    def get_cache(self, key: str, prefix: str = 'generic'):
-        try:
-            r_key = prefix + ":" + key
-            v = self.rediscon.get(name=r_key)
-            if v:
-                return pickle.loads(v)
-            else:
-                return None
-        except Exception as e:
-            print(str(e))
-            return None
-
-    def get_raw_cache(self, key: str, prefix: str = 'generic'):
-        try:
-            r_key = prefix + ":" + key
-            v = self.rediscon.get(name=r_key)
-            if v:
-                return v
-            else:
-                return None
-        except Exception as e:
-            print(str(e))
-            return None
-
-    def to_cache(self, key: str, data: 'any', expire: float = 3600, prefix: str = 'generic'):
-        try:
-            r_key = prefix + ":" + key
-            p_data = pickle.dumps(data)
-            self.rediscon.set(name=r_key, value=p_data)
-            self.rediscon.expire(name=r_key, time=expire)
-            return True
-        except Exception as e:
-            print(str(e))
-            return False
-
-    def delete_cache(self, key: str, prefix: str = 'generic'):
-        try:
-            prefixed_key = prefix + ":" + key
-            self.rediscon.delete(prefixed_key)
-            return True
-        except Exception as e:
-            print(str(e))
-            return False
-
-    def str_to_cache(self, key: str, data_str: str, expire: float = 3600, prefix: str = 'generic'):
-        try:
-            r_key = prefix + ":" + key
-            self.rediscon.set(name=r_key, value=data_str)
-            self.rediscon.expire(name=r_key, time=expire)
-            return True
-        except Exception as e:
-            print(str(e))
-            return False
-
+        if cache is None:
+            self.cache = Cache.cache
+        else:
+            self.cache = cache
+    
     @staticmethod
     def md5key(func, *args, **kwargs):
         return hashlib.md5(pickle.dumps((func.__name__, args, kwargs))).hexdigest()
+
+    def get_cache(self, key: str, prefix: str = 'generic'):
+        r_key = prefix + ":" + key
+        v = self.cache.get(key=r_key)
+        if v is not None:
+            return pickle.loads(v)
+        else:
+            return None
+    
+    def to_cache(self, key: str, data: 'any', expire: float = 3600, prefix: str = 'generic'):
+        r_key = prefix + ":" + key
+        p_data = pickle.dumps(data)
+        return self.cache.set(key=r_key, value=p_data, expire=expire)
+
+    def get_raw_cache(self, key: str, prefix: str = 'generic'):
+        r_key = prefix + ":" + key
+        v = self.cache.get(name=r_key)
+        return v
+
+    def to_raw_cache(self, key: str, data_str: str, expire: float = 3600, prefix: str = 'generic'):
+        r_key = prefix + ":" + key
+        return self.cache.set(name=r_key, value=data_str, expire=expire)
+
+    def delete_cache(self, key: str, prefix: str = 'generic'):
+        prefixed_key = prefix + ":" + key
+        return self.cache.delete(prefixed_key)
     
     def __call__(self, func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            if self.rediscon:
-                hash_key = self.md5key(func, *args, **kwargs)
-                cache = self.get_raw_cache(key=hash_key, prefix=self.prefix)
-                if cache:
-                    # get cache successful
-                    return pickle.loads(cache)
-                else:
-                    # not fund cache,return data will be cache
-                    result = func(*args, **kwargs)
-                    self.to_cache(key=hash_key, data=result, expire=self.expire, prefix=self.prefix)
-                    return result
+            hash_key = self.md5key(func, *args, **kwargs)
+            data = self.get_cache(key=hash_key, prefix=self.prefix)
+            if data:
+                # get cache successful
+                return data
             else:
-                print(f'[!] Redis not available, the function can still work but we strongly recommend you to use redis')
-                return func(*args, **kwargs)
+                # not fund cache,return data will be cache
+                result = func(*args, **kwargs)
+                self.to_cache(key=hash_key, data=result, expire=self.expire, prefix=self.prefix)
+                return result
         return wrapper
 
 
-@RedisCache(rediscon=REDIS, prefix='proxy', expire=172800)
+@Cache(cache=None, prefix='proxy', expire=172800)
 def get_proxy(page_size: int = 20):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36"
@@ -366,7 +335,7 @@ def get_proxy(page_size: int = 20):
     return proxies
 
 
-@RedisCache(rediscon=REDIS, prefix='holidays', expire=31556926)
+@Cache(cache=None, prefix='holidays', expire=31556926)
 def chinese_holidays():
     root = 'https://api.apihubs.cn/holiday/get'
     complete = False

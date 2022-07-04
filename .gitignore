@@ -175,3 +175,6 @@ staff/provider.py
 tools/ssh_tool.py
 tools/to_database.py
 pqconfig.ini
+
+# 缓存文件
+cache
