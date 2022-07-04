@@ -1,0 +1,12 @@
+pandas
+numpy
+matplotlib
+mplfinance
+backtrader
+statsmodels
+sqlalchemy
+requests
+lxml
+bs4
+rich
+scipy
