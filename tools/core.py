@@ -248,7 +248,7 @@ class ProxyRequest(Request):
 
 
 class Cache:
-    cache = diskcache.Cache(os.path.join(os.getcwd(), 'cache'))
+    cache = diskcache.Cache(os.path.join(os.path.split(os.path.abspath(__file__))[0], '..', 'cache'))
 
     def __init__(self, cache: diskcache.core.Cache = None, 
         prefix: str = 'generic', expire: float = 3600):
