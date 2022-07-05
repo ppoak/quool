@@ -1,7 +1,8 @@
+import rich
 import numpy
 import pandas
 import matplotlib
-import rich
+import backtrader
 from rich.console import Console as RichConsole
 from rich.progress import track as Track
 from rich.progress import Progress as RichProgress
@@ -21,7 +22,7 @@ Progress = RichProgress(
     BarColumn(), 
     MofNCompleteColumn(), 
     TimeRemainingColumn())
-install(suppress=[rich, pandas, numpy, matplotlib], console=Console)
+install(suppress=[rich, pandas, numpy, matplotlib, backtrader], console=Console)
 
 
 def reg_font(fontpath: str, fontname: str):

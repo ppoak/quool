@@ -306,7 +306,7 @@ class Cache:
         def wrapper(*args, **kwargs):
             hash_key = self.md5key(func, *args, **kwargs)
             data = self.get_cache(key=hash_key, prefix=self.prefix)
-            if data:
+            if data is not None:
                 # get cache successful
                 return data
             else:
