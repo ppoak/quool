@@ -10,42 +10,58 @@ class ProcessorError(FrameWorkError):
 @pd.api.extensions.register_series_accessor("converter")
 class Converter(Worker):
     
-    def price2ret(self, period: str, open_col: str = 'close', close_col: str = 'close'):
+    def price2ret(self, period: 'str | int', open_col: str = 'close', 
+        close_col: str = 'close', method: str = 'algret'):
         if self.type_ == Worker.PN and self.is_frame:
             # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
             # https://stackoverflow.com/questions/15799162/
-            close_price = self.data.groupby([
-                pd.Grouper(level=0, freq=period, label='right'),
-                pd.Grouper(level=1)
-            ]).last().loc[:, close_col]
-            open_price = self.data.groupby([
-                pd.Grouper(level=0, freq=period, label='right'),
-                pd.Grouper(level=1)
-            ]).first().loc[:, open_col]
+            if isinstance(period, int):
+                close_price = self.data.loc[:, close_col]
+                open_price = self.data.groupby(pd.Grouper(level=1))\
+                    .shift(period).loc[:, open_col]
+
+            else:
+                close_price = self.data.groupby([
+                    pd.Grouper(level=0, freq=period, label='right'),
+                    pd.Grouper(level=1)
+                ]).last().loc[:, close_col]
+                open_price = self.data.groupby([
+                    pd.Grouper(level=0, freq=period, label='right'),
+                    pd.Grouper(level=1)
+                ]).first().loc[:, open_col]
 
         elif self.type_ == Worker.PN and not self.is_frame:
             # if passing a series in panel form, assuming that
             # it is the only way to figure out a return
-            close_price = self.data.groupby([
-                pd.Grouper(level=0, freq=period, label='right'),
-                pd.Grouper(level=1)
-            ]).last()
-            open_price = self.data.groupby([
-                pd.Grouper(level=0, freq=period, label='right'),
-                pd.Grouper(level=1)
-            ]).first()
+            if isinstance(period, int):
+                close_price = self.data
+                open_price = self.data.groupby(pd.Grouper(level=1)).shift(period)
+            else:
+                close_price = self.data.groupby([
+                    pd.Grouper(level=0, freq=period, label='right'),
+                    pd.Grouper(level=1)
+                ]).last()
+                open_price = self.data.groupby([
+                    pd.Grouper(level=0, freq=period, label='right'),
+                    pd.Grouper(level=1)
+                ]).first()
 
         # if timeseries data is passed, we assume that the columns are asset names
         elif self.type_ == Worker.TS:
-            close_price = self.data.\
-                resample(period, label='right').last()
-            open_price = self.data.\
-                resample(period, label='right').first()
+            if isinstance(period, int):
+                close_price = self.data
+                open_price = self.data.shift(period)
+            else:
+                close_price = self.data.resample(period, label='right').last()
+                open_price = self.data.resample(period, label='right').first()
             
         else:
             raise ProcessorError('price2ret', 'Can only convert time series data to return')
 
-        return (close_price - open_price) / open_price
+        if method == 'algret':
+            return (close_price - open_price) / open_price
+        elif method == 'logret':
+            return np.log(close_price / open_price)
 
     def price2fwd(self, period: 'str | int', open_col: str = 'open', 
         close_col: str = 'close', method: str = 'algret'):

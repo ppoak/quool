@@ -49,10 +49,10 @@ class Relocator(Worker):
 
         side: str, choice between "buy", "short" or "both"
         '''
-        if self.hint == Worker.TS:
+        if self.type_ == Worker.TS:
             raise BackTesterError('turnover', 'Please transform your data into multiindex data')
         
-        elif self.hint == Worker.CS:
+        elif self.type_ == Worker.CS:
             raise BackTesterError('turnover', 'We cannot calculate the turnover by cross section data')
 
         datetime_index = self.data.index.get_level_values(0).unique()

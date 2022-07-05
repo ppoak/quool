@@ -57,6 +57,8 @@ class Worker(object):
             check = (not isinstance(datetime, slice), 
                      not isinstance(asset, slice), 
                      not isinstance(indicator, slice))
+
+            # is a panel and is a dataframe
             if check == (False, False, False) and self.is_frame:
                 raise ValueError('Must assign at least one of dimension')
             elif check == (False, True, True) and self.is_frame:
@@ -74,19 +76,25 @@ class Worker(object):
             elif check == (True, True, True) and self.is_frame:
                 print('[!] single value was selected')
                 return data.loc[(datetime, asset), indicator]
+                
+            # is a panel and is a series
             elif (check[-1] or not any(check)) and not self.is_frame:
-                print("[!] Your data is not a dataframe, indicator will be ignored")
+                if check[-1]:
+                    print("[!] Your data is not a dataframe, indicator will be ignored")
                 return data.unstack()
-            elif (check[0] and check[1]) and not self.is_frame:
-                print('[!] single value was selected')
+            elif check[1] and not self.is_frame:
+                return data.loc[(datetime, asset)].unstack()
+            elif check[0] and not self.is_frame:
                 return data.loc[(datetime, asset)]
                 
         else:
+            # not a panel and is a series
             if not self.is_frame:
                 if self.type_ == Worker.TS:
                     return data.loc[datetime]
                 elif self.type_ == Worker.CS:
                     return data.loc[asset]
+            # not a panel and is a dataframe
             else:
                 if self.type_ == Worker.TS:
                     return data.loc[(datetime, indicator)]
