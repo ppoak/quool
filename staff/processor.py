@@ -75,11 +75,11 @@ class Converter(Worker):
             else:
                 # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
                 # https://stackoverflow.com/questions/15799162/
-                close_price = self.data.groupby([
+                close_price = self.data.shift(-1).groupby([
                     pd.Grouper(level=0, freq=period, label='left'),
                     pd.Grouper(level=1)
                 ]).last().loc[:, close_col]
-                open_price = self.data.groupby([
+                open_price = self.data.shift(-1).groupby([
                     pd.Grouper(level=0, freq=period, label='left'),
                     pd.Grouper(level=1)
                 ]).first().loc[:, open_col]
@@ -93,11 +93,11 @@ class Converter(Worker):
             else:
                 # if passing a series in panel form, assuming that
                 # it is the only way to figure out a return
-                close_price = self.data.groupby([
+                close_price = self.data.shift(-1).groupby([
                     pd.Grouper(level=0, freq=period, label='right'),
                     pd.Grouper(level=1)
                 ]).last()
-                open_price = self.data.groupby([
+                open_price = self.data.shift(-1).groupby([
                     pd.Grouper(level=0, freq=period, label='right'),
                     pd.Grouper(level=1)
                 ]).first()
@@ -109,8 +109,8 @@ class Converter(Worker):
                 open_price = self.data.shift(-1)
 
             else:
-                close_price = self.data.resample(period, label='left').last()
-                open_price = self.data.resample(period, label='left').first()
+                close_price = self.data.shift(-1).resample(period, label='left').last()
+                open_price = self.data.shift(-1).resample(period, label='left').first()
 
         else:
             raise ProcessorError('price2fwd', 'Can only convert time series data to forward')
