@@ -32,6 +32,10 @@ class Worker(object):
     def _validate(self):
 
         self.is_frame = True if isinstance(self.data, pd.DataFrame) else False
+        if self.is_frame and self.data.columns.size == 1:
+            self.is_frame = False
+            self.data = self.data.iloc[:, 0]
+            
         if self.data.empty:
             raise ValueError('[!] Dataframe or Series is empty')
 
