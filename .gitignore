@@ -166,15 +166,7 @@ cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
-# 私密接口文件
-staff/provider.py
-
 .DS_Store
-
-# 本地化
-tools/ssh_tool.py
-tools/to_database.py
-pqconfig.ini
 
 # 缓存文件
 cache
