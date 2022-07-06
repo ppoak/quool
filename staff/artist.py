@@ -67,7 +67,8 @@ class Drawer(Worker):
 class Printer(Worker):
     
     def display(self, datetime: str = slice(None), asset: str = slice(None),
-        indicator: str = slice(None), maxdisplay: int = 10, title: str = "Table"):
+        indicator: str = slice(None), maxdisplay_length: int = 10, 
+        maxdisplay_width: int = 3, title: str = "Table"):
         """Print the dataframe or series in a terminal
         ------------------------------------------
 
@@ -75,25 +76,17 @@ class Printer(Worker):
         """
         if self.type_ == Worker.PN:
             printwised = self._flat(datetime, asset, indicator)
-        
-        else:
-            if not self.is_frame:
-                if self.type_ == Worker.TS:
-                    printwised = self.data.copy().loc[datetime]
-                elif self.type_ == Worker.CS:
-                    printwised = self.data.copy().loc[asset]
-            else:
-                if self.type_ == Worker.TS:
-                    printwised = self.data.copy().loc[(datetime, indicator)]
-                elif self.type_ == Worker.CS:
-                    printwised = self.data.copy().loc[(asset, indicator)]
 
         printwised = printwised.reset_index().astype('str')
         
         # the table is too long (over 100 lines), the first and last can be printed
         if printwised.shape[0] >= 100:
-            printwised = printwised.iloc[[i for i in range(maxdisplay + 1)] + [i for i in range(-maxdisplay, 0)]]
-            printwised.iloc[maxdisplay] = '...'
+            printwised = printwised.iloc[[i for i in range(maxdisplay_length + 1)] + [i for i in range(-maxdisplay_length, 0)]]
+            printwised.iloc[maxdisplay_length] = '...'
+        # the table is too wide (over 10 columns), the first and last can be printed
+        if printwised.shape[1] >= 10:
+            printwised = printwised.iloc[:, [i for i in range(maxdisplay_width + 1)] + [i for i in range(-maxdisplay_width, 0)]]
+            printwised.iloc[:, maxdisplay_width] = '...'
         
         table = Table(title=title)
         for col in printwised.columns:
