@@ -7,15 +7,16 @@ from ..tools import item2list, str2time
 class Stock:
 
     def __init__(self, database: sql.engine.Engine) -> None:
-        self.today = datetime.datetime.today().isoformat(sep=' ')
+        self.today = datetime.datetime.today()
         self.engine = database
         
-    def __query(self, table: str, start: str, end: str, date_col: str, code: 'str | list',
-        code_col: str, fields: 'list | str', index_col: 'str | list', and_: 'list | str', or_: 'str | list'):
+    def __query(self, table: str, start: str, end: str, date_col: str, 
+        code: 'str | list', code_col: str, fields: 'list | str', 
+        index_col: 'str | list', and_: 'list | str', or_: 'str | list'):
         start = start or '20070104'
         end = end or self.today
-        start = str2time(start).isoformat(sep=' ')
-        end = str2time(end).isoformat(sep=' ')
+        start = str2time(start)
+        end = str2time(end)
         code = item2list(code)
         fields = item2list(fields)
         index_col = item2list(index_col)

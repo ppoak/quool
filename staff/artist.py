@@ -74,8 +74,7 @@ class Printer(Worker):
 
         formatter: pd.DataFrame, the formatter for the dataframe
         """
-        if self.type_ == Worker.PN:
-            printwised = self._flat(datetime, asset, indicator)
+        printwised = self._flat(datetime, asset, indicator)
 
         printwised = printwised.reset_index().astype('str')
         

@@ -273,7 +273,7 @@ class Cache:
     
     @staticmethod
     def md5key(func, *args, **kwargs):
-        return hashlib.md5(pickle.dumps((func.__name__, args, kwargs))).hexdigest()
+        return hashlib.md5(pickle.dumps(f'{func.__name__};{args};{kwargs}')).hexdigest()
 
     def get_cache(self, key: str, prefix: str = 'generic'):
         r_key = prefix + ":" + key
