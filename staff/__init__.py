@@ -29,3 +29,7 @@ from .backtester import (
     Strategy,
     OrderTable,
 )
+
+from .provider import (
+    Stock
+)

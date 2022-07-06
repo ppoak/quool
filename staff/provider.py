@@ -6,9 +6,9 @@ from ..tools import item2list, str2time
 
 class Stock:
 
-    def __init__(self, database: str) -> None:
+    def __init__(self, database: sql.engine.Engine) -> None:
         self.today = datetime.datetime.today().isoformat()
-        self.engine = sql.create_engine(database)
+        self.engine = database
         
     def __query(self, table: str, start: str, end: str, date_col: str, code: 'str | list',
         code_col: str, fields: 'list | str', index_col: 'str | list', and_: 'list | str', or_: 'str | list'):
@@ -32,7 +32,7 @@ class Stock:
         query += f' where ' if any([date_col, code, and_, or_]) else ''
         
         if date_col:
-            query += f' ( {date_col} between "{start}" and "{end}" )'
+            query += f' ( {date_col} between "{start}.000000" and "{end}.000000" )'
             
         if code:
             query += ' and ' if any([date_col]) else ''
@@ -233,19 +233,19 @@ class Stock:
         )
         return data
 
-    def index_weight(self, start: str = None, end: str = None,
+    def index_weights(self, start: str = None, end: str = None,
         code: 'str | list' = None, fields: list = None,
         and_: 'str | list' = None,
         or_: 'str | list' = None) -> pd.DataFrame:
         data = self.get(
-            table = 'index_weight',
+            table = 'index_weights',
             start = start,
             end = end,
             date_col = 'date',
             code = code,
-            code_col = 'index_code',
+            code_col = 'index_id',
             fields = fields,
-            index_col = ['date', 'index_code'],
+            index_col = ['date', 'index_id', 'order_book_id'],
             and_ = and_,
             or_ = or_,
         )
