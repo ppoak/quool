@@ -159,6 +159,24 @@ class Stock:
             or_ = or_,
         )
 
+    def turnover(self, start: str = None, end: str = None,
+        code: 'str | list' = None, fields: list = None,
+        and_: 'str | list' = None,
+        or_: 'str | list' = None
+    ) -> pd.DataFrame:
+        return self.__get(
+            table = 'turnover',
+            start = start,
+            end = end,
+            date_col = 'tradedate',
+            code = code,
+            code_col = 'order_book_id',
+            fields = fields,
+            index_col = ['tradedate', 'order_book_id'],
+            and_ = and_,
+            or_ = or_,
+        )
+
 
 if __name__ == '__main__':
     stock = Stock('sqlite:////Users/oak/DataBase/Data/stock.db')
