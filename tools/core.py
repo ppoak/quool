@@ -259,60 +259,58 @@ class ProxyRequest(Request):
         raise NotImplementedError
 
 
-class Cache:
-    cache = diskcache.Cache(os.path.join(os.path.split(os.path.abspath(__file__))[0], '..', 'cache'))
+class Cache(diskcache.Cache):
 
-    def __init__(self, cache: diskcache.core.Cache = None, 
-        prefix: str = 'generic', expire: float = 3600):
-        self.prefix = prefix
-        self.expire = expire
-        if cache is None:
-            self.cache = Cache.cache
-        else:
-            self.cache = cache
+    def __init__(self, directory=None, timeout=60, disk=diskcache.Disk, **settings):
+        if directory is None:
+            directory = os.path.join(os.path.split(os.path.abspath(__file__))[0] ,'..', 'cache')
+        super().__init__(directory, timeout, disk, **settings)
     
     @staticmethod
     def md5key(func, *args, **kwargs):
         return hashlib.md5(pickle.dumps(f'{func.__name__};{args};{kwargs}')).hexdigest()
 
-    def get_cache(self, key: str, prefix: str = 'generic'):
+    def prefix_get(self, key, 
+        prefix: str = 'generic', 
+        default = None,
+        read: bool = False,
+        expire_time: float = False,
+        tag = False,
+        retry = False,
+    ):
         r_key = prefix + ":" + key
-        v = self.cache.get(key=r_key)
+        v = super().get(r_key, default, read, expire_time, tag, retry)
         if v is not None:
             return pickle.loads(v)
-        else:
-            return None
     
-    def to_cache(self, key: str, data: 'any', expire: float = 3600, prefix: str = 'generic'):
+    def prefix_set(self, key, value, 
+        prefix: str = 'generic', 
+        expire: bool = None, 
+        read: bool = False, 
+        tag = None, 
+        retry: bool = False
+    ):
         r_key = prefix + ":" + key
-        p_data = pickle.dumps(data)
-        return self.cache.set(key=r_key, value=p_data, expire=expire)
+        p_value = pickle.dumps(value)
+        return super().set(key=r_key, value=p_value, 
+            expire=expire, read=read, tag=tag, retry=retry)
 
-    def get_raw_cache(self, key: str, prefix: str = 'generic'):
+    def prefix_delete(self, key, prefix: str = 'generic', retry=False):
         r_key = prefix + ":" + key
-        v = self.cache.get(name=r_key)
-        return v
-
-    def to_raw_cache(self, key: str, data_str: str, expire: float = 3600, prefix: str = 'generic'):
-        r_key = prefix + ":" + key
-        return self.cache.set(name=r_key, value=data_str, expire=expire)
-
-    def delete_cache(self, key: str, prefix: str = 'generic'):
-        prefixed_key = prefix + ":" + key
-        return self.cache.delete(prefixed_key)
+        return super().delete(r_key, retry)
     
     def __call__(self, func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             hash_key = self.md5key(func, *args, **kwargs)
-            data = self.get_cache(key=hash_key, prefix=self.prefix)
+            data = self.prefix_get(key=hash_key, prefix=self.prefix)
             if data is not None:
                 # get cache successful
                 return data
             else:
                 # not fund cache,return data will be cache
                 result = func(*args, **kwargs)
-                self.to_cache(key=hash_key, data=result, expire=self.expire, prefix=self.prefix)
+                self.prefix_set(key=hash_key, value=result, expire=self.expire, prefix=self.prefix)
                 return result
         return wrapper
 
