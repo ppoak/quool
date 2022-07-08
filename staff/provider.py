@@ -1,11 +1,10 @@
 import datetime
 import pandas as pd
 import sqlalchemy as sql
-from ..tools import item2list, str2time
+from ..tools import item2list, str2time, CHD
 
 
-class Stock:
-
+class Data:
     def __init__(self, database: sql.engine.Engine) -> None:
         self.today = datetime.datetime.today()
         self.engine = database
@@ -49,7 +48,7 @@ class Stock:
         
         return query
 
-    def __get(self, 
+    def get(self, 
         table: str,
         start: str, 
         end: str,
@@ -77,11 +76,17 @@ class Stock:
         if index_col is not None:
             data = data.set_index(index_col)
         return data
+
+class Stock(Data):
     
-    def market_daily(self, start: str = None, end: str = None,
-        code: 'str | list' = None, fields: list = None,
+    def market_daily(self, 
+        start: str = None, 
+        end: str = None,
+        code: 'str | list' = None, 
+        fields: list = None,
         and_: 'str | list' = None, 
-        or_: 'str | list' = None) -> pd.DataFrame:
+        or_: 'str | list' = None
+    ) -> pd.DataFrame:
         '''get market data in daily frequency
         -------------------------------------
 
@@ -89,7 +94,7 @@ class Stock:
         end: datetime or date or str, end date in 3 forms
         fields: list, the field names you want to get
         '''
-        return self.__get(
+        return self.get(
             table = 'market_daily',
             start = start,
             end = end,
@@ -102,10 +107,14 @@ class Stock:
             or_ = or_,
         )
   
-    def plate_info(self, start: str = None, end: str = None, 
-        code: 'list | str' = None, fields: list = None,
+    def plate_info(self, 
+        start: str = None, 
+        end: str = None, 
+        code: 'list | str' = None, 
+        fields: list = None,
         and_: 'str | list' = None,
-        or_: 'str | list' = None) -> pd.DataFrame:
+        or_: 'str | list' = None
+    ) -> pd.DataFrame:
         '''get plate info in daily frequency
         -------------------------------------
 
@@ -114,7 +123,7 @@ class Stock:
         fields: list, the field names you want to get
         conditions: list, a series of conditions like "code = '000001.SZ'" listed in a list
         '''
-        return self.__get(
+        return self.get(
             table = 'plate_info',
             start = start,
             end = end,
@@ -127,11 +136,15 @@ class Stock:
             or_ = or_,
         )
 
-    def index_weights(self, start: str = None, end: str = None,
-        code: 'str | list' = None, fields: list = None,
+    def index_weights(self, 
+        start: str = None, 
+        end: str = None,
+        code: 'str | list' = None, 
+        fields: list = None,
         and_: 'str | list' = None,
-        or_: 'str | list' = None) -> pd.DataFrame:
-        return self.__get(
+        or_: 'str | list' = None
+    ) -> pd.DataFrame:
+        return self.get(
             table = 'index_weights',
             start = start,
             end = end,
@@ -144,9 +157,13 @@ class Stock:
             or_ = or_,
         )
 
-    def instruments(self, code: 'str | list' = None, fields: list = None,
-        and_: 'str | list' = None, or_: 'str | list' = None) -> pd.DataFrame:
-        return self.__get(
+    def instruments(self, 
+        code: 'str | list' = None, 
+        fields: list = None,
+        and_: 'str | list' = None, 
+        or_: 'str | list' = None
+    ) -> pd.DataFrame:
+        return self.get(
             table = 'instrument',
             start = None,
             end = None,
@@ -159,12 +176,15 @@ class Stock:
             or_ = or_,
         )
 
-    def turnover(self, start: str = None, end: str = None,
-        code: 'str | list' = None, fields: list = None,
+    def turnover(self, 
+        start: str = None, 
+        end: str = None,
+        code: 'str | list' = None, 
+        fields: list = None,
         and_: 'str | list' = None,
         or_: 'str | list' = None
     ) -> pd.DataFrame:
-        return self.__get(
+        return self.get(
             table = 'turnover',
             start = start,
             end = end,
@@ -173,6 +193,27 @@ class Stock:
             code_col = 'order_book_id',
             fields = fields,
             index_col = ['tradedate', 'order_book_id'],
+            and_ = and_,
+            or_ = or_,
+        )
+
+    def index_market_daily(self, 
+        start: str = None, 
+        end: str = None,
+        code: 'str | list' = None, 
+        fields: list = None,
+        and_: 'str | list' = None,
+        or_: 'str | list' = None
+    ) -> pd.DataFrame:
+        return self.get(
+            table = 'index_market_daily',
+            start = start,
+            end = end,
+            date_col = 'date',
+            code = code,
+            code_col = 'order_book_id',
+            fields = fields,
+            index_col = ['date', 'order_book_id'],
             and_ = and_,
             or_ = or_,
         )
