@@ -234,11 +234,11 @@ class Tester(Worker):
         h0: float or Series, the hypothesized value
         '''
         def _t(data):
-            mean = data.mean(axis=0)
-            std = data.std(axis=0)
+            mean = pd.Series(data.mean(axis=0))
+            std = pd.Series(data.std(axis=0))
             size = data.shape[0] - 1
-            t = (mean - h0) / std * np.sqrt(size)
-            p = st.t.sf(np.abs(t), size) * 2
+            t = pd.Series((mean - h0) / std * np.sqrt(size))
+            p = pd.Series(st.t.sf(np.abs(t), size) * 2)
             return pd.DataFrame({'mean': mean, 'std': std, 't': t, 'p': p})
         
         if self.type_ == Worker.PN:
