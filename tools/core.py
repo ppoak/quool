@@ -261,61 +261,38 @@ class ProxyRequest(Request):
 
 class Cache(diskcache.Cache):
 
-    def __init__(self, directory=None, timeout=60, disk=diskcache.Disk, **settings):
+    def __init__(self, 
+        directory: str = None, 
+        prefix: str = 'generic', 
+        expire_time: float = 3600,
+    ):
         if directory is None:
             directory = os.path.join(os.path.split(os.path.abspath(__file__))[0] ,'..', 'cache')
-        super().__init__(directory, timeout, disk, **settings)
+        self.prefix = prefix
+        self.expire_time = expire_time
+        super().__init__(directory)
     
     @staticmethod
     def md5key(func, *args, **kwargs):
         return hashlib.md5(pickle.dumps(f'{func.__name__};{args};{kwargs}')).hexdigest()
-
-    def prefix_get(self, key, 
-        prefix: str = 'generic', 
-        default = None,
-        read: bool = False,
-        expire_time: float = False,
-        tag = False,
-        retry = False,
-    ):
-        r_key = prefix + ":" + key
-        v = super().get(r_key, default, read, expire_time, tag, retry)
-        if v is not None:
-            return pickle.loads(v)
-    
-    def prefix_set(self, key, value, 
-        prefix: str = 'generic', 
-        expire: bool = None, 
-        read: bool = False, 
-        tag = None, 
-        retry: bool = False
-    ):
-        r_key = prefix + ":" + key
-        p_value = pickle.dumps(value)
-        return super().set(key=r_key, value=p_value, 
-            expire=expire, read=read, tag=tag, retry=retry)
-
-    def prefix_delete(self, key, prefix: str = 'generic', retry=False):
-        r_key = prefix + ":" + key
-        return super().delete(r_key, retry)
     
     def __call__(self, func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             hash_key = self.md5key(func, *args, **kwargs)
-            data = self.prefix_get(key=hash_key, prefix=self.prefix)
+            data = self.get(key=self.prefix + ':' + hash_key)
             if data is not None:
                 # get cache successful
                 return data
             else:
                 # not fund cache,return data will be cache
                 result = func(*args, **kwargs)
-                self.prefix_set(key=hash_key, value=result, expire=self.expire, prefix=self.prefix)
+                self.set(key=self.prefix + ':' + hash_key, value=result, expire=self.expire_time)
                 return result
         return wrapper
 
 
-@Cache(cache=None, prefix='proxy', expire=172800)
+@Cache(directory=None, prefix='proxy', expire_time=172800)
 def get_proxy(page_size: int = 20):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36"
@@ -345,7 +322,7 @@ def get_proxy(page_size: int = 20):
     return proxies
 
 
-@Cache(cache=None, prefix='holidays', expire=31556926)
+@Cache(directory=None, prefix='holidays', expire_time=31556926)
 def chinese_holidays():
     root = 'https://api.apihubs.cn/holiday/get'
     complete = False
@@ -364,11 +341,12 @@ def chinese_holidays():
     return holidays
 
 try:
-    CBD = pd.offsets.CustomBusinessDay(holidays=chinese_holidays())
+    CHD = chinese_holidays()
+    CBD = pd.offsets.CustomBusinessDay(holidays=CHD)
 except:
     print(f'[!] It seems that you have no internet connection, please check your network')
     CBD = pd.offsets.BusinessDay()
 
 
 if __name__ == "__main__":
-    pass
+    Cache().expire()

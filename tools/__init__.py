@@ -6,6 +6,7 @@ from .core import (
     Cache,
     get_proxy,
     CBD,
+    CHD,
     )
 
 from .common import (
