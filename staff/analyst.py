@@ -2,11 +2,19 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import scipy.stats as st
+from dataclasses import dataclass
 from ..tools import *
 
 
 class AnalystError(FrameWorkError):
     pass
+
+
+@dataclass
+class ResultSet:
+    result_name: str
+    raw_result: any
+
 
 @pd.api.extensions.register_dataframe_accessor("regressor")
 @pd.api.extensions.register_series_accessor("regressor")
@@ -32,9 +40,13 @@ class Regressor(Worker):
             t = pd.Series(model.tvalues)
             p = pd.Series(model.pvalues)
             coef = pd.Series(model.params)
-            res = pd.concat([coef, t, p], axis=1)
-            res.columns = ['coef', 't', 'p']
-            return res
+            stats = pd.concat([coef, t, p], axis=1)
+            stats.columns = ['coef', 't', 'p']
+            resid = pd.Series(model.resid)
+            result = ResultSet('ols_result', model)
+            result.residual = resid
+            result.stats = stats
+            return result
 
         param_status = (y is not None, x_col is not None, y_col is not None)
 
@@ -76,9 +88,13 @@ class Regressor(Worker):
             t = pd.Series(model.tvalues)
             p = pd.Series(model.pvalues)
             coef = pd.Series(model.params)
-            res = pd.concat([coef, t, p], axis=1)
-            res.columns = ['coef', 't', 'p']
-            return res
+            stats = pd.concat([coef, t, p], axis=1)
+            stats.columns = ['coef', 't', 'p']
+            resid = pd.Series(model.resid)
+            result = ResultSet('logistic_result', model)
+            result.stats = stats
+            result.residual = resid
+            return result
 
         param_status = (y is not None, x_col is not None, y_col is not None)
 
@@ -100,13 +116,14 @@ class Regressor(Worker):
             data = self.data.loc[:, item2list(x_col) + [y_col]].dropna()
 
         else:
-            raise AnalystError('ols', "You need to assign x_col and y_col both.")
+            raise AnalystError('logistic', "You need to assign x_col and y_col both.")
 
         if self.type_ == Worker.PN:
             return data.groupby(level=0).apply(_reg)
         else:
-            return _reg(data)            
-            
+            return _reg(data)
+
+
 @pd.api.extensions.register_dataframe_accessor("describer")
 @pd.api.extensions.register_series_accessor("describer")
 class Describer(Worker):
@@ -163,7 +180,7 @@ class Describer(Worker):
             if self.type_ == Worker.PN:
                 forward.index.names = self.data.index.names
             else:
-                forward.index.name = self.data.name
+                forward.index.name = self.data.index.name
             
             if not self.is_frame and self.data.name is None:
                 self.data.name = 'factor'
@@ -182,7 +199,10 @@ class Describer(Worker):
             ic = data.groupby(groupers).corr(method=method)
             idx = (slice(None),) * groupers_num + (ic.columns[-1],)
             ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num)
-            return ic
+            sig = ic.tester.sigtest()
+            result = ResultSet("ic", ic)
+            result.sig = sig
+            return result
 
         elif self.type_ == Worker.CS:
             if groupers_num < 2:
@@ -191,12 +211,17 @@ class Describer(Worker):
                 ic = data.groupby(groupers[1:]).corr(method=method)
             idx = (slice(None),) * (groupers_num - 1) + (ic.columns[-1],)
             if groupers_num < 2:
-                return ic.loc[idx, ic.columns[:-1]]
-            ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num - 1)
-            return ic
+                ic = ic.loc[idx, ic.columns[:-1]]
+            else:
+                ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num - 1)
+            sig = ic.tester.sigtest()
+            result = ResultSet("ic", ic)
+            result.sig = sig
+            return result
         
         else:
             raise AnalystError('ic', 'Timeseries data cannot be used to calculate ic value!')
+
 
 @pd.api.extensions.register_dataframe_accessor("tester")
 @pd.api.extensions.register_series_accessor("tester")
@@ -214,7 +239,7 @@ class Tester(Worker):
             size = data.shape[0] - 1
             t = (mean - h0) / std * np.sqrt(size)
             p = st.t.sf(np.abs(t), size) * 2
-            return pd.Series({'t': t.values[0], 'p': p[0]})
+            return pd.DataFrame({'mean': mean, 'std': std, 't': t, 'p': p})
         
         if self.type_ == Worker.PN:
             return self.data.groupby(level=1).apply(_t)
@@ -236,4 +261,4 @@ if __name__ == "__main__":
     csframe = pd.DataFrame(np.random.rand(5, 5), index=list('abcde'), 
         columns=['id1', 'id2', 'id3', 'id4', 'id5'])
     csseries = pd.Series(np.random.rand(5), index=list('abcde'), name='id1')
-    print(csseries.describer.corr(csseries))
+    print(tsframe.regressor.ols(tsseries).stats)
