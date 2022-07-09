@@ -29,5 +29,6 @@ from .io import (
     Console,
     Progress,
     Table,
+    Track,
     reg_font,
 )

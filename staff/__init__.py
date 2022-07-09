@@ -31,5 +31,6 @@ from .backtester import (
 )
 
 from .provider import (
-    Stock
+    Stock,
+    TuShare,
 )
