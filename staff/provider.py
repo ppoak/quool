@@ -1,5 +1,6 @@
 import datetime
 import pandas as pd
+import tushare as ts
 import sqlalchemy as sql
 from ..tools import item2list, str2time, CHD
 
@@ -198,7 +199,26 @@ class Stock(Data):
         )
 
 
+class TuShare:
+
+    def __init__(self, token: str) -> None:
+        self.datasource = ts.pro_api(token)
+    
+    def market_daily(self, 
+        start: str = None, 
+        end: str = None, 
+        code: str = None,
+    ):
+        data = self.datasource.daily(start_date=start, end_date=end, code=code)
+        data.trade_date = pd.to_datetime(data.trade_date)
+        data = data.set_index(['trade_date', 'ts_code'])
+        return data
+
+
 if __name__ == '__main__':
-    stock = Stock('sqlite:////Users/oak/DataBase/Data/stock.db')
-    stock.index_weights(start='20200101', end='20200110', code='000300.XSHG', 
-        fields=None).round(4).printer.display(title='test')
+    from ..tools import Cache
+    stock = Stock(Cache().get('sqlite'))
+    stock.index_weights(start='20200101', end='20200110', 
+        code='000300.XSHG', fields=None).round(4).printer.display(title='test')
+    tus = TuShare(Cache().get('tushare'))
+    tus.market_daily('20211231', '20211231').printer.display(datetime='20211231', title='Price')
