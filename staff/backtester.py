@@ -86,7 +86,7 @@ class Strategy(bt.Strategy):
             color = "red"
         else:
             color = "blue"
-        Console.print(f'[{color}][{hint}][/{color}] {datetime}: {text}')
+        CONSOLE.print(f'[{color}][{hint}][/{color}] {datetime}: {text}')
 
     def notify_order(self, order: bt.Order):
         '''order notification'''

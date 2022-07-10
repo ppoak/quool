@@ -16,13 +16,13 @@ from rich.progress import (
 )
 
 
-Console = RichConsole()
-Progress = RichProgress(
+CONSOLE = RichConsole()
+PROGRESS = RichProgress(
     SpinnerColumn(spinner_name='monkey'), 
     BarColumn(), 
     MofNCompleteColumn(), 
     TimeRemainingColumn())
-install(suppress=[rich, pandas, numpy, matplotlib, backtrader], console=Console)
+install(suppress=[rich, pandas, numpy, matplotlib, backtrader], console=CONSOLE)
 
 
 def reg_font(fontpath: str, fontname: str):

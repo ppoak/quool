@@ -248,7 +248,7 @@ class Databaser(Worker):
             else:
                 index_col = f'(`{self.data.index.name}`)'
             if data.index.has_duplicates:
-                Console.print('[yellow][!][/yellow] Warning: index has duplicates, will be ignored except the first one')
+                CONSOLE.print('[yellow][!][/yellow] Warning: index has duplicates, will be ignored except the first one')
                 data = data[~data.index.duplicated(keep='first')]
             data = data.reset_index()
 
