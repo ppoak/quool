@@ -283,6 +283,7 @@ class Em:
         datas = datas.loc[datas['dim_date'] == date]
         return datas
 
+
 if __name__ == "__main__":
     data = StockUS.report_search()
     print(data)
