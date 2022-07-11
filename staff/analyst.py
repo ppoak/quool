@@ -24,7 +24,11 @@ class Regressor(Worker):
     and so on.
     '''
     
-    def ols(self, y: pd.Series = None, x_col: 'str | list' = None, y_col: str = None):
+    def ols(self, y: pd.Series = None, 
+        x_col: 'str | list' = None, 
+        y_col: str = None, 
+        intercept: bool = True,
+    ):
         '''OLS Regression Function
         ---------------------------
 
@@ -35,7 +39,8 @@ class Regressor(Worker):
         def _reg(data):
             y = data.iloc[:, -1]
             x = data.iloc[:, :-1]
-            x = sm.add_constant(x)
+            if intercept:
+                x = sm.add_constant(x)
             model = sm.OLS(y, x).fit()
             t = pd.Series(model.tvalues)
             p = pd.Series(model.pvalues)
@@ -72,7 +77,12 @@ class Regressor(Worker):
         else:
             return _reg(data)
         
-    def logistic(self, y: pd.Series = None, x_col: 'str | list' = None, y_col: str = None):
+    def logistic(self, 
+        y: pd.Series = None, 
+        x_col: 'str | list' = None, 
+        y_col: str = None,
+        intercept: bool = True,
+    ):
         '''Logistics Regression Function
         ---------------------------
 
@@ -83,7 +93,8 @@ class Regressor(Worker):
         def _reg(data):
             y = data.iloc[:, -1]
             x = data.iloc[:, :-1]
-            x = sm.add_constant(x)
+            if intercept:
+                x = sm.add_constant(x)
             model = sm.Logit(y, x).fit()
             t = pd.Series(model.tvalues)
             p = pd.Series(model.pvalues)

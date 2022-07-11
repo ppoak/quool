@@ -94,11 +94,11 @@ class Converter(Worker):
                 # if passing a series in panel form, assuming that
                 # it is the only way to figure out a return
                 close_price = self.data.groupby(level=1).shift(-1).groupby([
-                    pd.Grouper(level=0, freq=period, label='right'),
+                    pd.Grouper(level=0, freq=period, label='left'),
                     pd.Grouper(level=1)
                 ]).last()
                 open_price = self.data.groupby(level=1).shift(-1).groupby([
-                    pd.Grouper(level=0, freq=period, label='right'),
+                    pd.Grouper(level=0, freq=period, label='left'),
                     pd.Grouper(level=1)
                 ]).first()
             
