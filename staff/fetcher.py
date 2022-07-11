@@ -238,7 +238,10 @@ class Databaser(Worker):
             "ignore": "INSERT IGNORE ..."
         chunksize: int, size of records to be inserted each time;
         """
-        # we should ensure data is in a frame form and no index can be assigned
+        # if database is a str connection, just transform it
+        database = sql.engine.create_engine(database)
+        
+        # we should ensure data is in a frame form and no index can be assigned      
         data = self.data.copy()
         if not self.is_frame:
             data = data.to_frame()
