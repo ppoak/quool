@@ -17,7 +17,7 @@ def show(args):
         if not args.value:
             CONSOLE.print(f'[red]When assigned key, -v will be ignored')
         CONSOLE.rule(f'{args.key}')
-        CONSOLE.print(f'{cache.get(key)}')
+        CONSOLE.print(f'{cache.get(args.key)}')
     elif args.value:
         for key in keys:
             CONSOLE.rule(f'{key}')

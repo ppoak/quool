@@ -200,6 +200,27 @@ class Stock(DataBase):
             or_ = or_,
         )
 
+    def derivative_indicator(self, 
+        start: str = None, 
+        end: str = None,
+        code: 'str | list' = None, 
+        fields: list = None,
+        and_: 'str | list' = None,
+        or_: 'str | list' = None
+    ) -> pd.DataFrame:
+        return self.get(
+            table = 'derivative_indicator',
+            start = start,
+            end = end,
+            date_col = 'date',
+            code = code,
+            code_col = 'order_book_id',
+            fields = fields,
+            index_col = ['date', 'order_book_id'],
+            and_ = and_,
+            or_ = or_,
+        )
+
 
 class TuShare:
 

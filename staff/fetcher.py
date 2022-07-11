@@ -239,7 +239,8 @@ class Databaser(Worker):
         chunksize: int, size of records to be inserted each time;
         """
         # if database is a str connection, just transform it
-        database = sql.engine.create_engine(database)
+        if isinstance(database, str):
+            database = sql.engine.create_engine(database)
         
         # we should ensure data is in a frame form and no index can be assigned      
         data = self.data.copy()
