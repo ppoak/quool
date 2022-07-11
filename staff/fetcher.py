@@ -225,7 +225,7 @@ class Databaser(Worker):
                 base += ', `%s`=excluded.`%s`' % (col, col)
             return base
 
-    def to_sql(self, table: str, database: sql.engine.base.Engine, index: bool = True,
+    def to_sql(self, table: str, database: 'sql.engine.base.Engine | str', index: bool = True,
         on_duplicate: str = "update", chunksize: int = 2000):
         """Save current dataframe to database, only support for mysql and sqlite
         ------------------------------------------------------------------------
@@ -344,7 +344,33 @@ class Databaser(Worker):
                 sql_main = sql_main.replace("%", "%%")
             with database.connect() as conn:
                 conn.execute(sql_main)
-        
+    
+    @staticmethod
+    def add_index(table: str, database: 'sql.engine.base.Engine | str', **indexargs):
+        # if database is a str connection, just transform it
+        if isinstance(database, str):
+            database = sql.engine.create_engine(database)
+
+        # to see whether the index already exists
+        with database.connect() as connect:
+            if database.name == 'sqlite':
+                idxnames = connect.execute(f'SELECT name FROM sqlite_master WHERE type ' 
+                    f'= "index" and tbl_name = "{table}"').fetchall()
+            elif database.name == 'mysql':
+                idxnames = connect.execute(f'SHOW INDEX FROM {table}').fetchall()
+            idxnames = list(map(lambda x: x[0], idxnames))
+
+        for idxname, arg in indexargs.items():
+            if idxname not in idxnames:
+                if isinstance(arg, str):
+                    sqlcol = str(arg).replace("'", "`")
+                    indextype = ''
+                elif isinstance(arg, dict):
+                    sqlcol = arg['col']
+                    indextype = arg.get('type', '')
+                with database.connect() as connect:
+                    connect.execute(f'CREATE {indextype} INDEX `{idxname}` on {table} ({sqlcol})')
+
 
 if __name__ == '__main__':
     # fetcher = StockUS("guflrppo3jct4mon7kw13fmv3dsz9kf2")
