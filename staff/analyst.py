@@ -1,7 +1,5 @@
-from linearmodels import test
 import numpy as np
 import pandas as pd
-from sqlalchemy import values
 import statsmodels.api as sm
 import scipy.stats as st
 from dataclasses import dataclass
@@ -288,4 +286,3 @@ if __name__ == "__main__":
 
     print(panelframe.tester.sigtest(0))
     print(panelframe.tester.sigtest(panelseries))
-    
