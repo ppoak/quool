@@ -17,4 +17,4 @@ git clone https://github.com/ppoak/pandasquant
 
 ## 文档说明
 
-通过pages[文档共享](https://www.icloud.com.cn/pages/0afp1_l3wmkl4yRXYFMYEjLSA)，Mac用户可直接通过pages查看，Windows及Linux可借助网页版iCloud进行查看
+参考[financial research中关于pandasquant的说明](https://github.com/ppoak/financialresearch/blob/main/doc/pandasquant.md)
