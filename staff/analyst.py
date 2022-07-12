@@ -1,5 +1,7 @@
+from linearmodels import test
 import numpy as np
 import pandas as pd
+from sqlalchemy import values
 import statsmodels.api as sm
 import scipy.stats as st
 from dataclasses import dataclass
@@ -210,9 +212,7 @@ class Describer(Worker):
             ic = data.groupby(groupers).corr(method=method)
             idx = (slice(None),) * groupers_num + (ic.columns[-1],)
             ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num)
-            sig = ic.tester.sigtest()
             result = ResultSet("ic", ic)
-            result.sig = sig
             return result
 
         elif self.type_ == Worker.CS:
@@ -225,9 +225,7 @@ class Describer(Worker):
                 ic = ic.loc[idx, ic.columns[:-1]]
             else:
                 ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num - 1)
-            sig = ic.tester.sigtest()
             result = ResultSet("ic", ic)
-            result.sig = sig
             return result
         
         else:
@@ -244,14 +242,29 @@ class Tester(Worker):
 
         h0: float or Series, the hypothesized value
         '''
-        def _t(data):
-            mean = pd.Series(data.mean(axis=0))
-            std = pd.Series(data.std(axis=0))
-            size = data.shape[0] - 1
-            t = pd.Series((mean - h0) / std * np.sqrt(size))
-            p = pd.Series(st.t.sf(np.abs(t), size) * 2)
-            return pd.DataFrame({'mean': mean, 'std': std, 't': t, 'p': p})
-        
+        def _t(data):            
+            if isinstance(h0, (int, float)):
+                if isinstance(data, pd.DataFrame):
+                    result = data.apply(lambda x: st.ttest_1samp(x, h0)).T
+                    result.columns = ['t', 'p']
+                elif isinstance(data, pd.Series):
+                    result = st.ttest_1samp(data, h0)[:]
+                    result = pd.Series(result, index=['t', 'p'], name=f'{data.name}_test')
+
+            elif isinstance(h0, pd.Series):
+                if isinstance(data, pd.DataFrame):
+                    # F-test undone
+                    result = data.apply(lambda x: st.ttest_ind(x, h0)).T
+                    result.columns = ['t', 'p']
+                elif isinstance(data, pd.Series):
+                    # F-test undone
+                    result = st.ttest_ind(data, h0)[:]
+                    result = pd.Series(result, index=['t', 'p'], name=f'{data.name}_test')
+                    
+            else:
+                raise AnalystError('sigtest', 'only int/float/pd.Series avaiable for h0')
+            return result
+            
         if self.type_ == Worker.PN:
             return self.data.groupby(level=1).apply(_t)
         
@@ -272,4 +285,7 @@ if __name__ == "__main__":
     csframe = pd.DataFrame(np.random.rand(5, 5), index=list('abcde'), 
         columns=['id1', 'id2', 'id3', 'id4', 'id5'])
     csseries = pd.Series(np.random.rand(5), index=list('abcde'), name='id1')
-    print(tsframe.regressor.ols(tsseries).stats)
+
+    print(panelframe.tester.sigtest(0))
+    print(panelframe.tester.sigtest(panelseries))
+    
