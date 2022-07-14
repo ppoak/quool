@@ -1,7 +1,7 @@
 import datetime
 import pandas as pd
 import tushare as ts
-import pandasquant as pq
+import quool as ql
 import sqlalchemy as sql
 from ..tools import item2list, str2time
 
@@ -232,8 +232,8 @@ class TuShare:
         end: str = None, 
         code: str = None,
     ):
-        start = pq.time2str(start).replace('-', '') if start is not None else None
-        end = pq.time2str(end).replace('-', '') if end is not None else None
+        start = ql.time2str(start).replace('-', '') if start is not None else None
+        end = ql.time2str(end).replace('-', '') if end is not None else None
         data = self.datasource.daily(start_date=start, end_date=end, code=code)
         if data.empty:
             return None

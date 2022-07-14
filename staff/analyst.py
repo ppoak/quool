@@ -19,7 +19,7 @@ class ResultSet:
 @pd.api.extensions.register_dataframe_accessor("regressor")
 @pd.api.extensions.register_series_accessor("regressor")
 class Regressor(Worker):
-    '''Regressor is a staff worker in pandasquant, used for a dataframe
+    '''Regressor is a staff worker in quool, used for a dataframe
     to perform regression analysis in multiple ways, like ols, logic,
     and so on.
     '''
@@ -138,7 +138,7 @@ class Regressor(Worker):
 @pd.api.extensions.register_dataframe_accessor("describer")
 @pd.api.extensions.register_series_accessor("describer")
 class Describer(Worker):
-    '''Describer is a staff worker in pandasquant, used for a dataframe
+    '''Describer is a staff worker in quool, used for a dataframe
     or a series to perform a series of descriptive analysis, like
     correlation analysis, and so on.
     '''

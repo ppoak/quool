@@ -14,7 +14,7 @@ class ArtistError(FrameWorkError):
 @pd.api.extensions.register_dataframe_accessor("drawer")
 @pd.api.extensions.register_series_accessor("drawer")
 class Drawer(Worker):
-    '''Drawer is a staff of pandasquant for visulaizing data'''
+    '''Drawer is a staff of quool for visulaizing data'''
 
     def draw(self, kind: str, 
              datetime: str = slice(None), 

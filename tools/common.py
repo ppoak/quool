@@ -1,4 +1,4 @@
-"""Some common functions to be used in pandasquant,
+"""Some common functions to be used in quool,
 like convert some type of data into another type of data,
 or some common tools to get basic trading date infomation
 
