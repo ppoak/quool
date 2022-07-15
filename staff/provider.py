@@ -79,6 +79,8 @@ class DataBase:
             data = data.set_index(index_col)
         if fields is not None and isinstance(fields, str):
             data = data.iloc[:, 0]
+        if isinstance(code, str):
+            data = data.droplevel(1)
         return data
 
 
