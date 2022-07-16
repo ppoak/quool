@@ -100,7 +100,7 @@ class Regressor(Worker):
 @pd.api.extensions.register_series_accessor("decompositer")
 class Decompositer(Worker):
 
-    def pac(self, ncomp: int, backend: str = 'statsmodels', **kwargs):
+    def pca(self, ncomp: int, backend: str = 'statsmodels', **kwargs):
         if backend == 'statsmodels':
             from statsmodels.multivariate.pca import PCA
             if self.type_ == Worker.PN:
