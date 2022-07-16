@@ -115,7 +115,7 @@ class Decompositer(Worker):
                 return self.data.copy().groupby(level=0).apply(
                     lambda x: PCA(n_components=ncomp, **kwargs).fit(x))
             else:
-                return PCA(n_components=ncomp, **kwargs).fit(x)
+                return PCA(n_components=ncomp, **kwargs).fit(self.data.copy())
 
 
 @pd.api.extensions.register_dataframe_accessor("describer")
