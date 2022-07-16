@@ -28,13 +28,23 @@ class Worker(object):
     def __init__(self, data: 'pd.DataFrame | pd.Series'):
         self.data = data
         self._validate()
+    
+    @staticmethod
+    def series2frame(data: pd.Series, name: str = None):
+        return data.to_frame(name=name or 'frame')
+    
+    @staticmethod
+    def frame2series(data: pd.DataFrame, name: str = None):
+        series = data.iloc[:, 0]
+        series.name = name or data.columns[0]
+        return series
 
     def _validate(self):
 
         self.is_frame = True if isinstance(self.data, pd.DataFrame) else False
         if self.is_frame and self.data.columns.size == 1:
             self.is_frame = False
-            self.data = self.data.iloc[:, 0]
+            self.data = self.frame2series(self.data)
             
         if self.data.empty:
             raise ValueError('[!] Dataframe or Series is empty')

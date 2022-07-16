@@ -7,41 +7,91 @@ from ..tools import *
 class BackTesterError(FrameWorkError):
     pass
 
+
 @pd.api.extensions.register_dataframe_accessor("relocator")
 @pd.api.extensions.register_series_accessor("relocator")
 class Relocator(Worker):
 
-    def profit(self, forward: pd.Series = None, weight_col: str = None, forward_col: str = None):
+    def profit(self, 
+        ret: pd.Series, 
+        portfolio: pd.Series = None,
+        ):
         '''calculate profit from weight and forward
         ---------------------------------------------
 
-        weight_col: str, the column name of weight
-        forward_col: str, the column name of forward
+        ret: pd.Series, the return data in either PN series or TS frame form
+        portfolio: pd.Series, the portfolio tag marked by a series, 
+            only available when passing a PN
         '''
-        if self.type_ == Worker.TS:
-            raise BackTesterError('profit', 'Please transform your data into multiindex data')
-        
-        elif self.type_ == Worker.CS:
-            raise BackTesterError('profit', 'We cannot calculate the profit by cross section data')
-
-        if self.is_frame:
-            if weight_col is None or forward_col is None:
-                raise BackTesterError('profit', 'Please specify the weight and forward column')
-            return self.data.groupby(level=0).apply(lambda x:
-                (x.loc[:, weight_col] * x.loc[:, forward_col]).sum()
-                / x.loc[:, weight_col].sum()
-            )
-        
+        if self.type_ == Worker.TS and self.is_frame:
+            weight = self.data.stack()
+        elif self.type_ == Worker.PN and not self.is_frame:
+            weight = self.data.copy()
         else:
-            if forward is None:
-                raise BackTesterError('profit', 'Please specify the forward return')
+            raise BackTesterError('profit', 'Your weight data should either be in PN series or TS frame form')
+        
+        if isinstance(ret, pd.Series) and isinstance(ret.index, 
+            pd.MultiIndex) and isinstance(ret.index.levels[0], pd.DatetimeIndex):
+            pass
+        elif isinstance(ret, pd.DataFrame) and isinstance(ret.index, 
+            pd.DatetimeIndex) and ret.columns.size > 1:
+            ret = ret.stack()
+        else:
+            raise BackTesterError('profit', 'Your return data should either be in PN series or TS frame form')
+        
+        if portfolio is not None:
+            if isinstance(portfolio, pd.Series) and isinstance(portfolio.index, 
+                pd.MultiIndex) and isinstance(portfolio.index.levels[0], pd.DatetimeIndex):
+                pass
+            if isinstance(portfolio, pd.DataFrame) and isinstance(portfolio.index, 
+                pd.DatetimeIndex) and portfolio.columns.size > 1:
+                portfolio = portfolio.stack()
             else:
-                self.data.name = self.data.name or 'forward'
-                forward.name = forward.name or 'weight'
-                data = pd.concat([forward, self.data], axis=1)
-                return data.groupby(level=0).apply(
-                    lambda x: (x.iloc[:, 0] * x.iloc[:, -1]).sum() / x.iloc[:, -1].sum()
-                    if not x.iloc[:, -1].sum() == 0 else np.nan)
+                raise BackTesterError('profit', 'Your portofolio data should either be in PN series or TS frame form')
+                
+        if portfolio is not None:
+            grouper = [portfolio, pd.Grouper(level=0)]
+        else:
+            grouper = pd.Grouper(level=0) 
+        
+        return weight.groupby(grouper).apply(lambda x: 
+            (ret.loc[x.index] * x).sum() / ret.loc[x.index].sum())
+    
+    def networth(self, price: 'pd.Series | pd.DataFrame'):
+        """Calculate the networth curve using normal price data
+        --------------------------------------------------------
+
+        price: pd.Series or pd.DataFrame, the price data either in
+            MultiIndex form or the TS Matrix form
+        return: pd.Series, the networth curve
+        """
+        if self.type_ == Worker.TS and self.is_frame:
+            relocate_date = self.data.index
+        elif self.type_ == Worker.PN and not self.is_frame:
+            relocate_date = self.data.index.levels[0]
+        else:
+            raise BackTesterError('networth', 'Portfolio data should be in PN series or TS frame form')
+        
+        if isinstance(price, pd.DataFrame) and price.columns.size > 1:
+            datetime_index = price.index
+        elif isinstance(price.index, pd.MultiIndex) and isinstance(price.index.levels[0], 
+            pd.DatetimeIndex) and isinstance(price, pd.Series):
+            datetime_index = price.index.levels[0]
+        else:
+            raise BackTesterError('networth', 'Price data should be in PN series or TS frame form')
+            
+        lrd = relocate_date[0]
+        lnet = 1
+        lcnet = 1
+        net = pd.Series(np.ones(datetime_index.size), index=datetime_index)
+        for d in datetime_index[1:]:
+            cnet = (price.loc[d] * self.data.loc[lrd]).sum() / lnet * lcnet
+            lrd = relocate_date[relocate_date <= d][-1]
+            if d == lrd:
+                lcnet = cnet
+                lnet = (price.loc[d] * self.data.loc[lrd]).sum()
+            net.loc[d] = cnet
+        return net
         
     def turnover(self, side: str = 'both'):
         '''calculate turnover
@@ -55,12 +105,11 @@ class Relocator(Worker):
         elif self.type_ == Worker.CS:
             raise BackTesterError('turnover', 'We cannot calculate the turnover by cross section data')
 
-        datetime_index = self.data.index.get_level_values(0).unique()
-        ret = pd.Series(index=datetime_index, dtype='float64')
-        ret.loc[datetime_index[0]] = 1
+        datetime_index = self.data.index.levels[0]
+        ret = pd.Series(np.ones(datetime_index.size), index=datetime_index)
         for i, d in enumerate(datetime_index[1:]):
-            delta_frame = pd.concat([self.data.loc[d], self.data.loc[datetime_index[i]]], 
-                axis=1, join='outer').fillna(0)
+            delta_frame = pd.concat([self.data.loc[d], 
+                self.data.loc[datetime_index[i]]], axis=1, join='outer').fillna(0)
             delta = delta_frame.iloc[:, 0] - delta_frame.iloc[:, -1]
             if side == 'both':
                 delta = delta.abs().sum() / self.data.loc[datetime_index[i]].abs().sum()
@@ -139,3 +188,26 @@ class OrderTable(bt.Analyzer):
     def get_analysis(self):
         self.rets = self.orders
         return self.orders
+
+
+if __name__ == "__main__":
+    data = pd.Series(np.random.rand(100), index=pd.MultiIndex.from_product(
+        [pd.date_range('20200101', periods=20, freq='3d'), list('abcde')]))
+    ret = pd.Series(np.random.rand(300), index=pd.MultiIndex.from_product(
+        [pd.date_range('20200101', periods=60), list('abcde')]))
+    port = data.groupby(level=0).apply(pd.qcut, labels=False, q=2) + 1
+    position = pd.Series(np.random.rand(10), index=pd.MultiIndex.from_tuples([
+        (pd.to_datetime('20200101'), 'a'),
+        (pd.to_datetime('20200101'), 'b'),
+        (pd.to_datetime('20200102'), 'c'),
+        (pd.to_datetime('20200102'), 'a'),
+        (pd.to_datetime('20200103'), 'd'),
+        (pd.to_datetime('20200103'), 'e'),
+        (pd.to_datetime('20200104'), 'a'),
+        (pd.to_datetime('20200104'), 'e'),
+        (pd.to_datetime('20200105'), 'b'),
+        (pd.to_datetime('20200105'), 'e'),
+    ]))
+    # print(data.relocator.profit(ret))
+    print(position.relocator.turnover())
+    
