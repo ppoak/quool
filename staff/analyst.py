@@ -1,19 +1,10 @@
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
-import scipy.stats as st
-from dataclasses import dataclass
 from ..tools import *
 
 
 class AnalystError(FrameWorkError):
     pass
-
-
-@dataclass
-class ResultSet:
-    result_name: str
-    raw_result: any
 
 
 @pd.api.extensions.register_dataframe_accessor("regressor")
@@ -24,115 +15,107 @@ class Regressor(Worker):
     and so on.
     '''
     
-    def ols(self, y: pd.Series = None, 
-        x_col: 'str | list' = None, 
-        y_col: str = None, 
+    def ols(self, 
+        y: pd.Series, 
         intercept: bool = True,
-    ):
+        backend: str = 'statsmodels',
+        **kwargs
+        ):
         '''OLS Regression Function
         ---------------------------
 
-        other: Series, assigned y value in a series form
-        x_col: list, a list of column names used for regression x values
-        y_col: str, the column name used for regression y values
+        y: Series, assigned y value in a series form
+        intercept: bool, whether to add a intercept value
+        kwargs: some other kwargs passed to backend
         '''
-        def _reg(data):
-            y = data.iloc[:, -1]
-            x = data.iloc[:, :-1]
+        def _statsmodels_reg(x, y):
             if intercept:
-                x = sm.add_constant(x)
-            model = sm.OLS(y, x).fit()
-            t = pd.Series(model.tvalues)
-            p = pd.Series(model.pvalues)
-            coef = pd.Series(model.params)
-            stats = pd.concat([coef, t, p], axis=1)
-            stats.columns = ['coef', 't', 'p']
-            resid = pd.Series(model.resid)
-            result = ResultSet('ols_result', model)
-            result.residual = resid
-            result.stats = stats
-            return result
+                x = add_constant(x)
+            model = OLS(y, x).fit(**kwargs)
+            return model
+        
+        def _sklearn_reg(x, y):
+            model = LinearRegression(fit_intercept=intercept, **kwargs)
+            model.fit(x, y)
+            return model
 
-        param_status = (y is not None, x_col is not None, y_col is not None)
-
-        if param_status == (True, True, True):
-            raise AnalystError('ols', "You can assign either other or x_col and y_col, but not both.")
-        elif param_status == (True, False, False):
+        if backend == 'statsmodels':
+            from statsmodels.api import OLS, add_constant
             if self.type_ == Worker.PN:
-                y.index.names = self.data.index.names
+                return self.data.copy().groupby(level=0).apply(
+                    lambda x: _statsmodels_reg(x, y.loc[x.index]))
             else:
-                y.index.name = self.data.index.name
-            if not self.is_frame and self.data.name is None:
-                self.data.name = 'ols_x'
-            if y.name is None:
-                y.name = 'ols_y'
-            data = pd.merge(self.data, y, left_index=True, right_index=True).dropna()
-        elif param_status == (False, True, True):
-            data = self.data.loc[:, item2list(x_col) + [y_col]].dropna()
-        else:
-            raise AnalystError('ols', "You need to assign x_col and y_col both.")
-
-        if self.type_ == Worker.PN:
-            return data.groupby(level=0).apply(_reg)
-        else:
-            return _reg(data)
+                return _statsmodels_reg(self.data, y)
+        elif backend == 'sklearn':
+            from sklearn.linear_model import LinearRegression
+            if self.type_ == Worker.PN:
+                return self.data.copy().groupby(level=0).apply(
+                    lambda x: _sklearn_reg(x, y.loc[x.index]))
+            else:
+                return _sklearn_reg(self.data, y)
         
     def logistic(self, 
         y: pd.Series = None, 
-        x_col: 'str | list' = None, 
-        y_col: str = None,
         intercept: bool = True,
-    ):
+        backend: str = 'statsmodels',
+        **kwargs
+        ):
         '''Logistics Regression Function
         ---------------------------
 
         y: Series, assigned y value in a series form
-        x_col: list or str, a list of column names used for regression x values
-        y_col: str, the column name used for regression y values
+        intercept: bool, whether to add a intercept value
+        backend: str, choose between statsmodels and sklearn
+        kwargs: some other kwargs passed to backend
         '''
-        def _reg(data):
-            y = data.iloc[:, -1]
-            x = data.iloc[:, :-1]
+        def _statsmodels_reg(x, y):
             if intercept:
-                x = sm.add_constant(x)
-            model = sm.Logit(y, x).fit()
-            t = pd.Series(model.tvalues)
-            p = pd.Series(model.pvalues)
-            coef = pd.Series(model.params)
-            stats = pd.concat([coef, t, p], axis=1)
-            stats.columns = ['coef', 't', 'p']
-            resid = pd.Series(model.resid)
-            result = ResultSet('logistic_result', model)
-            result.stats = stats
-            result.residual = resid
-            return result
+                x = add_constant(x)
+            model = Logit(y, x).fit(**kwargs)
+            return model
+        
+        def _sklearn_reg(x, y):
+            model = LogisticRegression(fit_intercept=intercept, **kwargs)
+            model.fit(x, y)
+            return model
 
-        param_status = (y is not None, x_col is not None, y_col is not None)
-
-        if param_status == (True, True, True):
-            raise AnalystError('logistics', "You can assign either other or x_col and y_col, but not both.")
-            
-        elif param_status == (True, False, False):
+        if backend == 'statsmodels':
+            from statsmodels.api import Logit, add_constant
             if self.type_ == Worker.PN:
-                y.index.names = self.data.index.names
+                return self.data.copy().groupby(level=0).apply(
+                    lambda x: _statsmodels_reg(x, y.loc[x.index]))
             else:
-                y.index.name = self.data.index.name
-            if not self.is_frame and self.data.name is None:
-                self.data.name = 'logistics_x'
-            if y.name is None:
-                y.name = 'logistics_y'
-            data = pd.merge(self.data, y, left_index=True, right_index=True).dropna()
-            
-        elif param_status == (False, True, True):
-            data = self.data.loc[:, item2list(x_col) + [y_col]].dropna()
+                return _statsmodels_reg(self.data.copy(), y)
+        
+        elif backend == 'sklearn':
+            from sklearn.linear_model import LogisticRegression
+            if self.type_ == Worker.PN:
+                return self.data.copy().groupby(level=0).apply(
+                    lambda x: _sklearn_reg(x, y.loc[x.index]))
+            else:
+                return _sklearn_reg(self.data.copy(), y)
 
-        else:
-            raise AnalystError('logistic', "You need to assign x_col and y_col both.")
 
-        if self.type_ == Worker.PN:
-            return data.groupby(level=0).apply(_reg)
-        else:
-            return _reg(data)
+@pd.api.extensions.register_dataframe_accessor("decompositer")
+@pd.api.extensions.register_series_accessor("decompositer")
+class Decompositer(Worker):
+
+    def pac(self, ncomp: int, backend: str = 'statsmodels', **kwargs):
+        if backend == 'statsmodels':
+            from statsmodels.multivariate.pca import PCA
+            if self.type_ == Worker.PN:
+                return self.data.copy().groupby(level=0).apply(
+                    lambda x: PCA(x, ncomp=ncomp, **kwargs))
+            else:
+                return PCA(self.data.copy(), ncomp=ncomp, **kwargs)
+        
+        elif backend == 'sklearn':
+            from sklearn.decomposition import PCA
+            if self.type_ == Worker.PN:
+                return self.data.copy().groupby(level=0).apply(
+                    lambda x: PCA(n_components=ncomp, **kwargs).fit(x))
+            else:
+                return PCA(n_components=ncomp, **kwargs).fit(x)
 
 
 @pd.api.extensions.register_dataframe_accessor("describer")
@@ -210,8 +193,7 @@ class Describer(Worker):
             ic = data.groupby(groupers).corr(method=method)
             idx = (slice(None),) * groupers_num + (ic.columns[-1],)
             ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num)
-            result = ResultSet("ic", ic)
-            return result
+            return ic
 
         elif self.type_ == Worker.CS:
             if groupers_num < 2:
@@ -223,8 +205,7 @@ class Describer(Worker):
                 ic = ic.loc[idx, ic.columns[:-1]]
             else:
                 ic = ic.loc[idx, ic.columns[:-1]].droplevel(groupers_num - 1)
-            result = ResultSet("ic", ic)
-            return result
+            return ic
         
         else:
             raise AnalystError('ic', 'Timeseries data cannot be used to calculate ic value!')
@@ -240,23 +221,24 @@ class Tester(Worker):
 
         h0: float or Series, the hypothesized value
         '''
+        from scipy.stats import ttest_1samp, ttest_ind
         def _t(data):            
             if isinstance(h0, (int, float)):
                 if isinstance(data, pd.DataFrame):
-                    result = data.apply(lambda x: st.ttest_1samp(x, h0)).T
+                    result = data.apply(lambda x: ttest_1samp(x, h0)).T
                     result.columns = ['t', 'p']
                 elif isinstance(data, pd.Series):
-                    result = st.ttest_1samp(data, h0)[:]
+                    result = ttest_1samp(data, h0)[:]
                     result = pd.Series(result, index=['t', 'p'], name=f'{data.name}_test')
 
             elif isinstance(h0, pd.Series):
                 if isinstance(data, pd.DataFrame):
                     # F-test undone
-                    result = data.apply(lambda x: st.ttest_ind(x, h0)).T
+                    result = data.apply(lambda x: ttest_ind(x, h0)).T
                     result.columns = ['t', 'p']
                 elif isinstance(data, pd.Series):
                     # F-test undone
-                    result = st.ttest_ind(data, h0)[:]
+                    result = ttest_ind(data, h0)[:]
                     result = pd.Series(result, index=['t', 'p'], name=f'{data.name}_test')
                     
             else:
@@ -284,5 +266,5 @@ if __name__ == "__main__":
         columns=['id1', 'id2', 'id3', 'id4', 'id5'])
     csseries = pd.Series(np.random.rand(5), index=list('abcde'), name='id1')
 
-    print(panelframe.tester.sigtest(0))
+    # print(panelframe.regressor.logistic(panelseries, backend='statsmodels').apply(lambda x: x.params))
     print(panelframe.tester.sigtest(panelseries))
