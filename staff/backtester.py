@@ -55,7 +55,7 @@ class Relocator(Worker):
             grouper = pd.Grouper(level=0) 
         
         return weight.groupby(grouper).apply(lambda x: 
-            (ret.loc[x.index] * x).sum() / ret.loc[x.index].sum())
+            (ret.loc[x.index] * x).sum() / x.sum())
     
     def networth(self, price: 'pd.Series | pd.DataFrame'):
         """Calculate the networth curve using normal price data
