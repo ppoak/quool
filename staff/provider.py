@@ -171,7 +171,7 @@ class Stock(DataBase):
         or_: 'str | list' = None
     ) -> pd.DataFrame:
         return self.get(
-            table = 'instrument',
+            table = 'instruments',
             start = None,
             end = None,
             date_col = None,
