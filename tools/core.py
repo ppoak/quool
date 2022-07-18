@@ -29,30 +29,63 @@ class Worker(object):
         self.data = data
         self._validate()
     
-    @staticmethod
-    def series2frame(data: pd.Series, name: str = None):
-        return data.to_frame(name=name or 'frame')
+    def series2frame(self, data: pd.Series = None, name: str = None):
+        if data is None:
+            self.data.to_frame(name=name or 'frame')
+        else:
+            return data.to_frame(name=name or 'frame')
     
-    @staticmethod
-    def frame2series(data: pd.DataFrame, name: str = None):
+    def frame2series(self, data: pd.DataFrame = None, name: str = None):
+        if data is None:
+            data = self.data
         series = data.iloc[:, 0]
         series.name = name or data.columns[0]
-        return series
+        if data is None:
+            self.data = series
+        else:
+            return series
+    
+    def ists(self, data: 'pd.DataFrame | pd.Series' = None):
+        if data is None:
+            data = self.data
+        return not isinstance(data.index, pd.MultiIndex) and isinstance(data.index, pd.DatetimeIndex)
+    
+    def iscs(self, data: 'pd.DataFrame | pd.Series' = None):
+        if data is None:
+            data = self.data
+        return not isinstance(data.index, pd.MultiIndex) and not isinstance(data.index, pd.DatetimeIndex)
+    
+    def ispanel(self, data: 'pd.DataFrame | pd.Series' = None):
+        if data is None:
+            data = self.data
+        return isinstance(data.index, pd.MultiIndex) and len(data.index.levshape) >= 2 \
+                and isinstance(data.index.levels[0], pd.DatetimeIndex)
+    
+    def isframe(self, data: 'pd.DataFrame | pd.Series' = None):
+        if data is None:
+            data = self.data
+        return True if isinstance(data, pd.DataFrame) else False
+    
+    def isseries(self, data: 'pd.DataFrame | pd.Series' = None):
+        if data is None:
+            data = self.data
+        return True if isinstance(data, pd.Series) else False
 
     def _validate(self):
 
-        self.is_frame = True if isinstance(self.data, pd.DataFrame) else False
+        self.is_frame = self.isframe()
+        self.is_series = self.isseries()
+        
         if self.is_frame and self.data.columns.size == 1:
             self.is_frame = False
-            self.data = self.frame2series(self.data)
+            self.frame2series()
             
         if self.data.empty:
             raise ValueError('[!] Dataframe or Series is empty')
 
-        is_ts = not isinstance(self.data.index, pd.MultiIndex) and isinstance(self.data.index, pd.DatetimeIndex)
-        is_cs = not isinstance(self.data.index, pd.MultiIndex) and not isinstance(self.data.index, pd.DatetimeIndex)
-        is_panel = isinstance(self.data.index, pd.MultiIndex) and len(self.data.index.levshape) >= 2 \
-                and isinstance(self.data.index.levels[0], pd.DatetimeIndex)
+        is_ts = self.ists(self.data)
+        is_cs = self.iscs(self.data)
+        is_panel = self.ispanel(self.data)
         
         if is_ts:
             self.type_ = Worker.TS

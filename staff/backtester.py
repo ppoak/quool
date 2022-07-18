@@ -12,6 +12,24 @@ class BackTesterError(FrameWorkError):
 @pd.api.extensions.register_series_accessor("relocator")
 class Relocator(Worker):
 
+    def __init__(self, data: 'pd.DataFrame | pd.Series'):
+        super().__init__(data)
+        weight = self.make_available(self.data)
+        if isinstance(weight, bool):
+            raise BackTesterError('profit', 'Your weight data should either be in PN series or TS frame form')
+        self.weight = weight.groupby(level=0).apply(lambda x: x / x.sum())
+
+
+    def make_available(self, data: 'pd.DataFrame | pd.Series'):
+        if self.ists(data) and self.isframe(data):
+            return data.stack()
+        elif self.ispanel(data) and self.isseries(data):
+            return data
+        elif self.ispanel(data) and self.isframe(data) and data.columns.size == 1:
+            return data.iloc[:, 0]
+        else:
+            return False
+    
     def profit(self, 
         ret: pd.Series, 
         portfolio: pd.Series = None,
@@ -23,30 +41,16 @@ class Relocator(Worker):
         portfolio: pd.Series, the portfolio tag marked by a series, 
             only available when passing a PN
         '''
-        if self.type_ == Worker.TS and self.is_frame:
-            weight = self.data.stack()
-        elif self.type_ == Worker.PN and not self.is_frame:
-            weight = self.data.copy()
-        else:
-            raise BackTesterError('profit', 'Your weight data should either be in PN series or TS frame form')
         
-        if isinstance(ret, pd.Series) and isinstance(ret.index, 
-            pd.MultiIndex) and isinstance(ret.index.levels[0], pd.DatetimeIndex):
-            pass
-        elif isinstance(ret, pd.DataFrame) and isinstance(ret.index, 
-            pd.DatetimeIndex) and ret.columns.size > 1:
-            ret = ret.stack()
-        else:
+        weight = self.weight.copy()
+        
+        ret = self.make_available(ret)
+        if isinstance(ret, bool):
             raise BackTesterError('profit', 'Your return data should either be in PN series or TS frame form')
         
         if portfolio is not None:
-            if isinstance(portfolio, pd.Series) and isinstance(portfolio.index, 
-                pd.MultiIndex) and isinstance(portfolio.index.levels[0], pd.DatetimeIndex):
-                pass
-            if isinstance(portfolio, pd.DataFrame) and isinstance(portfolio.index, 
-                pd.DatetimeIndex) and portfolio.columns.size > 1:
-                portfolio = portfolio.stack()
-            else:
+            portfolio = self.make_available(portfolio)
+            if portfolio == False:
                 raise BackTesterError('profit', 'Your portofolio data should either be in PN series or TS frame form')
                 
         if portfolio is not None:
@@ -65,21 +69,13 @@ class Relocator(Worker):
             MultiIndex form or the TS Matrix form
         return: pd.Series, the networth curve
         """
-        if self.type_ == Worker.TS and self.is_frame:
-            relocate_date = self.data.index
-        elif self.type_ == Worker.PN and not self.is_frame:
-            relocate_date = self.data.index.levels[0]
-        else:
-            raise BackTesterError('networth', 'Portfolio data should be in PN series or TS frame form')
-        
-        if isinstance(price, pd.DataFrame) and price.columns.size > 1:
-            datetime_index = price.index
-        elif isinstance(price.index, pd.MultiIndex) and isinstance(price.index.levels[0], 
-            pd.DatetimeIndex) and isinstance(price, pd.Series):
-            datetime_index = price.index.levels[0]
-        else:
+        weight = self.weight.copy()
+        price = self.make_available(price)
+        if isinstance(price, bool):
             raise BackTesterError('networth', 'Price data should be in PN series or TS frame form')
             
+        relocate_date = weight.index.levels[0]
+        datetime_index = price.index.levels[0]
         lrd = relocate_date[0]
         lnet = (price.loc[d] * self.data.loc[lrd]).sum()
         lcnet = 1
@@ -99,26 +95,19 @@ class Relocator(Worker):
 
         side: str, choice between "buy", "short" or "both"
         '''
-        if self.type_ == Worker.TS:
-            raise BackTesterError('turnover', 'Please transform your data into multiindex data')
-        
-        elif self.type_ == Worker.CS:
-            raise BackTesterError('turnover', 'We cannot calculate the turnover by cross section data')
-
-        datetime_index = self.data.index.levels[0]
-        ret = pd.Series(np.ones(datetime_index.size), index=datetime_index)
-        for i, d in enumerate(datetime_index[1:]):
-            delta_frame = pd.concat([self.data.loc[d], 
-                self.data.loc[datetime_index[i]]], axis=1, join='outer').fillna(0)
-            delta = delta_frame.iloc[:, 0] - delta_frame.iloc[:, -1]
-            if side == 'both':
-                delta = delta.abs().sum() / self.data.loc[datetime_index[i]].abs().sum()
-            if side == 'buy':
-                delta = delta[delta > 0].sum() / self.data.loc[datetime_index[i]].abs().sum()
-            if side == 'sell':
-                delta = -delta[delta < 0].sum() / self.data.loc[datetime_index[i]].abs().sum()
-            ret.loc[d] = delta
-        return ret
+        weight = self.weight.copy()
+        weight = weight.reindex(pd.MultiIndex.from_product(
+            [weight.index.levels[0], weight.index.levels[1]],
+            names = ['date', 'asset'],
+        ))
+        delta = pd.concat([weight, weight.groupby(level=1).shift(1)], axis=1, join='outer').fillna(0)
+        delta = delta.iloc[:, 0] - delta.iloc[:, -1]
+        if side == 'both':
+            return delta.groupby(level=0).apply(lambda x: x.abs().sum())
+        elif side == 'buy':
+            return delta.groupby(level=0).apply(lambda x: x[x > 0].abs().sum())
+        elif side == 'sell':
+            return delta.groupby(level=0).apply(lambda x: x[x < 0].abs().sum())
 
 
 class Strategy(bt.Strategy):
@@ -209,5 +198,5 @@ if __name__ == "__main__":
         (pd.to_datetime('20200105'), 'e'),
     ]))
     # print(data.relocator.profit(ret))
-    print(position.relocator.turnover())
+    print(position.relocator.turnover(side='sell'))
     
