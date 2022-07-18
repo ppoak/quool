@@ -81,7 +81,7 @@ class Relocator(Worker):
             raise BackTesterError('networth', 'Price data should be in PN series or TS frame form')
             
         lrd = relocate_date[0]
-        lnet = 1
+        lnet = (price.loc[d] * self.data.loc[lrd]).sum()
         lcnet = 1
         net = pd.Series(np.ones(datetime_index.size), index=datetime_index)
         for d in datetime_index[1:]:
