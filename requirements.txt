@@ -7,7 +7,5 @@ statsmodels
 sqlalchemy
 diskcache
 requests
-lxml
-bs4
 rich
 scipy

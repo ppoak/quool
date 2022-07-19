@@ -33,12 +33,10 @@ class Worker(object):
     
     def frame2series(self, data: pd.DataFrame = None, name: str = None):
         if data is None:
-            data = self.data
-        series = data.iloc[:, 0]
-        series.name = name or data.columns[0]
-        if data is None:
-            self.data = series
+            self.data = self.data.iloc[:, 0]
         else:
+            series = data.iloc[:, 0]
+            series.name = name or data.columns[0]
             return series
     
     def ists(self, data: 'pd.DataFrame | pd.Series' = None):
