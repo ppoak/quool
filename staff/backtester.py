@@ -117,8 +117,8 @@ class BackTester(Worker):
     """Backtester is a staff dedicated for run backtest on a dataset"""
 
     def run(self, 
-        cash: float = 1000000,
         strategy: bt.Strategy = None, 
+        cash: float = 1000000,
         indicators: 'bt.Indicator | list' = None,
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
@@ -142,7 +142,7 @@ class BackTester(Worker):
         data = self.data.copy()
         indicators = item2list(indicators)
         analyzers = [bt.analyzers.SharpeRatio, bt.analyzers.TimeDrawDown, bt.analyzers.TimeReturn, OrderTable]\
-            if analyzer is None else item2list(analyzers)
+            if analyzers is None else item2list(analyzers)
         observers = [bt.observers.Broker, bt.observers.BuySell, bt.observers.DrawDown]\
             if observers is None else item2list(observers)
         
@@ -182,11 +182,12 @@ class BackTester(Worker):
         else:
             datanames = ['data']
         for dn in datanames:
-            d = data.loc[:, dn].droplevel(1) if self.type_ == Worker.PN else data
-            feed = _PandasData(d, fromdate=d.index.min(), todate=d.index.max())
+            d = data.loc(axis=0)[:, dn].droplevel(1) if self.type_ == Worker.PN else data
+            feed = _PandasData(dataname=d, fromdate=d.index.min(), todate=d.index.max())
             cerebro.adddata(feed, name=dn)
         
-        cerebro.addstrategy(strategy)
+        if strategy is not None:
+            cerebro.addstrategy(strategy)
         for analyzer in analyzers:
             cerebro.addanalyzer(analyzer)
         for observer in observers:
@@ -205,6 +206,8 @@ class BackTester(Worker):
             plt.show()
             if not timereturn.empty:
                 timereturn.printer.display(title='time return')
+                (timereturn + 1).cumprod().drawer.draw(kind='line')
+                plt.show()
             if not result[0].analyzers.ordertable.rets.empty:
                 result[0].analyzers.ordertable.rets.printer.display(title='order table')
         if data_path is not None:
