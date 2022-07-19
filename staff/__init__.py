@@ -20,17 +20,8 @@ from .processor import (
     PreProcessor
 )
 
-from .crawler import (
-    StockUS
-)
-
 from .backtester import (
     Relocator,
     Strategy,
     OrderTable,
-)
-
-from .provider import (
-    Stock,
-    TuShare,
 )
