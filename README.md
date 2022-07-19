@@ -1,5 +1,7 @@
 # Quool
 
+⚠️**Note that this project is currently been archived, and merged with project [ppoak/database](https://github.com/ppoak/database) into a brand new project [BearAlpha](https://github.com/ppoak/BearAlpha), all information and change will be up-to-date there**
+
 ## Introduction
 
 Quool is a quantum finance toolkit, which comes from quant-tool, short form is quool. It integrates the pandas quantum analysis accessors and the backtrader analyzers at the same time.
