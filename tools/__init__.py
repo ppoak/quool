@@ -1,8 +1,6 @@
 from .core import (
     FrameWorkError,
     Worker,
-    Request,
-    ProxyRequest,
     Cache,
     get_proxy,
     CBD,

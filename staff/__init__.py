@@ -25,3 +25,7 @@ from .backtester import (
     Strategy,
     OrderTable,
 )
+
+from .evaluator import (
+    Evaluator,
+)
