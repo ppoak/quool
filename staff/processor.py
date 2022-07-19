@@ -10,110 +10,126 @@ class ProcessorError(FrameWorkError):
 @pd.api.extensions.register_series_accessor("converter")
 class Converter(Worker):
     
-    def price2ret(self, period: 'str | int', open_col: str = 'close', 
-        close_col: str = 'close', method: str = 'algret'):
+    def price2ret(self, 
+        period: 'str | int', 
+        open_col: str = 'close', 
+        close_col: str = 'close', 
+        method: str = 'algret',
+        lag: int = 1,
+        ):
+        """Convert the price information to return information
+        
+        period: str or int or DateOffset, if in str and DateOffset format,
+            return will be in like resample format, otherwise, you can get rolling
+            return formatted data
+        open_col: str, if you pass a dataframe, you need to assign which column
+            represents open price
+        colse_col: str, the same as open_col, but to assign close price
+        method: str, choose between 'algret' and 'logret'
+        lag: int, define how many day as lagged after the day of calculation forward return
+        """
         if self.type_ == Worker.PN and self.is_frame:
             # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
             # https://stackoverflow.com/questions/15799162/
             if isinstance(period, int):
-                close_price = self.data.loc[:, close_col]
-                open_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(period).loc[:, open_col]
+                if period > 0:
+                    close_price = self.data.loc[:, close_col]
+                    open_price = self.data.groupby(pd.Grouper(level=1))\
+                        .shift(period).loc[:, open_col]
+                else:
+                    close_price = self.data.groupby(pd.Grouper(level=1))\
+                        .shift(period - lag).loc[:, close_col]
+                    open_price = self.data.groupby(pd.Grouper(level=1))\
+                        .shift(-lag).loc[:, open_col]
 
             else:
-                close_price = self.data.groupby([
-                    pd.Grouper(level=0, freq=period, label='right'),
-                    pd.Grouper(level=1)
-                ]).last().loc[:, close_col]
-                open_price = self.data.groupby([
-                    pd.Grouper(level=0, freq=period, label='right'),
-                    pd.Grouper(level=1)
-                ]).first().loc[:, open_col]
+                if '-' in str(period):
+                    if isinstance(period, str):
+                        period = period.strip('-')
+                    else:
+                        period = - period
+                    # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
+                    # https://stackoverflow.com/questions/15799162/
+                    close_price = self.data.groupby(level=1).shift(-lag).groupby([
+                        pd.Grouper(level=0, freq=period, label='left'),
+                        pd.Grouper(level=1)
+                    ]).last().loc[:, close_col]
+                    open_price = self.data.groupby(level=1).shift(-lag).groupby([
+                        pd.Grouper(level=0, freq=period, label='left'),
+                        pd.Grouper(level=1)
+                    ]).first().loc[:, open_col]
+
+                else:
+                    close_price = self.data.groupby([
+                        pd.Grouper(level=0, freq=period, label='right'),
+                        pd.Grouper(level=1)
+                    ]).last().loc[:, close_col]
+                    open_price = self.data.groupby([
+                        pd.Grouper(level=0, freq=period, label='right'),
+                        pd.Grouper(level=1)
+                    ]).first().loc[:, open_col]
 
         elif self.type_ == Worker.PN and not self.is_frame:
             # if passing a series in panel form, assuming that
             # it is the only way to figure out a return
             if isinstance(period, int):
-                close_price = self.data
-                open_price = self.data.groupby(pd.Grouper(level=1)).shift(period)
+                if period > 0:
+                    close_price = self.data
+                    open_price = self.data.groupby(pd.Grouper(level=1)).shift(period)
+                else:
+                    close_price = self.data.groupby(pd.Grouper(level=1)).shift(period - lag)
+                    open_price = self.data.groupby(pd.Grouper(level=1)).shift(-lag)
+
             else:
-                close_price = self.data.groupby([
-                    pd.Grouper(level=0, freq=period, label='right'),
-                    pd.Grouper(level=1)
-                ]).last()
-                open_price = self.data.groupby([
-                    pd.Grouper(level=0, freq=period, label='right'),
-                    pd.Grouper(level=1)
-                ]).first()
+                if '-' in str(period):
+                    if isinstance(period, str):
+                        period = period.strip('-')
+                    else:
+                        period = - period
+                    # if passing a series in panel form, assuming that
+                    # it is the only way to figure out a return
+                    close_price = self.data.groupby(level=1).shift(-lag).groupby([
+                        pd.Grouper(level=0, freq=period, label='left'),
+                        pd.Grouper(level=1)
+                    ]).last()
+                    open_price = self.data.groupby(level=1).shift(-lag).groupby([
+                        pd.Grouper(level=0, freq=period, label='left'),
+                        pd.Grouper(level=1)
+                    ]).first()
+                else:
+                    close_price = self.data.groupby([
+                        pd.Grouper(level=0, freq=period, label='right'),
+                        pd.Grouper(level=1)
+                    ]).last()
+                    open_price = self.data.groupby([
+                        pd.Grouper(level=0, freq=period, label='right'),
+                        pd.Grouper(level=1)
+                    ]).first()
 
         # if timeseries data is passed, we assume that the columns are asset names
         elif self.type_ == Worker.TS:
             if isinstance(period, int):
-                close_price = self.data
-                open_price = self.data.shift(period)
+                if period > 0:
+                    close_price = self.data
+                    open_price = self.data.shift(period)
+                else:
+                    close_price = self.data.shift(-period - lag)
+                    open_price = self.data.shift(-lag)
+            
             else:
-                close_price = self.data.resample(period, label='right').last()
-                open_price = self.data.resample(period, label='right').first()
+                if '-' in str(period):
+                    if isinstance(period, str):
+                        period = period.strip('-')
+                    else:
+                        period = - period
+                    close_price = self.data.shift(-lag).resample(period, label='left').last()
+                    open_price = self.data.shift(-lag).resample(period, label='left').first()
+                else:
+                    close_price = self.data.resample(period, label='right').last()
+                    open_price = self.data.resample(period, label='right').first()
             
         else:
             raise ProcessorError('price2ret', 'Can only convert time series data to return')
-
-        if method == 'algret':
-            return (close_price - open_price) / open_price
-        elif method == 'logret':
-            return np.log(close_price / open_price)
-
-    def price2fwd(self, period: 'str | int', open_col: str = 'open', 
-        close_col: str = 'close', method: str = 'algret'):
-        if self.type_ == Worker.PN and self.is_frame:
-            if isinstance(period, int):
-                close_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(-period - 1).loc[:, close_col]
-                open_price = self.data.groupby(pd.Grouper(level=1))\
-                    .shift(-1).loc[:, open_col]
-
-            else:
-                # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
-                # https://stackoverflow.com/questions/15799162/
-                close_price = self.data.groupby(level=1).shift(-1).groupby([
-                    pd.Grouper(level=0, freq=period, label='left'),
-                    pd.Grouper(level=1)
-                ]).last().loc[:, close_col]
-                open_price = self.data.groupby(level=1).shift(-1).groupby([
-                    pd.Grouper(level=0, freq=period, label='left'),
-                    pd.Grouper(level=1)
-                ]).first().loc[:, open_col]
-            
-
-        elif self.type_ == Worker.PN and not self.is_frame:
-            if isinstance(period, int):
-                close_price = self.data.groupby(pd.Grouper(level=1)).shift(-period - 1)
-                open_price = self.data.groupby(pd.Grouper(level=1)).shift(-1)
-
-            else:
-                # if passing a series in panel form, assuming that
-                # it is the only way to figure out a return
-                close_price = self.data.groupby(level=1).shift(-1).groupby([
-                    pd.Grouper(level=0, freq=period, label='left'),
-                    pd.Grouper(level=1)
-                ]).last()
-                open_price = self.data.groupby(level=1).shift(-1).groupby([
-                    pd.Grouper(level=0, freq=period, label='left'),
-                    pd.Grouper(level=1)
-                ]).first()
-            
-        
-        elif self.type_ == Worker.TS:
-            if isinstance(period, int):
-                close_price = self.data.shift(-period - 1)
-                open_price = self.data.shift(-1)
-
-            else:
-                close_price = self.data.shift(-1).resample(period, label='left').last()
-                open_price = self.data.shift(-1).resample(period, label='left').first()
-
-        else:
-            raise ProcessorError('price2fwd', 'Can only convert time series data to forward')
 
         if method == 'algret':
             return (close_price - open_price) / open_price
