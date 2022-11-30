@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from ..tools import *
+from .base import *
+from .tools import *
 
 
 class ProcessorError(FrameWorkError):
@@ -10,14 +11,16 @@ class ProcessorError(FrameWorkError):
 @pd.api.extensions.register_series_accessor("converter")
 class Converter(Worker):
     
-    def price2ret(self, 
+    def price2ret(
+        self, 
         period: 'str | int', 
         open_col: str = 'close', 
         close_col: str = 'close', 
         method: str = 'algret',
         lag: int = 1,
-        ):
+    ):
         """Convert the price information to return information
+        ------------------------------------------------------
         
         period: str or int or DateOffset, if in str and DateOffset format,
             return will be in like resample format, otherwise, you can get rolling
@@ -28,7 +31,7 @@ class Converter(Worker):
         method: str, choose between 'algret' and 'logret'
         lag: int, define how many day as lagged after the day of calculation forward return
         """
-        if self.type_ == Worker.PN and self.is_frame:
+        if self.type_ == Worker.PNFR:
             # https://pandas.pydata.org/docs/reference/api/pandas.Grouper.html
             # https://stackoverflow.com/questions/15799162/
             if isinstance(period, int):
@@ -69,7 +72,7 @@ class Converter(Worker):
                         pd.Grouper(level=1)
                     ]).first().loc[:, open_col]
 
-        elif self.type_ == Worker.PN and not self.is_frame:
+        elif self.type_ == Worker.PNSR:
             # if passing a series in panel form, assuming that
             # it is the only way to figure out a return
             if isinstance(period, int):
@@ -107,7 +110,7 @@ class Converter(Worker):
                     ]).first()
 
         # if timeseries data is passed, we assume that the columns are asset names
-        elif self.type_ == Worker.TS:
+        elif self.type_ == Worker.TSFR or self.type_ == Worker.TSSR:
             if isinstance(period, int):
                 if period > 0:
                     close_price = self.data
@@ -136,7 +139,13 @@ class Converter(Worker):
         elif method == 'logret':
             return np.log(close_price / open_price)
         
-    def cum2diff(self, grouper = None, period: int = 1, axis: int = 0, keep: bool = True):
+    def cum2diff(
+        self,
+        grouper = None, 
+        period: int = 1, 
+        axis: int = 0, 
+        keep: bool = True
+    ):
         def _diff(data):
             diff = data.diff(period, axis=axis)
             if keep:
@@ -150,8 +159,12 @@ class Converter(Worker):
             
         return diff
 
-    def dummy2category(self, dummy_col: list = None, name: str = 'group'):
-        if not self.is_frame:
+    def dummy2category(
+        self, 
+        dummy_col: list = None, 
+        name: str = 'group'
+    ):
+        if not Worker.isframe(self.data):
             raise ProcessorError('dummy2category', 'Can only convert dataframe to category')
             
         if dummy_col is None:
@@ -175,16 +188,141 @@ class Converter(Worker):
         return np.log(self.data)
 
     def resample(self, rule: str, **kwargs):
-        if self.type_ == Worker.TS:
+        if self.type_ == Worker.TSSR or self.type_ == Worker.TSFR:
             return self.data.resample(rule, **kwargs)
-        elif self.type_ == Worker.PN:
+        elif self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
             return self.data.groupby([pd.Grouper(level=0, freq=rule, **kwargs), pd.Grouper(level=1)])
+
+    def spdatetime(self, level: int = 0, axis: int = 0):
+        """Split data with datetime into date and time formatted index
+        ------------------------------------------------------------
+
+        level: int, the level the datetime index exists, only available when not matching standard data types
+        axis: int, the axis the datetime index exists, only available when not matching standard data types
+        """
+        data = self.data.copy()
+
+        if self.type_ == Worker.CSSR or self.type_ == Worker.CSFR:
+            raise ProcessorError('spdatetime', 'Cross section data cannot be splited by datetime')
+        
+        elif self.type_ == Worker.TSSR or self.type_ == Worker.TSFR:
+            data.index = pd.MultiIndex.from_arrays([data.index.get_level_values(0).date, 
+                data.index.get_level_values(0).time], names=['date', 'time'])
+        
+        elif self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
+            data.index = pd.MultiIndex.from_arrays([data.index.get_level_values(0).date, 
+                data.index.get_level_values(0).time, data.index.get_level_values(1)], names=['date', 'time', data.index.names[1]])
+        
+        elif self.type_ == Worker.MIFR or self.type_ == Worker.MISR or self.type_ == Worker.MCFR or self.type_ == Worker.MIMC:
+            miarray = [data.index.get_level_values(i) for i in range(len(data.index.levels))] if not axis else [data.columns.get_level_values(i) for i in range(len(data.columns.levels))]
+            miarray[level] = data.index.get_level_values(level).time if not axis else data.columns.get_level_values(level).time
+            miarray.insert(level, data.index.get_level_values(level).date) if not axis else miarray.insert(level, data.columns.get_level_values(level).date)
+            minames = list(data.index.names) if not axis else list(data.columns.names)
+            minames[level] = 'time'
+            minames = minames.insert(level, 'date')
+            if not axis: 
+                data.index = pd.MultiIndex.from_arrays(miarray, names=minames)
+            else: 
+                data.columns = pd.MultiIndex.from_arrays(miarray, names=minames)
+        
+        return data
+            
+    def panelize(self):
+        """Panelize a dataframe
+        ------------------------
+        
+        Specifically used for imbalanced panel data, this
+        function will help you deal with that
+        """
+        data = self.data.copy()
+        if (
+            self.type_ == Worker.PNFR or self.type_ == Worker.PNSR or
+            self.type_ == Worker.MIFR or self.type_ == Worker.MISR
+        ):
+            if data.shape[0] != np.prod([data.index.levels[i].size for i in range(len(data.index.levels))]):
+                data = data.reindex(pd.MultiIndex.from_product(
+                        [data.index.levels[i] for i in range(len(data.index.levels))], 
+                        names = data.index.names
+                    )
+                )
+        elif self.type_ == Worker.MCFR:
+            if data.shape[1] != np.prod([data.columns.levels[i].size for i in range(len(data.columns.levels))]):
+                data = data.reindex(columns = pd.MultiIndex.from_product(
+                        [data.columns.levels[i] for i in range(len(data.columns.levels))],
+                        names = data.columns.names
+                    )
+                )
+        elif self.type_ == Worker.MIMC:
+            if data.shape[0] != np.prod([data.index.levels[i].size for i in range(len(data.index.levels))]):
+                data = data.reindex(pd.MultiIndex.from_product(
+                        [data.index.levels[i] for i in range(len(data.index.levels))], 
+                        names = data.index.names
+                    )
+                )
+            if data.shape[1] != np.prod([data.columns.levels[i].size for i in range(len(data.columns.levels))]):
+                data = data.reindex(columns = pd.MultiIndex.from_product(
+                        [data.columns.levels[i] for i in range(len(data.columns.levels))],
+                        names = data.columns.names
+                    )
+                )
+        return data
+    
+    def shrink(self, retframe: bool = False, allow_halffloat: bool = True):
+        """Reduce the memory usage for a dataframe
+        -----------------------------------------
+
+        iterate through all the columns of a dataframe and modify the data type
+        to reduce memory usage.
+        """
+        start_mem = self.data.memory_usage().sum()
+        Console().print(f'[yellow][=][/yellow] Memory usage of dataframe is {start_mem:.2f} MB')
+        for col in self.data.columns:
+            col_type = self.data[col].dtype
+            if col_type != object:
+                c_min = self.data[col].min()
+                c_max = self.data[col].max()
+                if str(col_type).startswith('int'):
+                    if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
+                        self.data[col] = self.data[col].astype(np.int8)
+                    elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
+                        self.data[col] = self.data[col].astype(np.int16)
+                    elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
+                        self.data[col] = self.data[col].astype(np.int32)
+                    elif c_min > np.iinfo(np.int64).min and c_max < np.iinfo(np.int64).max:
+                        self.data[col] = self.data[col].astype(np.int64)
+                elif str(col_type).startswith('uint'):
+                    if c_min > np.iinfo(np.uint8).min and c_max < np.iinfo(np.uint8).max:
+                        self.data[col] = self.data[col].astype(np.uint8)
+                    elif c_min > np.iinfo(np.uint16).min and c_max < np.iinfo(np.uint16).max:
+                        self.data[col] = self.data[col].astype(np.uint16)
+                    elif c_min > np.iinfo(np.uint32).min and c_max < np.iinfo(np.uint32).max:
+                        self.data[col] = self.data[col].astype(np.uint32)
+                    elif c_min > np.iinfo(np.uint64).min and c_max < np.iinfo(np.uint64).max:
+                        self.data[col] = self.data[col].astype(np.uint64)
+                else:
+                    if allow_halffloat and c_min > np.finfo(np.float16).min and c_max < np.finfo(np.float16).max:
+                        self.data[col] = self.data[col].astype(np.float16)
+                    elif c_min > np.finfo(np.float32).min and c_max < np.finfo(np.float32).max:
+                        self.data[col] = self.data[col].astype(np.float32)
+                    else:
+                        self.data[col] = self.data[col].astype(np.float64)
+            else:
+                self.data[col] = self.data[col].astype('category')
+        end_mem = self.data.memory_usage().sum()
+        Console().print(f'[green][=][/green] Memory usage after optimization is {end_mem:.2f} MB')
+        Console().print(f'[green][=][/green] Decreased by {100 * (start_mem - end_mem) / start_mem:.1f}%')
+        if retframe:
+            return self.data
 
 @pd.api.extensions.register_dataframe_accessor("preprocessor")
 @pd.api.extensions.register_series_accessor("preprocessor")
 class PreProcessor(Worker):
     
-    def standarize(self, method: str = 'zscore', grouper = None):
+    def standarize(
+        self, 
+        method: str = 'zscore', 
+        grouper = None
+    ):
         def _zscore(data):
             mean = data.mean()
             std = data.std()
@@ -197,19 +335,19 @@ class PreProcessor(Worker):
             minmax = (data - min_) / (max_ - min_)
             return minmax
 
-        if not self.is_frame:
+        if not self.isframe(self.data):
             data = self.data.to_frame().copy()
         else:
             data = self.data.copy()
 
-        if self.type_ == Worker.PN:
+        if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
             if grouper is not None:
                 grouper = [pd.Grouper(level=0)] + item2list(grouper)
             else:
                 grouper = pd.Grouper(level=0)
 
         if 'zscore' in method:
-            if self.type_ == Worker.PN:
+            if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
                 return data.groupby(grouper).apply(_zscore)
             elif grouper is not None:
                 return data.groupby(grouper).apply(_zscore)
@@ -217,16 +355,21 @@ class PreProcessor(Worker):
                 return _zscore(data)
 
         elif 'minmax' in method:
-            if self.type_ == Worker.PN:
+            if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
                 return data.groupby(grouper).apply(_minmax)
             elif grouper is not None:
                 return data.groupby(grouper).apply(_minmax)
             else:
                 return _minmax(data)
 
-    def deextreme(self, method = 'md_correct', grouper = None, n = None):
+    def deextreme(
+        self,
+        method = 'mad', 
+        grouper = None, 
+        n = None
+    ):
 
-        def _md_correct(data):
+        def _mad(data):
             median = data.median()
             mad = (data - median).abs().median()
             mad = mad.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
@@ -237,7 +380,7 @@ class PreProcessor(Worker):
             data[data < maddown] = maddown
             return data
             
-        def _std_correct(data):
+        def _std(data):
             mean = data.mean()
             mean = mean.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
             mean = pd.DataFrame(mean, index=data.index, columns=data.columns)
@@ -261,12 +404,12 @@ class PreProcessor(Worker):
             data[data < down] = down
             return data
         
-        if not self.is_frame:
+        if not self.isframe(self.data):
             data = self.data.to_frame().copy()
         else:
             data = self.data.copy()
         
-        if self.type_ == Worker.PN:
+        if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
             if grouper is not None:
                 grouper = [pd.Grouper(level=0)] + item2list(grouper)
             else:
@@ -275,88 +418,92 @@ class PreProcessor(Worker):
         if 'mad' in method:
             if n is None:
                 n = 5
-            if self.type_ == Worker.PN:
-                return data.groupby(grouper).apply(_md_correct)
+            if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
+                return data.groupby(grouper).apply(_mad)
             elif grouper is not None:
-                return data.groupby(grouper).apply(_md_correct)
+                return data.groupby(grouper).apply(_mad)
             else:
-                return _md_correct(data)
+                return _mad(data)
 
 
         elif 'std' in method:
             if n is None:
                 n = 3
-            if self.type_ == Worker.PN:
-                return data.groupby(grouper).apply(_std_correct)
+            if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
+                return data.groupby(grouper).apply(_std)
             elif grouper is not None:
-                return data.groupby(grouper).apply(_std_correct)
+                return data.groupby(grouper).apply(_std)
             else:
-                return _std_correct(data)
+                return _std(data)
         
         elif 'drop' in method:
             if n is None:
                 n = 0.1
-            if self.type_ == Worker.PN:
+            if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
                 return data.groupby(grouper).apply(_drop_odd)
             elif grouper is not None:
                 return data.groupby(grouper).apply(_drop_odd)
             else:
                 return _drop_odd(data)
     
-    def fillna(self, method = 'pad_zero', grouper = None):
+    def fillna(
+        self, 
+        method = 'zero', 
+        grouper = None
+    ):
 
-        def _fill_zero(data):
+        def _zero(data):
             data = data.fillna(0)
             return data
             
-        def _fill_mean(data):
+        def _mean(data):
             mean = data.mean(axis=0)
             mean = mean.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
             mean = pd.DataFrame(mean, columns=data.columns, index=data.index)
             data = data.fillna(mean)
             return data
 
-        def _fill_median(data):
+        def _median(data):
             median = data.median(axis=0)
             median = median.values.reshape((1, -1)).repeat(len(data), axis=0).reshape(data.shape)
             median = pd.DataFrame(median, columns=data.columns, index=data.index)
             data = data.fillna(median)
             return data
 
-        if not self.is_frame:
+        if not self.isframe(self.data):
             data = self.data.to_frame().copy()
         else:
             data = self.data.copy()
         
-        if self.type_ == Worker.PN:
+        if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
             if grouper is not None:
                 grouper = [pd.Grouper(level=0)] + item2list(grouper)
             else:
                 grouper = pd.Grouper(level=0)
 
         if 'zero' in method:
-            if self.type_ == Worker.PN:
-                return data.groupby(grouper).apply(_fill_zero)
+            if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
+                return data.groupby(grouper).apply(_zero)
             elif grouper is not None:
-                return data.groupby(grouper).apply(_fill_zero)
+                return data.groupby(grouper).apply(_zero)
             else:
-                return _fill_zero(data)
+                return _zero(data)
 
         elif 'mean' in method:
-            if self.type_ == Worker.PN:
-                return data.groupby(grouper).apply(_fill_mean)
+            if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
+                return data.groupby(grouper).apply(_mean)
             elif grouper is not None:
-                return data.groupby(grouper).apply(_fill_mean)
+                return data.groupby(grouper).apply(_mean)
             else:
-                return _fill_mean(data)
+                return _mean(data)
         
         elif 'median' in method:
-            if self.type_ == Worker.PN:
-                return data.groupby(grouper).apply(_fill_median)
+            if self.type_ == Worker.PNFR or self.type_ == Worker.PNSR:
+                return data.groupby(grouper).apply(_median)
             elif grouper is not None:
-                return data.groupby(grouper).apply(_fill_median)
+                return data.groupby(grouper).apply(_median)
             else:
-                return _fill_median(data)
+                return _median(data)
 
 if __name__ == "__main__":
     import numpy as np

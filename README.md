@@ -1,24 +1,31 @@
 # Quool
 
-⚠️**Note that this project is currently been archived, and merged with project [ppoak/database](https://github.com/ppoak/database) into a brand new project [BearAlpha](https://github.com/ppoak/BearAlpha), all information and change will be up-to-date there**
+![Python](https://img.shields.io/badge/Python-FFD43B?style=for-the-badge&logo=python&logoColor=blue) ![Scipy](https://img.shields.io/badge/SciPy-654FF0?style=for-the-badge&logo=SciPy&logoColor=white) ![Mysql](https://img.shields.io/badge/MySQL-005C84?style=for-the-badge&logo=mysql&logoColor=white) ![Mariadb](https://img.shields.io/badge/MariaDB-003545?style=for-the-badge&logo=mariadb&logoColor=white) ![Sqlite](https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white)
 
 ## Introduction
 
-Quool is a quantum finance toolkit, which comes from quant-tool, short form is quool. It integrates the pandas quantum analysis accessors and the backtrader analyzers at the same time.
-
-## Framework
-
-The following chart shows the generic data flow for the financial research. The quool provides support for every step shown in the chart.
-
-![process](./process.svg)
+Quool is a Quantum toolkit. The individual project is saved as submodules and can be downloaded respectively.
 
 ## Installation
 
 ```shell
-git clone https://github.com/ppoak/bearalpha
-git submodule update quool
+pip install quool
 ```
 
-## Documentation
+Also, you can clone this project and the submodule at a time, which provide you the easiest way to use bearalpha and explore the project collections.
 
-Not ready!
+```shell
+git clone https://github.com/pppoak/quool --recursive
+```
+
+Then, to ensure there is no path problems when using bearalpha, please run:
+
+```shell
+pip install -e .
+```
+
+In this way, you can also help develop bearalpha, any changes will be sync to your own quool package. And you can create some pull requests to help us improve quool.
+
+## Plans
+
+The project is under continuously update, a lot of new ideas will be added, and we are looking forward to your great standpoint. Any problem can be come up with a issue, or any data help by email `ppoak@foxmail.com`

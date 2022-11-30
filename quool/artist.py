@@ -1,10 +1,9 @@
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import mplfinance as mpf
 from matplotlib.widgets import Cursor
-from ..tools import *
+from .base import *
+from .tools import *
 
 
 class ArtistError(FrameWorkError):
@@ -14,14 +13,17 @@ class ArtistError(FrameWorkError):
 @pd.api.extensions.register_dataframe_accessor("drawer")
 @pd.api.extensions.register_series_accessor("drawer")
 class Drawer(Worker):
-    '''Drawer is a staff of quool for visulaizing data'''
+    """Drawer is a staff of quool for visulaizing data"""
 
-    def draw(self, kind: str, 
-             datetime: str = slice(None), 
-             asset: str = slice(None), 
-             indicator: str = slice(None), 
-             **kwargs):
-        '''Draw a image of the given slice of data
+    def draw(
+        self, 
+        kind: str, 
+        datetime: str = slice(None), 
+        asset: str = slice(None), 
+        indicator: str = slice(None), 
+        **kwargs
+    ):
+        """Draw a image of the given slice of data
         ------------------------------------------
 
         kind: str, the kind of the plot
@@ -29,7 +31,7 @@ class Drawer(Worker):
         asset: str, the slice of asset, default to all assets
         indicator: str, the slice of indicator, default to all indicators
         kwargs: dict, the kwargs for the plot function
-        '''
+        """
         plotwised = self._flat(datetime, asset, indicator)
         
         if not isinstance(plotwised, (pd.Series, pd.DataFrame)):
@@ -40,39 +42,45 @@ class Drawer(Worker):
             _, ax = plt.subplots(1, 1, figsize=(12, 8))
 
         # bar plot
-        if isinstance(plotwised, pd.Series) and isinstance(plotwised.index, 
-            pd.DatetimeIndex) and kind == "bar":
-            ax.bar(plotwised.index, plotwised, **kwargs)
-        elif isinstance(plotwised, pd.DataFrame) and isinstance(plotwised.index,
-            pd.DatetimeIndex) and kind == "bar":
-            bot = 0
-            for col in plotwised.columns:
-                ax.bar(plotwised.index, plotwised[col], label=col, bottom=bot, **kwargs)
-                bot += plotwised[col]
+        if kind == 'bar' and Worker.ists(plotwised):
+            plotwised.plot.bar(ax=ax, **kwargs)
+            ax.set_xticks(plotwised.index[::20])
+            ax.set_xticklabels(plotwised.index.strftim('%b\n%Y')[::20])
         
         # candle plot
-        elif isinstance(plotwised, pd.DataFrame) and isinstance(plotwised.index,
-            pd.DatetimeIndex) and kind == "candle" and \
+        elif Worker.isframe(plotwised) and Worker.ists(plotwised) and kind == "candle" and \
             pd.Index(['open', 'high', 'low', 'close']).isin(plotwised.columns).all():
             mpf.plot(plotwised, ax=ax, style='charles')
                     
         else:
             plotwised.plot(kind=kind, ax=ax, **kwargs)
 
-        Cursor(ax, useblit=False, color='grey', lw=0.5, horizOn=True, vertOn=True)
+        Cursor(ax, useblit=False, color='grey', lw=0.5, horizOn=True, vertOn=True, ls=':')
+        return ax
 
 
 @pd.api.extensions.register_dataframe_accessor("printer")
 @pd.api.extensions.register_series_accessor("printer")
 class Printer(Worker):
     
-    def display(self, datetime: str = slice(None), asset: str = slice(None),
-        indicator: str = slice(None), maxdisplay_length: int = 20, 
-        maxdisplay_width: int = 12, title: str = "Table"):
+    def display(
+        self, 
+        title: str = "Table",
+        datetime: str = slice(None), 
+        asset: str = slice(None),
+        indicator: str = slice(None), 
+        maxdisplay_length: int = 20, 
+        maxdisplay_width: int = 12, 
+    ):
         """Print the dataframe or series in a terminal
         ------------------------------------------
 
-        formatter: pd.DataFrame, the formatter for the dataframe
+        datetime: str, the slice on the datetime dimension
+        asset: str, the slice on the asset dimension
+        indicator: str, the slice on the indicator dimension
+        maxdisplay_length: int, the maximum display length of the table
+        maxdisplay_width: int, the maximum display width of the table
+        title: str, the title of the table
         """
         printwised = self._flat(datetime, asset, indicator)
 
@@ -95,7 +103,7 @@ class Printer(Worker):
         for row in printwised.index:
             table.add_row(*printwised.loc[row].tolist())
 
-        CONSOLE.print(table)
+        Console().print(table)
 
 if __name__ == "__main__":
     pass
