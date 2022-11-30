@@ -110,15 +110,24 @@ class Converter(Worker):
                     ]).first()
 
         # if timeseries data is passed, we assume that the columns are asset names
-        elif self.type_ == Worker.TSFR or self.type_ == Worker.TSSR:
+        elif self.type_ == Worker.TSFR:
             if isinstance(period, int):
                 if period > 0:
+                    close_price = self.data[close_col]
+                    open_price = self.data[open_col].shift(period)
+                else:
+                    close_price = self.data.shift(-period - lag)
+                    open_price = self.data.shift(-lag)
+
+        elif self.type_ == Worker.TSSR:
+            if isinstance(period, int):
+                if period < 0:
                     close_price = self.data
                     open_price = self.data.shift(period)
                 else:
                     close_price = self.data.shift(-period - lag)
                     open_price = self.data.shift(-lag)
-            
+        
             else:
                 if '-' in str(period):
                     if isinstance(period, str):
