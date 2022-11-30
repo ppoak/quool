@@ -3,9 +3,4 @@ numpy
 matplotlib
 mplfinance
 backtrader
-statsmodels
-sqlalchemy
-diskcache
-requests
 rich
-scipy
