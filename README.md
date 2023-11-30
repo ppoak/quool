@@ -1,31 +1,19 @@
-# Quool
+# Quant Research
 
-![Python](https://img.shields.io/badge/Python-FFD43B?style=for-the-badge&logo=python&logoColor=blue) ![Scipy](https://img.shields.io/badge/SciPy-654FF0?style=for-the-badge&logo=SciPy&logoColor=white) ![Mysql](https://img.shields.io/badge/MySQL-005C84?style=for-the-badge&logo=mysql&logoColor=white) ![Mariadb](https://img.shields.io/badge/MariaDB-003545?style=for-the-badge&logo=mariadb&logoColor=white) ![Sqlite](https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white)
+## What is this projet?
 
-## Introduction
+This is a project aimed for quant, or people want to devote themselves in quantative field. I concluded a lot of experience and sample codes in this project covering from data collection, quantative investment platform to actual factor digging process and so on. This project is still carrying on and ready to bring everyone in quantative field a better experience.
 
-Quool is a Quantum toolkit. The individual project is saved as submodules and can be downloaded respectively.
+## How can we use this project?
 
-## Installation
+Currently, I have no plan for publishing a independent pypi package for this project, for most of the code is created in research process. I you find some of the code in this project do help you, you can try to clone the project to your own computer, and import the corresponding package. More easily, just copy and paste the code in your project.
 
-```shell
-pip install quool
-```
+## References for QIML
 
-Also, you can clone this project and the submodule at a time, which provide you the easiest way to use bearalpha and explore the project collections.
+Some paper references and quantative investment and machine learning
 
-```shell
-git clone https://github.com/pppoak/quool --recursive
-```
+- [Double Ensemble](https://arxiv.org/pdf/2010.01265.pdf)
 
-Then, to ensure there is no path problems when using bearalpha, please run:
+## Data
 
-```shell
-pip install -e .
-```
-
-In this way, you can also help develop bearalpha, any changes will be sync to your own quool package. And you can create some pull requests to help us improve quool.
-
-## Plans
-
-The project is under continuously update, a lot of new ideas will be added, and we are looking forward to your great standpoint. Any problem can be come up with a issue, or any data help by email `ppoak@foxmail.com`
+We provide data by [BaiduNetDisk](https://pan.baidu.com/s/1xOKAKKnpnWunhzIzPJ9qlg?pwd=wsyd).

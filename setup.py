@@ -1,36 +1,27 @@
 from setuptools import setup, find_packages
-from quool import __version__
 
-with open('README.md', 'r') as f:
-    ldes = f.read()
+
+with open("README.md", "r") as fh:
+    long_description = fh.read()
 
 setup(
-    name='quool',
-    packages=find_packages(),
-    author='ppoak',
-    author_email='ppoak@foxmail.com',
-    description='A Quantum Finance Analyze Toolkit',
-    long_description=ldes,
-    long_description_content_type='text/markdown',
-    keywords=['Quantum', 'Finance'],
-    url="https://github.com/ppoak/quool",
-    version=__version__,
-    install_requires=[
-        'pandas',
+    name = "quool",
+    packages = find_packages(),
+    author = "ppoak",
+    author_email = "ppoak@foxmail.com",
+    description = "Quantitative Toolkit - a helper in quant developping",
+    long_description = long_description,
+    long_description_content_type = "text/markdown",
+    keywords = ['quant', 'framework', 'finance'],
+    url = "https://github.com/ppoak/quool",
+    version = '0.1.2',
+    install_requires = [
+        'bs4',
         'numpy',
-        'matplotlib',
+        'joblib',
+        'pandas',
+        'akshare',
         'backtrader',
-        'mplfinance',
-        'rich',
+        'matplotlib',
     ],
-    extras_require={
-        "stats": [
-            "statsmodules", 
-            "sklearn", 
-            "dask", 
-            'scipy',
-        ],
-    },
-    entry_points={
-    }
 )

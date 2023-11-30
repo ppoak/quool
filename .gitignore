@@ -1,4 +1,3 @@
-
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 
@@ -55,6 +54,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+test*
+**/test*
 
 # Translations
 *.mo
@@ -168,5 +169,22 @@ cython_debug/
 
 .DS_Store
 
-# 缓存文件
-cache
+**/cache
+
+data/intermediate
+data/derivative_indicators
+data/financials
+data/kline_daily
+data/kline_min
+data/index
+data/qlib_day
+data/stock_pool
+
+**/mlruns
+**/*.db
+
+.vscode
+output
+dev
+logs
+drafts
