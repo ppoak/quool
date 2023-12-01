@@ -5,8 +5,13 @@ from .database import (
     DiffTable,
 )
 
+try:
+    import akshare
+    from .collector import AkShare
+except:
+    print("akshare is not installed, install it by `pip install quool[crawler]`")
+
 from .collector import (
-    AkShare,
     Request,
     Em,
     StockUS,
@@ -17,7 +22,6 @@ from .collector import (
     KuaiDaili,
     Ip3366,
     Ip98,
-    Checker,
 )
 
 from .tools import (
@@ -28,13 +32,17 @@ from .tools import (
     strip_stock_code,
 )
 
-from .backtest import (
-    BackTrader,
-    Relocator,
-    Strategy,
-    Indicator,
-    Analyzer,
-    Observer,
-    OrderTable,
-    CashValueRecorder,
-)
+try:
+    import backtrader as bt
+    from .backtest import (
+        BackTrader,
+        Relocator,
+        Strategy,
+        Indicator,
+        Analyzer,
+        Observer,
+        OrderTable,
+        CashValueRecorder,
+    )
+except:
+    print("backtrader is not installed, install it by `pip install quool[backtest]`")

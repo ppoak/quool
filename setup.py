@@ -14,14 +14,17 @@ setup(
     long_description_content_type = "text/markdown",
     keywords = ['quant', 'framework', 'finance'],
     url = "https://github.com/ppoak/quool",
-    version = '0.0.2',
+    version = '0.0.3',
     install_requires = [
         'bs4',
         'numpy',
         'joblib',
         'pandas',
-        'akshare',
-        'backtrader',
         'matplotlib',
     ],
+    extras_require={
+        'backtest': ['backtrader'],
+        'crawler': ['akshare'],
+        'all': ['backtrader', 'akshare'],
+    }
 )

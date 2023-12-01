@@ -5,7 +5,6 @@ import datetime
 import requests
 import numpy as np
 import pandas as pd
-import akshare as ak
 from tqdm import tqdm
 from math import ceil
 from lxml import etree
@@ -135,6 +134,7 @@ class AkShare:
         start: str, start date in string format
         end: str, end date in string format
         """
+        import akshare as ak
         code = strip_stock_code(code)
         start = start or cls.START
         end = end or cls.TODAY.strftime('%Y%m%d')
@@ -175,6 +175,7 @@ class AkShare:
 
         code_only: bool, decide only return codes on the market
         """
+        import akshare as ak
         price = ak.stock_zh_a_spot_em()
         price = price.set_index('代码').drop('序号', axis=1)
         if code_only:
@@ -183,6 +184,7 @@ class AkShare:
 
     @classmethod
     def plate_quote(cls, name_only: bool = False):
+        import akshare as ak
         data = ak.stock_board_industry_name_em()
         data = data.set_index('板块名称')
         if name_only:
@@ -191,6 +193,7 @@ class AkShare:
 
     @classmethod
     def etf_market_daily(cls, code: str, start: str = None, end: str = None):
+        import akshare as ak
         code = strip_stock_code(code)
         start = start or cls.START
         end = end or cls.TODAY.strftime('%Y%m%d')
@@ -200,6 +203,7 @@ class AkShare:
     
     @classmethod
     def stock_fund_flow(cls, code: str):
+        import akshare as ak
         code, market = code.split('.')
         if market.isdigit():
             code, market = market, code
@@ -212,6 +216,7 @@ class AkShare:
     
     @classmethod
     def stock_fund_rank(cls):
+        import akshare as ak
         datas = []
         for indi in ['今日', '3日', '5日', '10日']:
             datas.append(ak.stock_individual_fund_flow_rank(indicator=indi
@@ -225,11 +230,13 @@ class AkShare:
     
     @classmethod
     def plate_info(cls, plate: str):
+        import akshare as ak
         data = ak.stock_board_industry_cons_em(symbol=plate).set_index('代码')
         return data
 
     @classmethod
     def balance_sheet(cls, code):
+        import akshare as ak
         try:
             data = ak.stock_balance_sheet_by_report_em(symbol=code)
             if data.empty:
@@ -254,6 +261,7 @@ class AkShare:
 
     @classmethod
     def profit_sheet(cls, code):
+        import akshare as ak
         try:
             data = ak.stock_profit_sheet_by_report_em(symbol=code)
             if data.empty:
@@ -278,6 +286,7 @@ class AkShare:
 
     @classmethod
     def cashflow_sheet(cls, code):
+        import akshare as ak
         try:
             data = ak.stock_cash_flow_sheet_by_report_em(symbol=code)
             if data.empty:
@@ -303,6 +312,7 @@ class AkShare:
         
     @classmethod
     def index_weight(cls, code: str):
+        import akshare as ak
         data = ak.index_stock_cons_weight_csindex(code)
         return data
 
@@ -795,54 +805,3 @@ class Ip98(Request):
                 results.append({"http": "http://" + ":".join(proxy), "https": "http://" + ":".join(proxy)})
         return pd.DataFrame(results)
 
-
-class Checker(Request):
-
-    def __init__(self, proxies: list[dict], url: str = "http://httpbin.org/ip"):
-        super().__init__(
-            url = [url] * len(proxies),
-            proxies = proxies,
-            timeout = 2.0,
-            retry = 1,
-        )
-
-    def _req(self, url: str, proxy: dict):
-        method = getattr(requests, self.method)
-        retry = self.retry or 1
-        for t in range(1, retry + 1):
-            try:
-                resp = method(
-                    url, headers=self.headers, proxies=proxy,
-                    timeout=self.timeout, **self.kwargs
-                )
-                resp.raise_for_status()
-                if self.verbose:
-                    print(f'[+] {url} try {t}')
-                return resp
-            except Exception as e:
-                if self.verbose:
-                    print(f'[-] {e} {url} try {t}')
-                time.sleep(self.delay)
-        return None
-
-    def request(self) -> list[requests.Response]:
-        responses = []
-        for proxy, url in zip(self.proxies, self.url):
-            resp = self._req(url=url, proxy=proxy)
-            responses.append(resp)
-        self.responses = responses
-        return self
-    
-    def para_request(self) -> list[requests.Response]:
-        self.responses = Parallel(n_jobs=-1, backend='loky')(
-            delayed(self._req)(url, proxy) for url, proxy in zip(self.url, self.proxies)
-        )
-        return self
-    
-    def callback(self):
-        results = []
-        for i, res in enumerate(self.responses):
-            if res is None:
-                continue
-            results.append(self.proxies[i])
-        return pd.DataFrame(results)
