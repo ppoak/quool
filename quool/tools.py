@@ -1,6 +1,49 @@
 import re
+import logging
 import numpy as np
 import pandas as pd
+
+
+class _StreamFormatter(logging.Formatter):
+    COLORS = {
+        'DEBUG': '\033[94m',
+        'INFO': '\033[92m',
+        'WARNING': '\033[93m',
+        'ERROR': '\033[95m',
+        'CRITICAL': '\033[31m',
+        'RESET': '\033[0m',
+    }
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
+        record.message = record.getMessage()
+        record.asctime = self.formatTime(record, self.datefmt)
+        formatted_record = f'{color}[{record.asctime}] - <{record.levelname}> - {record.message}{self.COLORS["RESET"]}'
+        return formatted_record
+
+
+class _FileFormatter(logging.Formatter):
+    def format(self, record):
+        record.message = record.getMessage()
+        record.asctime = self.formatTime(record, self.datefmt)
+        formatted_record = f'[{record.asctime}] - <{record.levelname}> - {record.message}'
+        return formatted_record
+
+
+class Logger(logging.Logger):
+    def __init__(self, name = None, level=logging.DEBUG, stream=True, file=None):
+        name = name or 'QuoolLogger'
+        super().__init__(name, level)
+
+        if stream:
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(_StreamFormatter())
+            self.addHandler(stream_handler)
+
+        if file:
+            file_handler = logging.FileHandler(file)
+            file_handler.setFormatter(_FileFormatter())
+            self.addHandler(file_handler)
 
 
 def parse_date(

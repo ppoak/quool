@@ -25,6 +25,7 @@ from .collector import (
 )
 
 from .tools import (
+    Logger,
     parse_commastr,
     parse_date,
     reduce_mem_usage,
