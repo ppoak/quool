@@ -11,6 +11,7 @@ class __TimeFormatter(logging.Formatter):
     def __init__(
         self, 
         display_time: bool = True,
+        display_name: str = True,
         fmt: str | None = None, 
         datefmt: str | None = None, 
         style: Any = "%", 
@@ -19,6 +20,7 @@ class __TimeFormatter(logging.Formatter):
     ) -> None:
         super().__init__(fmt, datefmt, style, validate, defaults=defaults)
         self.display_time = display_time
+        self.display_name = display_name
 
 
 class _StreamFormatter(__TimeFormatter):
@@ -35,10 +37,12 @@ class _StreamFormatter(__TimeFormatter):
         color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
         record.message = record.getMessage()
         record.asctime = self.formatTime(record, self.datefmt)
+        formatted_record = f'{color}'
         if self.display_time:
-            formatted_record = f'{color}[{record.asctime}] {record.message}{self.COLORS["RESET"]}'
-        else:
-            formatted_record = f'{color}{record.message}{self.COLORS["RESET"]}'
+            formatted_record += f'[{record.asctime}] '
+        if self.display_name:
+            formatted_record += f'<{record.name}> '
+        formatted_record += f'{record.message}{self.COLORS["RESET"]}'
         return formatted_record
 
 
@@ -47,10 +51,12 @@ class _FileFormatter(__TimeFormatter):
     def format(self, record):
         record.message = record.getMessage()
         record.asctime = self.formatTime(record, self.datefmt)
+        formatted_record = ''
         if self.display_time:
-            formatted_record = f'[{record.asctime}] <{record.levelname}> {record.message}'
-        else:
-            formatted_record = f'<{record.levelname}> {record.message}'
+            formatted_record += f'[{record.asctime}] '
+        if self.display_name:
+            formatted_record += f'<{record.name}> '
+        formatted_record += f'|{record.levelname}| {record.message}'
         return formatted_record
 
 
