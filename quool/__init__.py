@@ -1,3 +1,12 @@
+from .tools import (
+    Logger,
+    parse_commastr,
+    parse_date,
+    reduce_mem_usage,
+    format_code,
+    strip_stock_code,
+)
+
 from .database import (
     Table,
     AssetTable,
@@ -22,15 +31,6 @@ from .collector import (
     KuaiDaili,
     Ip3366,
     Ip98,
-)
-
-from .tools import (
-    Logger,
-    parse_commastr,
-    parse_date,
-    reduce_mem_usage,
-    format_code,
-    strip_stock_code,
 )
 
 try:

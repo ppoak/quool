@@ -2,9 +2,26 @@ import re
 import logging
 import numpy as np
 import pandas as pd
+from typing import Any
+from collections.abc import Mapping
 
 
-class _StreamFormatter(logging.Formatter):
+class __TimeFormatter(logging.Formatter):
+
+    def __init__(
+        self, 
+        display_time: bool = True,
+        fmt: str | None = None, 
+        datefmt: str | None = None, 
+        style: Any = "%", 
+        validate: bool = True, *, 
+        defaults: Mapping[str, Any] | None = None
+    ) -> None:
+        super().__init__(fmt, datefmt, style, validate, defaults=defaults)
+        self.display_time = display_time
+
+
+class _StreamFormatter(__TimeFormatter):
     COLORS = {
         'DEBUG': '\033[94m',
         'INFO': '\033[92m',
@@ -18,31 +35,45 @@ class _StreamFormatter(logging.Formatter):
         color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
         record.message = record.getMessage()
         record.asctime = self.formatTime(record, self.datefmt)
-        formatted_record = f'{color}[{record.asctime}] - <{record.levelname}> - {record.message}{self.COLORS["RESET"]}'
+        if self.display_time:
+            formatted_record = f'{color}[{record.asctime}] {record.message}{self.COLORS["RESET"]}'
+        else:
+            formatted_record = f'{color}{record.message}{self.COLORS["RESET"]}'
         return formatted_record
 
 
-class _FileFormatter(logging.Formatter):
+class _FileFormatter(__TimeFormatter):
+
     def format(self, record):
         record.message = record.getMessage()
         record.asctime = self.formatTime(record, self.datefmt)
-        formatted_record = f'[{record.asctime}] - <{record.levelname}> - {record.message}'
+        if self.display_time:
+            formatted_record = f'[{record.asctime}] <{record.levelname}> {record.message}'
+        else:
+            formatted_record = f'<{record.levelname}> {record.message}'
         return formatted_record
 
 
 class Logger(logging.Logger):
-    def __init__(self, name = None, level=logging.DEBUG, stream=True, file=None):
+    def __init__(
+        self, 
+        name: str = None, 
+        level: int = logging.DEBUG, 
+        stream: bool = True, 
+        file: str = None,
+        display_time: bool = True,
+    ):
         name = name or 'QuoolLogger'
         super().__init__(name, level)
 
         if stream:
             stream_handler = logging.StreamHandler()
-            stream_handler.setFormatter(_StreamFormatter())
+            stream_handler.setFormatter(_StreamFormatter(display_time=display_time))
             self.addHandler(stream_handler)
 
         if file:
             file_handler = logging.FileHandler(file)
-            file_handler.setFormatter(_FileFormatter())
+            file_handler.setFormatter(_FileFormatter(display_time=display_time))
             self.addHandler(file_handler)
 
 
@@ -80,8 +111,9 @@ def reduce_mem_usage(df: pd.DataFrame):
     """iterate through all the columns of a dataframe and modify the data type
     to reduce memory usage.
     """
+    logger = Logger("QuoolReduceMemUsage")
     start_mem = df.memory_usage().sum()
-    print('Memory usage of dataframe is {:.2f} MB'.format(start_mem))
+    logger.info('Memory usage of dataframe is {:.2f} MB'.format(start_mem))
     for col in df.columns:
         col_type = df[col].dtype
         if col_type != object:
@@ -106,8 +138,8 @@ def reduce_mem_usage(df: pd.DataFrame):
         else:
             df[col] = df[col].astype('category')
     end_mem = df.memory_usage().sum()
-    print('Memory usage after optimization is: {:.2f} MB'.format(end_mem))
-    print('Decreased by {:.1f}%'.format(100 * (start_mem - end_mem) / start_mem))
+    logger.info('Memory usage after optimization is: {:.2f} MB'.format(end_mem))
+    logger.info('Decreased by {:.1f}%'.format(100 * (start_mem - end_mem) / start_mem))
     return df
 
 def format_code(code, format_str = '{market}.{code}', upper: bool = True):

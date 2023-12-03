@@ -1,18 +1,20 @@
+import logging
 import numpy as np
 import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .tools import parse_date
+from .tools import parse_date, Logger
 
 
 class Strategy(bt.Strategy):
+    logger = Logger("QuoolStrategy", display_time=False)
 
-    def log(self, text: str, datetime: pd.Timestamp = None):
+    def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
-        print(f'[{datetime}]: {text}')
-
+        self.logger.log(level=level, msg=f'[{datetime}]: {text}')
+    
     def notify_order(self, order: bt.Order):
         """order notification"""
         # order possible status:
@@ -45,27 +47,30 @@ class Strategy(bt.Strategy):
 
 
 class Indicator(bt.Indicator):
+    logger = Logger('QuoolIndicator', display_time=False)
     
-    def log(self, text: str, datetime: pd.Timestamp = None):
+    def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
-        print(f'[{datetime}]: {text}')    
+        self.logger.log(level=level, msg=f'[{datetime}]: {text}')
 
 
 class Analyzer(bt.Analyzer):
+    logger = Logger('QuoolAnalyzer', display_time=False)
 
-    def log(self, text: str, datetime: pd.Timestamp = None):
+    def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
-        print(f'[{datetime}]: {text}')
+        self.logger.log(level=level, msg=f'[{datetime}]: {text}')
 
 
 class Observer(bt.Observer):
+    logger = Logger('QuoolObserver', display_time=False)
 
-    def log(self, text: str, datetime: pd.Timestamp = None):
+    def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
-        print(f'[{datetime}]: {text}')
+        self.logger.log(level=level, msg=f'[{datetime}]: {text}')
 
 
 class OrderTable(Analyzer):
@@ -201,6 +206,7 @@ class BackTrader:
         code_index: str = 'order_book_id',
         date_index: str = 'date_index',
     ):
+        self.logger = Logger("QuoolBackTrader")
         self.data = data
         self.data = self._valid(data)
         self.data = self.data.reindex(pd.MultiIndex.from_product([
@@ -300,18 +306,18 @@ class BackTrader:
         netvalue = (timereturn + 1).cumprod()
 
         if verbose:
-            print('-' * 15 + " Return " + '-' * 15)
-            print(f"total return: {(netvalue.iloc[-1] - 1) * 100:.2f} (%)")
-            print(f"annual return <{start.strftime('%Y')}> - <{stop.strftime('%Y')}>: "
+            self.logger.info('-' * 15 + " Return " + '-' * 15)
+            self.logger.info(f"total return: {(netvalue.iloc[-1] - 1) * 100:.2f} (%)")
+            self.logger.info(f"annual return <{start.strftime('%Y')}> - <{stop.strftime('%Y')}>: "
                   f"{strat.analyzers.annualreturn.rets} (%)")
-            print('-' * 15 + " Time Drawdown " + '-' * 15)
-            print(dict(strat.analyzers.timedrawdown.rets))
-            print('-' * 15 + " Sharpe " + '-' * 15)
-            print(dict(strat.analyzers.sharperatio.rets))
+            self.logger.info('-' * 15 + " Time Drawdown " + '-' * 15)
+            self.logger.info(dict(strat.analyzers.timedrawdown.rets))
+            self.logger.info('-' * 15 + " Sharpe " + '-' * 15)
+            self.logger.info(dict(strat.analyzers.sharperatio.rets))
         
         if detail_img is not None:
             if len(datanames) > 3:
-                print(f"There are {len(datanames)} stocks, the image "
+                self.logger.warning(f"There are {len(datanames)} stocks, the image "
                       "may be nested and takes a long time to draw")
             figs = cerebro.plot(style='candel')
             fig = figs[0][0]

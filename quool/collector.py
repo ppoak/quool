@@ -11,7 +11,7 @@ from lxml import etree
 from bs4 import BeautifulSoup
 from urllib.parse import quote
 from joblib import Parallel, delayed
-from .tools import strip_stock_code, format_code
+from .tools import strip_stock_code, format_code, Logger
 
 
 class Request:
@@ -61,6 +61,7 @@ class Request:
         self.kwargs = kwargs
     
     def _req(self, url: str) -> requests.Response:
+        logger = Logger("QuoolRequest")
         method = getattr(requests, self.method)
         retry = self.retry or 1
 
@@ -72,11 +73,11 @@ class Request:
                 )
                 resp.raise_for_status()
                 if self.verbose:
-                    print(f'[+] {url} try {t}')
+                    logger.info(f'[+] {url} try {t}')
                 return resp
             except Exception as e:
                 if self.verbose:
-                    print(f'[-] {e} {url} try {t}')
+                    logger.warning(f'[-] {e} {url} try {t}')
                 time.sleep(self.delay)
 
         return None
@@ -125,6 +126,7 @@ class Request:
 class AkShare:
     TODAY = pd.to_datetime(datetime.datetime.today()).normalize()
     START = '20050101'
+    logger = Logger("QuoolAkShare")
     
     @classmethod
     def market_daily(cls, code: str, start: str = None, end: str = None):
@@ -256,7 +258,7 @@ class AkShare:
             data = data.rename(columns=lambda x: x.lower())
             return data
         except:
-            print(f'{code} get balance sheet failed!, please try again mannually')
+            cls.logger.warning(f'{code} get balance sheet failed!, please try again mannually')
             return None
 
     @classmethod
@@ -281,7 +283,7 @@ class AkShare:
             data = data.rename(columns=lambda x: x.lower())
             return data
         except:
-            print(f'{code} get balance sheet failed!, please try again mannually')
+            cls.logger.warning(f'{code} get balance sheet failed!, please try again mannually')
             return None
 
     @classmethod
@@ -306,7 +308,7 @@ class AkShare:
             data = data.rename(columns=lambda x: x.lower())
             return data
         except:
-            print(f'{code} get balance sheet failed!, please try again mannually')
+            cls.logger.warning(f'{code} get balance sheet failed!, please try again mannually')
             return None
 
         
@@ -477,6 +479,7 @@ class StockUS:
 class Cnki:
 
     __search_url = "https://kns.cnki.net/KNS8/Brief/GetGridTableHtml"
+    logger = Logger("QuoolCnki")
 
     @classmethod
     def generic_search(cls, keyword: str, page: int = 3):
@@ -511,7 +514,7 @@ class Cnki:
         if page == 1:
             return pd.concat(results, axis=1)
         page = min(page, ceil(total / 50))
-        print(f'[+] Current page 1 / {page}')
+        cls.logger.info(f'[+] Current page 1 / {page}')
         result = pd.read_html(text)[0]
         results.append(result)
 
@@ -520,7 +523,7 @@ class Cnki:
             data.update(CurPage=f'{p}', IsSearch='false')
             req = requests.post(cls.__search_url, headers=headers, data=data)
             text = req.text
-            print(f'[+] Current page {p} / {page}')
+            cls.logger.info(f'[+] Current page {p} / {page}')
             result = pd.read_html(text)[0]
             results.append(result)
         results = pd.concat(results, axis=0)
@@ -536,6 +539,7 @@ class WeiboSearch:
     '''
 
     __base = "https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D1%26q%3D{}&page_type=searchall&page={}"
+    logger = Logger("QuoolWeiboSearch")
 
     @classmethod
     def _get_content(cls, url, headers):
@@ -594,9 +598,9 @@ class WeiboSearch:
             "Referer": f"https://m.weibo.cn/search?containerid=100103type%3D1%26q%3D{quote(keyword, 'utf-8')}",
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1"
             }
-        print(f"Start in keyword: {keyword}")
+        cls.logger.info(f"Start in keyword: {keyword}")
         while True:
-            print(f"Getting {keyword}, currently at page: {page} ... ")
+            cls.logger.info(f"Getting {keyword}, currently at page: {page} ... ")
             url = cls.__base.format(keyword, page)
             blogs = cls._get_content(url, headers)
             if not blogs:
@@ -604,24 +608,24 @@ class WeiboSearch:
             result.extend(blogs)
             page += 1
             time.sleep(random.randint(5, 8))
-        print(f"Finished in keyword: {keyword}!")
+        cls.logger.info(f"Finished in keyword: {keyword}!")
         return result
     
     @classmethod
     def _get_assigned(cls, keyword: str, pages: int):
         result = []
-        print(f"Start in keyword: {keyword}")
+        cls.logger.info(f"Start in keyword: {keyword}")
         headers = {
             "Referer": f"https://m.weibo.cn/search?containerid=100103type%3D1%26q%3D{quote(keyword, 'utf-8')}",
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1"
             }
         for page in tqdm(range(1, pages+1)):
-            print(f"Getting {keyword}, currently at page: {page} ... ")
+            cls.logger.info(f"Getting {keyword}, currently at page: {page} ... ")
             url = cls.__base.format(keyword, page)
             blogs = cls._get_content(url, headers)
             result.extend(blogs)
             time.sleep(random.randint(5, 8))
-        print(f"Finished in keyword: {keyword}!")
+        cls.logger.info(f"Finished in keyword: {keyword}!")
         return result          
     
     @classmethod
