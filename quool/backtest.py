@@ -7,6 +7,14 @@ from pathlib import Path
 from .tools import parse_date, Logger
 
 
+class RoundSizer(bt.Sizer):
+    params = (('minstake', 100),)
+
+    def _getsizing(self, comminfo, cash, data, isbuy):
+        size = super()._getsizing(comminfo, cash, data, isbuy)
+        size = max(self.params.minstake, round(size / self.params.minstake) * self.params.minstake)
+        return size
+
 class Strategy(bt.Strategy):
     logger = Logger("QuoolStrategy", display_time=False)
 
@@ -247,6 +255,7 @@ class BackTrader:
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
         coc: bool = False,
+        minstake: int = 100,
         commission: float = 0.005,
         verbose: bool = True,
         detail_img: str | Path = None,
@@ -260,6 +269,7 @@ class BackTrader:
             self.data.index.get_level_values(self.date_index).max()
         cerebro = bt.Cerebro()
         cerebro.broker.setcash(cash)
+        cerebro.addsizer(RoundSizer, minstake=minstake)
         if coc:
             cerebro.broker.set_coc(True)
         cerebro.broker.setcommission(commission=commission)
