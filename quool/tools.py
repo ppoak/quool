@@ -68,18 +68,23 @@ class Logger(logging.Logger):
         stream: bool = True, 
         file: str = None,
         display_time: bool = True,
+        display_name: bool = False,
     ):
         name = name or 'QuoolLogger'
         super().__init__(name, level)
 
         if stream:
             stream_handler = logging.StreamHandler()
-            stream_handler.setFormatter(_StreamFormatter(display_time=display_time))
+            stream_handler.setFormatter(_StreamFormatter(
+                display_time=display_time, display_name=display_name
+            ))
             self.addHandler(stream_handler)
 
         if file:
             file_handler = logging.FileHandler(file)
-            file_handler.setFormatter(_FileFormatter(display_time=display_time))
+            file_handler.setFormatter(_FileFormatter(
+                display_time=display_time, display_name=display_name
+            ))
             self.addHandler(file_handler)
 
 

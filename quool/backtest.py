@@ -7,22 +7,41 @@ from pathlib import Path
 from .tools import parse_date, Logger
 
 
-class RoundSizer(bt.Sizer):
-    params = (('minstake', 100),)
-
-    def _getsizing(self, comminfo, cash, data, isbuy):
-        size = super()._getsizing(comminfo, cash, data, isbuy)
-        size = max(self.params.minstake, round(size / self.params.minstake) * self.params.minstake)
-        return size
-
 class Strategy(bt.Strategy):
-    logger = Logger("QuoolStrategy", display_time=False)
+    params = (("minstake", 100), )
+    logger = Logger("QuoolStrategy", display_time=False, display_name=False)
 
     def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
         self.logger.log(level=level, msg=f'[{datetime}]: {text}')
     
+    def resize(self, size: int):
+        minstake = self.params._getkwargs().get("minstake", 1)
+        if size is not None:
+            size = max(minstake, (size // minstake) * minstake)
+        return size
+    
+    def buy(
+        self, data=None, size=None, price=None, plimit=None, 
+        exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, 
+        trailpercent=None, parent=None, transmit=True, **kwargs
+    ):
+        size = self.resize(size)
+        return super().buy(data, size, price, plimit, 
+            exectype, valid, tradeid, oco, trailamount, 
+            trailpercent, parent, transmit, **kwargs)
+    
+    def sell(
+        self, data=None, size=None, price=None, plimit=None, 
+        exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, 
+        trailpercent=None, parent=None, transmit=True, **kwargs
+    ):
+        size = self.resize(size)
+        return super().sell(data, size, price, plimit, 
+            exectype, valid, tradeid, oco, trailamount, 
+            trailpercent, parent, transmit, **kwargs)
+
     def notify_order(self, order: bt.Order):
         """order notification"""
         # order possible status:
@@ -34,7 +53,7 @@ class Strategy(bt.Strategy):
 
         # broker completed order, just hint
         elif order.status in [order.Completed]:
-            self.log(f'Order <{order.executed.size}> <{order.info.get("name", "data")}> at <{order.executed.price:.2f}>')
+            self.log(f'Order <{order.executed.size}> <{order.data._name}> at <{order.executed.price:.2f}>')
             # record current bar number
             self.bar_executed = len(self)
 
@@ -55,7 +74,7 @@ class Strategy(bt.Strategy):
 
 
 class Indicator(bt.Indicator):
-    logger = Logger('QuoolIndicator', display_time=False)
+    logger = Logger('QuoolIndicator', display_time=False, display_name=False)
     
     def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
@@ -64,7 +83,7 @@ class Indicator(bt.Indicator):
 
 
 class Analyzer(bt.Analyzer):
-    logger = Logger('QuoolAnalyzer', display_time=False)
+    logger = Logger('QuoolAnalyzer', display_time=False, display_name=False)
 
     def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
@@ -73,7 +92,7 @@ class Analyzer(bt.Analyzer):
 
 
 class Observer(bt.Observer):
-    logger = Logger('QuoolObserver', display_time=False)
+    logger = Logger('QuoolObserver', display_time=False, display_name=False)
 
     def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
@@ -212,7 +231,7 @@ class BackTrader:
         self, 
         data: pd.DataFrame, 
         code_index: str = 'order_book_id',
-        date_index: str = 'date_index',
+        date_index: str = 'date',
     ):
         self.logger = Logger("QuoolBackTrader")
         self.data = data
@@ -261,6 +280,7 @@ class BackTrader:
         detail_img: str | Path = None,
         simple_img: str | Path = None,
         data_path: str | Path = None,
+        maxcpu: int = None,
         **kwargs
     ):
         start = parse_date(start) if start is not None else\
@@ -269,7 +289,6 @@ class BackTrader:
             self.data.index.get_level_values(self.date_index).max()
         cerebro = bt.Cerebro()
         cerebro.broker.setcash(cash)
-        cerebro.addsizer(RoundSizer, minstake=minstake)
         if coc:
             cerebro.broker.set_coc(True)
         cerebro.broker.setcommission(commission=commission)
@@ -282,11 +301,9 @@ class BackTrader:
         observers += [bt.observers.DrawDown]
         
         more = set(self.data.columns.to_list()) - set(['open', 'high', 'low', 'close', 'volume'])
-
-        class _PandasData(bt.feeds.PandasData):
-            lines = tuple(more)
-            params = tuple(zip(more, [-1] * len(more)))
-            
+        PandasData = type("_PandasData", (bt.feeds.PandasData,), {"lines": tuple(more), "params": tuple(zip(more, [-1] * len(more)))})
+        # without setting bt.metabase._PandasData, PandasData cannot be pickled
+        bt.metabase._PandasData = PandasData
         # add data
         if isinstance(self.data.index, pd.MultiIndex):
             datanames = self.data.index.get_level_values(self.code_index).unique().to_list()
@@ -295,14 +312,18 @@ class BackTrader:
         for dn in datanames:
             d = self.data.xs(dn, level=self.code_index) if \
                 isinstance(self.data.index, pd.MultiIndex) else self.data
-            feed = _PandasData(dataname=d, fromdate=start, todate=stop)
+            feed = PandasData(dataname=d, fromdate=start, todate=stop)
             cerebro.adddata(feed, name=dn)
         
         for indicator in indicators:
             if indicator is not None:
                 cerebro.addindicator(indicator)
-        if strategy is not None:
-            cerebro.addstrategy(strategy, **kwargs)
+        if 'minstake' not in strategy.params._getkeys():
+            strategy.params.add('minstake', 1)
+        if maxcpu is None:
+            cerebro.addstrategy(strategy, minstake=minstake, **kwargs)
+        else:
+            cerebro.optstrategy(strategy, minstake=minstake, **kwargs)
         for analyzer in analyzers:
             if analyzer is not None:
                 cerebro.addanalyzer(analyzer)
@@ -310,22 +331,33 @@ class BackTrader:
             if observer is not None:
                 cerebro.addobserver(observer)
         
-        strat = cerebro.run()[0]
-        timereturn = pd.Series(strat.analyzers.timereturn.rets)
+        strats = cerebro.run(maxcpu=maxcpu)
+        if maxcpu:
+            strats = [strat[0] for strat in strats]
+            # return strats
+        params = ['_'.join([f'{key}({strat.params._getkwargs()[key]})' 
+            for key in kwargs.keys()]) for strat in strats]
+        timereturn = pd.DataFrame(
+            [strat.analyzers.timereturn.rets for strat in strats],
+        ).T
+        timereturn.columns = params
         timereturn.index.name = "datetime"
         netvalue = (timereturn + 1).cumprod()
 
         if verbose:
-            self.logger.info('-' * 15 + " Return " + '-' * 15)
-            self.logger.info(f"total return: {(netvalue.iloc[-1] - 1) * 100:.2f} (%)")
-            self.logger.info(f"annual return <{start.strftime('%Y')}> - <{stop.strftime('%Y')}>: "
-                  f"{strat.analyzers.annualreturn.rets} (%)")
-            self.logger.info('-' * 15 + " Time Drawdown " + '-' * 15)
-            self.logger.info(dict(strat.analyzers.timedrawdown.rets))
-            self.logger.info('-' * 15 + " Sharpe " + '-' * 15)
-            self.logger.info(dict(strat.analyzers.sharperatio.rets))
+            self.logger.info('=' * 15 + " Return " + '=' * 15)
+            for i, strat in enumerate(strats):
+                self.logger.info("-" * 15 + " total return " + "-" * 15)
+                self.logger.info(f"total return {params[i]}: {(netvalue.iloc[-1, i] - 1) * 100:.2f} (%)")
+                self.logger.info(f"annual return {params[i]}: "
+                    f"<{start.strftime('%Y')}> - <{stop.strftime('%Y')}>: "
+                    f"{strat.analyzers.annualreturn.rets}")
+                self.logger.info('-' * 15 + " Time Drawdown " + '-' * 15)
+                self.logger.info(f'{params[i]}: {dict(strat.analyzers.timedrawdown.rets)}')
+                self.logger.info('-' * 15 + " Sharpe " + '-' * 15)
+                self.logger.info(f'{params[i]}: {dict(strat.analyzers.sharperatio.rets)}')
         
-        if detail_img is not None:
+        if detail_img is not None and maxcpu is None:
             if len(datanames) > 3:
                 self.logger.warning(f"There are {len(datanames)} stocks, the image "
                       "may be nested and takes a long time to draw")
@@ -335,17 +367,15 @@ class BackTrader:
             fig.savefig(detail_img, dpi=300)
 
         if simple_img is not None:
-            pd.concat(
-                [timereturn, netvalue], axis=1, keys=['timereturn', 'netvalue']
-            ).plot(secondary_y='timereturn')
+            netvalue.plot()
             plt.savefig(simple_img)
         
         if data_path is not None:
             with pd.ExcelWriter(data_path) as writer:
-                pd.concat(
-                    [timereturn, netvalue], axis=1, keys=['timereturn', 'netvalue']
-                ).to_excel(writer, sheet_name='Profit&Netvalue')
-                strat.analyzers.ordertable.rets.to_excel(writer, sheet_name='OrderTable')
-                strat.analyzers.cashvaluerecorder.rets.to_excel(writer, sheet_name='CashValueRecord')
+                timereturn.to_excel(writer, sheet_name='RET')
+                netvalue.to_excel(writer, sheet_name='VAL')
+                for i, strat in enumerate(strats):
+                    strat.analyzers.ordertable.rets.to_excel(writer, sheet_name='ORD_' + params[i])
+                    strat.analyzers.cashvaluerecorder.rets.to_excel(writer, sheet_name='CASH_' + params[i])
 
-        return strat
+        return strats
