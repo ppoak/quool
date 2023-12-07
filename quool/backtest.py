@@ -160,8 +160,8 @@ class Relocator:
     def __init__(
         self,
         price: pd.DataFrame,
-        code_index: str = 'order_book_id',
-        date_index: str = 'date_index',
+        code_index: str = 'code',
+        date_index: str = 'date',
         buy_column: str = "open",
         sell_column: str = "close",
         commision: float = 0.005,
@@ -230,7 +230,7 @@ class BackTrader:
     def __init__(
         self, 
         data: pd.DataFrame, 
-        code_index: str = 'order_book_id',
+        code_index: str = 'code',
         date_index: str = 'date',
     ):
         self.logger = Logger("QuoolBackTrader")
