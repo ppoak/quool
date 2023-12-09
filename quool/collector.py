@@ -2,6 +2,7 @@ import time
 import random
 import requests
 from lxml import etree
+from tqdm.auto import tqdm
 from bs4 import BeautifulSoup
 from joblib import Parallel, delayed
 from .tools import Logger
@@ -32,7 +33,7 @@ class Request:
         headers: dict = None,
         proxies: list[dict] = None,
         timeout: float = None,
-        retry: int = None,
+        retry: int = 1,
         delay: float = 0,
         verbose: bool = False,
         **kwargs
@@ -52,26 +53,43 @@ class Request:
         self.delay = delay
         self.verbose = verbose
         self.kwargs = kwargs
+        self.run = False
     
-    def _req(self, url: str) -> requests.Response:
+    def _req(
+        self, 
+        url: str, 
+        method: str = None,
+        proxies: dict | None = None, 
+        headers: dict | None = None,
+        timeout: float | None = None,
+        retry: int | None = None,
+        delay: float | None = None,
+        verbose: bool | None = None,
+    ) -> requests.Response:
         logger = Logger("QuoolRequest")
-        method = getattr(requests, self.method)
-        retry = self.retry or 1
+        retry = retry or self.retry
+        headers = headers or self.headers
+        proxies = proxies or self.proxies
+        timeout = timeout or self.timeout
+        delay = delay or self.delay
+        verbose = verbose or self.verbose
+        method = method or self.method
+        method = getattr(requests, method)
 
         for t in range(1, retry + 1):
             try:
                 resp = method(
-                    url, headers=self.headers, proxies=random.choice(self.proxies),
-                    timeout=self.timeout, **self.kwargs
+                    url, headers=headers, proxies=random.choice(proxies),
+                    timeout=timeout, **self.kwargs
                 )
                 resp.raise_for_status()
-                if self.verbose:
+                if verbose:
                     logger.info(f'[+] {url} try {t}')
                 return resp
             except Exception as e:
-                if self.verbose:
+                if verbose:
                     logger.warning(f'[-] {e} {url} try {t}')
-                time.sleep(self.delay)
+                time.sleep(delay)
 
         return None
     
@@ -85,7 +103,7 @@ class Request:
     
     def para_request(self) -> list[requests.Response]:
         self.responses = Parallel(n_jobs=-1, backend='loky')(
-            delayed(self._req)(url) for url in self.url
+            delayed(self._req)(url) for url in tqdm(self.url)
         )
         return self
 
@@ -113,5 +131,20 @@ class Request:
             self.para_request()
         else:
             self.request()
+        self.run = True
         return self.callback(*args, **kwargs)
 
+    def __str__(self):
+        return (
+            f"{self.__class__.__name__}\n"
+            f"\turl: {self.url}\n"
+            f"\ttimeout: {self.timeout}; delay: {self.delay}; "
+            f"verbose: {self.verbose}; retry: {self.retry}; run: {self.run}\n"
+            f"\tmethod: {self.method}\n"
+            f"\tproxy: {self.proxies[:3]}\n"
+            f"\theaders: {self.headers['User-Agent']}\n"
+            f"\t"
+        )
+
+    def __repr__(self):
+        return self.__str__()

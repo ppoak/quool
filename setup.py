@@ -17,14 +17,11 @@ setup(
     version = '0.1.2',
     install_requires = [
         'bs4',
+        'tqdm',
         'numpy',
         'joblib',
         'pandas',
         'matplotlib',
+        'backtrader',
     ],
-    extras_require={
-        'backtest': ['backtrader'],
-        'crawler': ['akshare'],
-        'all': ['backtrader', 'akshare'],
-    }
 )
