@@ -146,7 +146,7 @@ class Table:
                 d.to_parquet((self.path / frag).with_suffix('.parquet'))
         else:
             for frag in self.fragments:
-                pd.concat([pd._read_fragment(frag), df], axis=1).to_parquet(
+                pd.concat([self._read_fragment(frag), df], axis=1).to_parquet(
                     (self.path / frag).with_suffix('.parquet')
                 )
     
