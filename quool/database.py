@@ -84,8 +84,8 @@ class Table:
         """
         fragment = fragment or self.name
         df = df.loc[~df.index.duplicated(keep='last')].sort_index()
-        if not isinstance(fragment, str):
-            raise ValueError("fragment should be in string format")
+        if self.spliter is None and not isinstance(fragment, str):
+            raise ValueError("when spliter is None, fragment should be in string format")
         if self.spliter is not None:
             df.groupby(self.spliter).apply(
                 lambda x: x.to_parquet(
@@ -199,7 +199,7 @@ class PanelTable(Table):
         code_index: str = '__index_level_1__',
     ):
         spliter = spliter or pd.Grouper(level=date_index, freq='M', sort=True)
-        namer = namer or (lambda x: x.index.get_level_values(code_index)[0].strftime(r'%Y%m'))
+        namer = namer or (lambda x: x.index.get_level_values(date_index)[0].strftime(r'%Y%m'))
         super().__init__(uri, spliter, namer)
         self.date_index = date_index
         self.code_index = code_index
@@ -242,7 +242,7 @@ class PanelTable(Table):
     def update(
         self, df: pd.DataFrame, 
     ):
-        fragment = self.fragments[-1]
+        fragment = df.groupby(self.spliter).apply(self.namer).to_list()
         super().update(df, fragment)
         
 
@@ -284,7 +284,7 @@ class DiffTable(PanelTable):
     def update(
         self, df: pd.DataFrame,
     ):
-        fragment = self.fragments[-1]
+        fragment = df.groupby(self.spliter).apply(self.namer).to_list()
         df = pd.concat([self._read_fragment(fragment), df], axis=0)
         df = self._diff(df)
         self._write_fragment(df, fragment)
