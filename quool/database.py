@@ -86,7 +86,7 @@ class Table:
         df = df.loc[~df.index.duplicated(keep='last')].sort_index()
         if not isinstance(fragment, str):
             raise ValueError("fragment should be in string format")
-        if self.spliter:
+        if self.spliter is not None:
             df.groupby(self.spliter).apply(
                 lambda x: x.to_parquet(
                     f"{self.path / self.namer(x)}.parquet"
@@ -130,7 +130,7 @@ class Table:
         ================
         df: DataFrame, data in extra column
         """
-        if self.spliter:
+        if self.spliter is not None:
             df.groupby(self.spliter).apply(
                 lambda x: pd.concat([self._read_fragment(self.namer(x)), x], axis=1).to_parquet(
                     (self.path / self.namer(x)).with_suffix('.parquet')
@@ -188,7 +188,7 @@ class Table:
         return self.__str__()
 
 
-class AssetTable(Table):
+class PanelTable(Table):
 
     def __init__(
         self,
@@ -198,8 +198,8 @@ class AssetTable(Table):
         date_index: str = '__index_level_0__',
         code_index: str = '__index_level_1__',
     ):
-        spliter = spliter or (lambda x: x[1].year * 100 + x[1].month)
-        namer = namer or (lambda x: x.index.get_level_values(1)[0].strftime(r'%Y%m'))
+        spliter = spliter or pd.Grouper(level=date_index, freq='M', sort=True)
+        namer = namer or (lambda x: x.index.get_level_values(code_index)[0].strftime(r'%Y%m'))
         super().__init__(uri, spliter, namer)
         self.date_index = date_index
         self.code_index = code_index
@@ -260,7 +260,7 @@ class FrameTable(Table):
         return super().read(parse_commastr(column), filters)
 
 
-class DiffTable(AssetTable):
+class DiffTable(PanelTable):
 
     def __init__(
         self,

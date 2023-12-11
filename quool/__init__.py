@@ -9,7 +9,7 @@ from .tools import (
 
 from .database import (
     Table,
-    AssetTable,
+    PanelTable,
     FrameTable,
     DiffTable,
 )
