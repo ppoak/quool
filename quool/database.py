@@ -106,6 +106,7 @@ class Table:
         fragment: str, to specify which fragment to save the df
         """
         fragment = fragment or self.name
+        fragment = list(set(self.fragments) - (set(self.fragments) - set(fragment)))
         df = pd.concat([self._read_fragment(fragment), df], axis=0)
         self._write_fragment(df, fragment)
     
