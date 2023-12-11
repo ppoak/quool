@@ -195,8 +195,8 @@ class AssetTable(Table):
         uri: str | Path,
         spliter: str | list | dict | pd.Series | Callable | None = None,
         namer: str | list | dict | pd.Series | Callable | None = None,
-        date_index: str = 'date',
-        code_index: str = 'order_book_id',
+        date_index: str = '__index_level_0__',
+        code_index: str = '__index_level_1__',
     ):
         spliter = spliter or (lambda x: x[1].year * 100 + x[1].month)
         namer = namer or (lambda x: x.index.get_level_values(1)[0].strftime(r'%Y%m'))
@@ -252,7 +252,7 @@ class FrameTable(Table):
         self,
         column: str | list = None,
         index: str | list = None,
-        index_name: str = 'order_book_id',
+        index_name: str = '__index_level_0__',
     ):
         filters = None
         if index is not None:
@@ -267,8 +267,8 @@ class DiffTable(AssetTable):
         uri: str | Path,
         spliter: str | list | dict | pd.Series | Callable | None = None,
         namer: str | list | dict | pd.Series | Callable | None = None,
-        date_index: str = 'date',
-        code_index: str = 'order_book_id',
+        date_index: str = '__index_level_0__',
+        code_index: str = '__index_level_1__',
     ):
         spliter = spliter or (lambda x: x[1].year)
         namer = namer or (lambda x: x.index.get_level_values(1)[0].strftime(r'%Y'))
