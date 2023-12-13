@@ -28,3 +28,14 @@ from .backtest import (
     OrderTable,
     CashValueRecorder,
 )
+
+from .ops import (
+    abs, neg, sign, sqrt, ssqrt,
+    square, csrank, csnorm, 
+    add, sub, mul, div, power, 
+    maximum, minimum, log, sum,
+    mean, wma, ema, var, skew, kurt,
+    max, min, delta, delay, rank,
+    scale, product, decay_linear,
+    std, tsnorm, ifelse, correlation, covariance
+)

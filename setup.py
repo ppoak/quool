@@ -14,7 +14,7 @@ setup(
     long_description_content_type = "text/markdown",
     keywords = ['quant', 'framework', 'finance'],
     url = "https://github.com/ppoak/quool",
-    version = '0.2.0',
+    version = '0.2.1',
     install_requires = [
         'bs4',
         'tqdm',
