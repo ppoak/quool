@@ -35,7 +35,6 @@ def square(x: np.ndarray):
     return x ** 2
 
 def csrank(x: np.ndarray):
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     x = x.argsort(axis=1).argsort(axis=1)
@@ -46,7 +45,6 @@ def csrank(x: np.ndarray):
 
 def csnorm(x: np.ndarray) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -89,7 +87,6 @@ def power(a: np.array, b: 'float|int'):
 
 def maximum(x: np.ndarray, d: 'float|int'):
     x[x<d] = d
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     for row in x:
@@ -99,7 +96,6 @@ def maximum(x: np.ndarray, d: 'float|int'):
 
 def minimum(x: np.ndarray, d: 'float|int'):
     x[x>d] = d
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     for row in x:
@@ -112,7 +108,6 @@ def log(x: np.array, d: float):
 
 def sum(x: np.ndarray, d: int):
     mat = np.zeros((x.shape[0], x.shape[0]-d+1))
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     for i in range(mat.shape[0]-d+1):
@@ -126,7 +121,6 @@ def sum(x: np.ndarray, d: int):
 
 def mean(x: np.ndarray, d: int) -> np.ndarray:
     ma = np.zeros((x.shape[0], x.shape[0]-d+1))
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     for i in range(ma.shape[0]-d+1):
@@ -140,7 +134,6 @@ def mean(x: np.ndarray, d: int) -> np.ndarray:
 
 def wma(x: np.ndarray, d: int) -> np.ndarray:
     wma = np.zeros((x.shape[0], x.shape[0]-d+1))
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     denominator = np.sum([i for i in range(1, d+1)])
@@ -156,7 +149,6 @@ def wma(x: np.ndarray, d: int) -> np.ndarray:
 
 def ema(x: np.ndarray, d: int) -> np.ndarray:
     ema = np.zeros((x.shape[0], x.shape[0]-d+1))
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     denominator = np.sum(np.exp(np.arange(1, d + 1)))
@@ -172,7 +164,6 @@ def ema(x: np.ndarray, d: int) -> np.ndarray:
 
 def var(x: np.ndarray, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -189,7 +180,6 @@ def var(x: np.ndarray, d: int) -> np.ndarray:
 
 def skew(x: np.ndarray, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -208,7 +198,6 @@ def skew(x: np.ndarray, d: int) -> np.ndarray:
 
 def kurt(x: np.ndarray, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -229,7 +218,6 @@ def kurt(x: np.ndarray, d: int) -> np.ndarray:
 
 def max(x: np.array, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -246,7 +234,6 @@ def max(x: np.array, d: int) -> np.ndarray:
 
 def min(x: np.array, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -263,7 +250,6 @@ def min(x: np.array, d: int) -> np.ndarray:
 
 def delta(x: np.array, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -279,19 +265,12 @@ def delta(x: np.array, d: int) -> np.ndarray:
     return res
 
 def delay(x: np.ndarray, d: int) -> np.ndarray:
-    x = x.astype('float64')
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
     res = np.roll(x, d, axis=0)
     res[:d, :] = np.nan
-    for row in res:
-        if np.count_nonzero(row==0) == len(row):
-            row[:] = np.nan
     return res
 
 def rank(x: np.ndarray, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -307,7 +286,6 @@ def rank(x: np.ndarray, d: int) -> np.ndarray:
     return res
 
 def scale(x: np.ndarray, a: int = 1) -> np.ndarray:
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     s = np.sum(x, axis=1, keepdims=1)
@@ -316,7 +294,6 @@ def scale(x: np.ndarray, a: int = 1) -> np.ndarray:
 
 def product(x: np.ndarray, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -334,7 +311,6 @@ def product(x: np.ndarray, d: int) -> np.ndarray:
 
 def decay_linear(x: np.ndarray, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -352,7 +328,6 @@ def decay_linear(x: np.ndarray, d: int) -> np.ndarray:
 
 def std(x: np.ndarray, d: int):
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
@@ -368,7 +343,6 @@ def std(x: np.ndarray, d: int):
 
 def tsnorm(x: np.ndarray, d: int) -> np.ndarray:
     res = np.full_like(x, fill_value=np.nan)
-    x = x.astype('float64')
     x[np.isinf(x)] = np.nan
     x = np.nan_to_num(x)
     begin = 0
