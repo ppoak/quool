@@ -4,7 +4,7 @@ import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .tools import parse_date, Logger
+from .tools import parse_date, panelize, Logger
 
 
 class Strategy(bt.Strategy):
@@ -165,9 +165,11 @@ class Relocator:
         buy_column: str = "open",
         sell_column: str = "close",
         commision: float = 0.005,
+        delay: int = 1,
     ):
         self.price = self._format(price)
-        self.buy_price = self.price[buy_column] if isinstance(self.price, pd.DataFrame) else self.price
+        self.shift_price = self.price.groupby(level=code_index).shift(-delay)
+        self.buy_price = self.shift_price[buy_column] if isinstance(self.shift_price, pd.DataFrame) else self.shift_price
         self.sell_price = self.price[sell_column] if isinstance(self.price, pd.DataFrame) else self.price
         self.code_index = code_index
         self.date_index = date_index
@@ -178,11 +180,7 @@ class Relocator:
         weight: pd.DataFrame | pd.Series, 
         side: str = 'both'
     ):
-        weight = weight.reindex(pd.MultiIndex.from_product([
-            weight.index.get_level_values(self.code_index).unique(), 
-            weight.index.get_level_values(self.date_index).unique()
-        ], names = [self.code_index, self.date_index])).fillna(0)
-
+        weight = panelize(weight).fillna(0)
         preweight = weight.groupby(level=self.code_index).shift(1).fillna(0)
         delta = weight - preweight
         if side == 'both':
@@ -197,12 +195,18 @@ class Relocator:
         weight: pd.DataFrame | pd.Series, 
     ):
         weight = self._format(weight)
+        dates = weight.index.get_level_values(self.date_index).unique()
         commision = (self.turnover(weight) * self.commision)
-        buy_price = self.buy_price.loc[weight.index]
-        sell_price = self.sell_price.loc[weight.index].groupby(level=self.code_index).shift(-1)
+        buy_price = self.buy_price.loc[
+            self.buy_price.index.get_level_values(self.date_index).isin(dates)
+        ]
+        sell_price = self.sell_price.loc[
+            self.sell_price.index.get_level_values(self.date_index).isin(dates)
+        ].groupby(level=self.code_index).shift(-1)
         ret = (sell_price - buy_price) / buy_price
         return weight.groupby(level=self.date_index, group_keys=False).apply(lambda x: 
-            (ret.loc[x.index] * x).sum() - commision.loc[x.index.get_level_values(self.date_index)[0]]).shift(1)
+            (ret.loc[x.index] * x).sum() - commision.loc[x.index.get_level_values(self.date_index)[0]]
+        ).shift(1)
     
     def netvalue(
         self,

@@ -2,6 +2,7 @@ from .tools import (
     Logger,
     parse_commastr,
     parse_date,
+    panelize,
     reduce_mem_usage,
     format_code,
     strip_stock_code,

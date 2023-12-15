@@ -118,6 +118,18 @@ def parse_commastr(
     else:
         return commastr
 
+def panelize(data: pd.DataFrame | pd.Series) -> pd.Series | pd.DataFrame:
+    if isinstance(data, (pd.DataFrame, pd.Series))\
+        and isinstance(data.index, pd.MultiIndex):
+        levels = [data.index.get_level_values(i).unique() 
+            for i in range(data.index.nlevels)]
+        if data.shape[0] < np.prod([level.size for level in levels]):
+            data = data.reindex(pd.MultiIndex.from_product(levels))
+        return data
+    
+    else:
+        raise ValueError("only series and dataframe with multiindex is available")
+
 def reduce_mem_usage(df: pd.DataFrame):
     """iterate through all the columns of a dataframe and modify the data type
     to reduce memory usage.

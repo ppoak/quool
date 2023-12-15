@@ -69,8 +69,8 @@ class Table:
             frag_dat = pd.concat([frag_dat, frag], axis=1, join='inner')
             frag_dat.to_parquet(self.__fragment_path(name))
         else:
-            frag.reindex(columns=self.columns.tolist() 
-                + frag.columns.tolist()).to_parquet(self.__fragment_path(name))
+            frag.reindex(columns=self.columns.union(frag.columns)
+                ).to_parquet(self.__fragment_path(name))
     
     def _read_fragment(
         self,
