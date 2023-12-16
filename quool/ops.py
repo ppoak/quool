@@ -1,141 +1,105 @@
 import numpy as np
 
 
-def abs(x: np.ndarray):
-    return np.abs(x)
+# one-element operators
+def abs(a: np.ndarray) -> np.ndarray:
+    return np.abs(a)
 
-def neg(x: np.ndarray):
-    return np.negative(x)
+def neg(a: np.ndarray) -> np.ndarray:
+    return np.negative(a)
 
-def sign(a: np.ndarray):
+def sign(a: np.ndarray) -> np.ndarray:
     return np.sign(a)
 
-def sqrt(x: 'np.ndarray | int | float'):
-    if isinstance(x, (int, float)):
-        if x < 0:
-            x = -x
-    else:
-        x = np.abs(x)
-    return np.sqrt(x)
+def sqrt(a: 'np.ndarray | int | float') -> np.ndarray:
+    return np.sqrt(np.abs(a))
 
-def ssqrt(x: 'np.ndarray | int | float'):
-    if isinstance(x, (int, float)):
-        if x < 0:
-            x = -x
-            sign = -1
-        else:
-            sign = 1
-    else:
-        sign = np.ones_like(x)
-        sign[x<0] = -1
-        x = np.abs(x)
-    return sign * np.sqrt(x)
+def ssqrt(a: 'np.ndarray | int | float') -> np.ndarray:
+    return np.sign(a) * np.sqrt(np.abs(a))
 
-def square(x: np.ndarray):
-    return x ** 2
+def square(a: np.ndarray) -> np.ndarray:
+    return a ** 2
 
-def csrank(x: np.ndarray):
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    x = x.argsort(axis=1).argsort(axis=1)
-    for row in x:
-        if np.count_nonzero(row==0) == len(row):
-            row[row==0] = np.nan
-    return x
+def log(a: np.ndarray) -> np.ndarray:
+    return np.log(a)
 
-def csnorm(x: np.ndarray) -> np.ndarray:
-    res = np.full_like(x, fill_value=np.nan)
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    begin = 0
-    for idx, row in enumerate(x):
-        if np.count_nonzero(row==0) == len(row):
-            continue
-        else:
-           begin = idx 
-           break
-    for row in range(begin, x.shape[0]):
-        cs_mean = np.nanmean(x[row, :])
-        cs_std = np.nanstd(x[row, :])
-        res[row, :] = (x[row, :] - cs_mean) / cs_std
-    return res
+def abslog(a: np.ndarray) -> np.ndarray:
+    return np.log(np.abs(a))
 
-def add(x: np.ndarray, b: 'np.ndarray | float'):
-    return x + b
+def csrank(a: np.ndarray) -> np.ndarray:
+    return a.argsort(axis=1).argsort(axis=1)
 
-def sub(x: np.ndarray, b: 'np.ndarray | float'):
-    return x - b
+def csnorm(a: np.ndarray) -> np.ndarray:
+    mean = np.mean(a, axis=1).reshape(-1, 1)
+    std = np.std(a, axis=1).reshape(-1, 1)
+    return (a - mean) / std
 
-def mul(x: np.ndarray, b: 'np.ndarray | float'):
-    if isinstance(b, (float)):
-        if abs(b-0) < 1e-2:
-            b = 1e-1
-    return x * b
+# two-element operators
+def add(a: np.ndarray, b: 'np.ndarray | float') -> np.ndarray:
+    return a + b
 
-def div(x: np.ndarray, b: 'np.ndarray | float'):
-    if isinstance(b, (int, float)):
-        if b >= 0:
-            b = max(1e-1, b)
-        else:
-            b = min(1e-1, b)
-    return x / b
+def sub(a: np.ndarray, b: 'np.ndarray | float') -> np.ndarray:
+    return a - b
 
-def power(a: np.array, b: 'float|int'):
-    if b < 0:
-        b = -b
+def mul(a: np.ndarray, b: 'np.ndarray | float') -> np.ndarray:
+    return a * b
+
+def div(a: np.ndarray, b: 'np.ndarray | float') -> np.ndarray:
+    b = np.clip(b, 1e-4, np.inf)
+    return a / b
+
+def power(a: np.array, b: float | int) -> np.ndarray:
+    a = np.clip(a, 1e-4, np.inf)
     return np.power(a, b)
 
-def maximum(x: np.ndarray, d: 'float|int'):
-    x[x<d] = d
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    for row in x:
-        if np.count_nonzero(row==0) == len(row):
-            row[row==0] = np.nan
-    return x
+def maximum(a: np.ndarray, b: np.ndarray | float | int) -> np.ndarray:
+    return np.clip(a, 0, b)
 
-def minimum(x: np.ndarray, d: 'float|int'):
-    x[x>d] = d
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    for row in x:
-        if np.count_nonzero(row==0) == len(row):
-            row[row==0] = np.nan
-    return x
+def minimum(a: np.ndarray, b: np.ndarray | float | int) -> np.ndarray:
+    return np.clip(a, b, 0)
 
-def log(x: np.array, d: float):
-    return np.log(abs(x)) / np.log(d)
+# one-rolling operators
+def rsum(a: np.ndarray, w: int) -> np.ndarray:
+    res = np.full_like(a, np.nan)
+    for i in range(w, a.shape[0]):
+        s = (i - w) % i
+        res[i - 1] = np.nansum(a[s:i], axis=0)
+    return res
 
-def sum(x: np.ndarray, d: int):
-    mat = np.zeros((x.shape[0], x.shape[0]-d+1))
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    for i in range(mat.shape[0]-d+1):
-        mat[i:(i + d), i] = 1
-    res =  x.T @ mat
-    res = np.hstack((np.full((x.shape[1], d-1), fill_value=np.nan), res))
-    for row in res:
-        if np.count_nonzero(row==0) == len(row):
-            row[row==0] = np.nan
-    return res.T
+def rmean(a: np.ndarray, w: int) -> np.ndarray:
+    res = np.full_like(a, np.nan)
+    for i in range(w, a.shape[0]):
+        s = (i - w) % i
+        res[i - 1] = np.nanmean(a[s:i], axis=0)
+    return res
 
-def mean(x: np.ndarray, d: int) -> np.ndarray:
-    ma = np.zeros((x.shape[0], x.shape[0]-d+1))
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    for i in range(ma.shape[0]-d+1):
-        ma[i:(i + d), i] = 1/d
-    res =  x.T @ ma
-    res = np.hstack((np.full((x.shape[1], d-1), fill_value=np.nan), res))
-    for row in res:
-        if np.count_nonzero(row==0) == len(row):
-            row[row==0] = np.nan
-    return res.T
+def var(a: np.ndarray, w: int) -> np.ndarray:
+    res = np.full_like(a, np.nan)
+    for i in range(w, a.shape[0]):
+        s = (i - w) % i
+        res[i - 1] = np.nanvar(a[s:i], axis=0)
+    return res
+
+def skew(a: np.ndarray, w: int) -> np.ndarray:
+    res = np.full_like(a, np.nan)
+    for i in range(w, a.shape[0]):
+        s = (i - w) % i
+        mean = np.nanmean(a[s:i], axis=0)
+        std = np.nanstd(a[s:i], axis=0, ddof=1)
+        res[i - 1] = (np.sum((a[s:i] - mean) ** 3) / w) / (std ** 3)
+    return res
+
+def kurt(a: np.ndarray, w: int) -> np.ndarray:
+    res = np.full_like(a, np.nan)
+    for i in range(w, a.shape[0]):
+        s = (i - w) % i
+        mean = np.nanmean(a[s:i], axis=0)
+        std = np.nanstd(a[s:i], axis=0, ddof=1)
+        res[i - 1] = (np.sum((a[s:i] - mean) ** 4) / w) / (std ** 4) - 3
+    return res
 
 def wma(x: np.ndarray, d: int) -> np.ndarray:
     wma = np.zeros((x.shape[0], x.shape[0]-d+1))
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
     denominator = np.sum([i for i in range(1, d+1)])
     for i in range(wma.shape[0]-d+1):
         for j in range(1, d+1):
@@ -147,73 +111,11 @@ def wma(x: np.ndarray, d: int) -> np.ndarray:
             row[row==0] = np.nan
     return res.T
 
-def ema(x: np.ndarray, d: int) -> np.ndarray:
-    ema = np.zeros((x.shape[0], x.shape[0]-d+1))
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    denominator = np.sum(np.exp(np.arange(1, d + 1)))
-    for i in range(ema.shape[0]-d+1):
-        for j in range(1, d+1):
-            ema[(i + j - 1):(i + j), i] = np.exp(j) / denominator
-    res =  x.T @ ema
-    res = np.hstack((np.full((x.shape[1], d-1), fill_value=np.nan), res))
-    for row in res:
-        if np.count_nonzero(row==0) == len(row):
-            row[row==0] = np.nan
-    return res.T
-
-def var(x: np.ndarray, d: int) -> np.ndarray:
-    res = np.full_like(x, fill_value=np.nan)
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    begin = 0
-    for idx, row in enumerate(x):
-        if np.count_nonzero(row==0) == len(row):
-            continue
-        else:
-           begin = idx 
-           break
-    for row in range(begin, x.shape[0] - d + 1):
-        v = np.nanvar(x[row:row + d], axis=0)
-        res[row + d - 1, :] = v
-    return res
-
-def skew(x: np.ndarray, d: int) -> np.ndarray:
-    res = np.full_like(x, fill_value=np.nan)
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    begin = 0
-    for idx, row in enumerate(x):
-        if np.count_nonzero(row==0) == len(row):
-            continue
-        else:
-           begin = idx 
-           break
-    for row in range(begin, x.shape[0] - d + 1):
-        tmp = x[row:row + d]
-        s = np.sum((tmp - np.nanmean(tmp, axis=0)) ** 3, axis=0) / \
-                (np.count_nonzero(~np.isnan(tmp), axis=0) * np.nanstd(tmp, axis=0) ** 3)
-        res[row + d - 1, :] = s
-    return res
-
-def kurt(x: np.ndarray, d: int) -> np.ndarray:
-    res = np.full_like(x, fill_value=np.nan)
-    x[np.isinf(x)] = np.nan
-    x = np.nan_to_num(x)
-    begin = 0
-    for idx, row in enumerate(x):
-        if np.count_nonzero(row==0) == len(row):
-            continue
-        else:
-           begin = idx 
-           break
-    for row in range(begin, x.shape[0] - d + 1):
-        tmp = x[row:row + d]
-        tmpm = tmp.mean(axis=0)
-        tmps = tmp.std(axis=0)
-        tmp = (tmp - tmpm) / tmps
-        k = (tmp ** 4).mean(axis=0) - 3
-        res[row + d - 1, :] = k
+def ema(a: np.ndarray, w: int) -> np.ndarray:
+    res = np.full_like(a, np.nan)
+    res[0] = a[0]
+    for i in range(1, a.shape[0]):
+        res[i] = 2 / (1 + w) * a[i] + (w - 1) / (1 + w) * res[i - 1]
     return res
 
 def max(x: np.array, d: int) -> np.ndarray:

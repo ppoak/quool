@@ -53,12 +53,14 @@ class Strategy(bt.Strategy):
 
         # broker completed order, just hint
         elif order.status in [order.Completed]:
-            self.log(f'Order <{order.executed.size}> <{order.data._name}> at <{order.executed.price:.2f}>')
+            self.log(f'order <{order.executed.size}> shares of '
+                     f'<{order.data._name}> at <{order.executed.price:.2f}>')
             # record current bar number
             self.bar_executed = len(self)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
-            self.log('Order canceled, margin, rejected or expired')
+            self.log(f'order <{order.data._name}> canceled, '
+                     f'margin, rejected or expired')
 
         # except the submitted, accepted, and created status,
         # other order status should reset order variable
@@ -70,7 +72,7 @@ class Strategy(bt.Strategy):
             # trade not closed, skip
             return
         # else, log it
-        self.log(f'Gross Profit: {trade.pnl:.2f}, Net Profit {trade.pnlcomm:.2f}')
+        self.log(f'<{trade.data._name}> gross profit {trade.pnl:.2f}, net profit {trade.pnlcomm:.2f}')
 
 
 class Indicator(bt.Indicator):
