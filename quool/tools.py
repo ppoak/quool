@@ -94,6 +94,7 @@ def parse_date(
     format_: str = None,
     errors: str = 'ignore'
 ) -> tuple:
+    """parse the date string to the Timestamp format"""
     if not isinstance(date, list):
         try:
             date = (
@@ -110,6 +111,7 @@ def parse_date(
 def parse_commastr(
     commastr: 'str | list',
 ) -> pd.Index:
+    """parse the string with comma into a list"""
     if isinstance(commastr, str):
         commastr = commastr.split(',')
         return list(map(lambda x: x.strip(), commastr))
@@ -119,6 +121,7 @@ def parse_commastr(
         return commastr
 
 def panelize(data: pd.DataFrame | pd.Series) -> pd.Series | pd.DataFrame:
+    """to make a multi-index DataFrame or Series in a panel data form"""
     if isinstance(data, (pd.DataFrame, pd.Series))\
         and isinstance(data.index, pd.MultiIndex):
         levels = [data.index.get_level_values(i).unique() 
