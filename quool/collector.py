@@ -95,7 +95,7 @@ class Request:
     
     def request(self) -> list[requests.Response]:
         responses = []
-        for url in self.url:
+        for url in tqdm(self.url):
             resp = self._req(url)
             responses.append(resp)
         self.responses = responses
@@ -143,7 +143,6 @@ class Request:
             f"\tmethod: {self.method}\n"
             f"\tproxy: {self.proxies[:3]}\n"
             f"\theaders: {self.headers['User-Agent']}\n"
-            f"\t"
         )
 
     def __repr__(self):
