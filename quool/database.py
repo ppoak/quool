@@ -57,7 +57,9 @@ class Table:
             common_idx = frag.index.intersection(frag_dat.index)
             new_idx = frag.index.difference(frag_dat.index)
             frag_dat.loc[common_idx, frag.columns] = frag.loc[common_idx, frag.columns]
-            frag_dat = pd.concat([frag_dat, frag.loc[new_idx].reindex(columns=frag_dat.columns)], axis=0)
+            new_dat = frag.loc[new_idx]
+            if not new_dat.empty:
+                frag_dat = pd.concat([frag_dat, new_dat.reindex(columns=frag_dat.columns)], axis=0)
             frag_dat.to_parquet(self.__fragment_path(name))
         else:
             frag.reindex(columns=self.columns).to_parquet(self.__fragment_path(name))
