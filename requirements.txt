@@ -1,0 +1,7 @@
+bs4
+tqdm
+numpy
+joblib
+pandas
+matplotlib
+backtrader
