@@ -12,7 +12,6 @@ from .database import (
     Table,
     PanelTable,
     FrameTable,
-    DiffTable,
 )
 
 from .collector import (
@@ -29,3 +28,5 @@ from .backtest import (
     OrderTable,
     CashValueRecorder,
 )
+
+__version__ = "0.2.4"

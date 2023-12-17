@@ -1,3 +1,4 @@
+import quool
 from setuptools import setup, find_packages
 
 
@@ -14,7 +15,7 @@ setup(
     long_description_content_type = "text/markdown",
     keywords = ['quant', 'framework', 'finance'],
     url = "https://github.com/ppoak/quool",
-    version = '0.2.3',
+    version = quool.__version__,
     install_requires = [
         'bs4',
         'tqdm',
