@@ -3,5 +3,6 @@ tqdm
 numpy
 joblib
 pandas
+requests
 matplotlib
 backtrader
