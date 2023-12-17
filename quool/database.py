@@ -172,7 +172,7 @@ class Table:
         self,
         column: str | list
     ):
-        """Delet (a) column(s)
+        """Delete (a) column(s)
         ================
         column: str or list, column name(s)
         """
@@ -284,47 +284,3 @@ class PanelTable(Table):
         else:
             raise ValueError("Invalid start, stop or field values")
 
-
-class DiffTable(PanelTable):
-
-    def __init__(
-        self,
-        uri: str | Path,
-        spliter: pd.Grouper | Callable | None = None,
-        namer: pd.Grouper | Callable | None = None,
-        date_index: str = '__index_level_0__',
-        code_index: str = '__index_level_1__',
-    ):
-        spliter = spliter or pd.Grouper(level=date_index, freq='Y', sort=True)
-        namer = namer or (lambda x: x.index.get_level_values(1)[0].strftime(r'%Y'))
-        super().__init__(uri, spliter, namer, date_index, code_index)
-
-    def _diff(self, df: pd.DataFrame):
-        df = df.copy()
-        diff = df.groupby(self.code_index).apply(lambda x: x.diff())
-        df = df.loc[(diff != 0).any(axis=1).values]
-        df = df.loc[~df.index.duplicated(keep='last')].sort_index()
-        return df
-    
-    def __update_frag(self, frag: pd.DataFrame):
-        name = self.namer(frag)
-        if name in self.fragments:
-            frag_dat = self._read_fragment(name)
-            common_idx = frag.index.intersection(frag_dat.index)
-            new_idx = frag.index.difference(frag_dat.index)
-            frag_dat.loc[common_idx, frag.columns] = frag.loc[common_idx, frag.columns]
-            frag_dat = pd.concat([frag_dat, frag.loc[new_idx].reindex(columns=frag_dat.columns)], axis=0)
-            frag_dat = self._diff(frag_dat)
-            frag_dat.to_parquet(self.__fragment_path(name))
-        else:
-            frag.reindex(columns=self.columns).to_parquet(self.__fragment_path(name))
-    
-    def __add_frag(self, frag: pd.DataFrame):
-        name = self.namer(frag)
-        if name in self.fragments:
-            frag_dat = self._read_fragment(name)
-            frag_dat = pd.concat([frag_dat, self._diff(frag)], axis=1, join='outer')
-            frag_dat.to_parquet(self.__fragment_path(name))
-        else:
-            frag.reindex(columns=self.columns.tolist() 
-                + frag.columns.tolist()).to_parquet(self.__fragment_path(name))    
