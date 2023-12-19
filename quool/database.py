@@ -140,7 +140,7 @@ class Table:
         df.groupby(self.spliter).apply(self.__add_frag)
         related_fragment = self.__related_frag(df)
         columns = df.columns if isinstance(df, pd.DataFrame) else [df.name]
-        for frag in set(related_fragment) - set(self.fragments):
+        for frag in set(self.fragments) - set(related_fragment):
             d = self._read_fragment(frag)
             d[columns] = np.nan
             d.to_parquet(self.__fragment_path(frag))
