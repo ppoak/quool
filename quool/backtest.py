@@ -155,7 +155,7 @@ class Relocator:
         if isinstance(data.index, pd.MultiIndex):
             return data
         elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.DatetimeIndex):
-            return data.stack()
+            return data.stack().reorder_levels([self.code_index, self.date_index])
         else:
             raise ValueError("Malformed format of data")
 
@@ -169,12 +169,12 @@ class Relocator:
         commision: float = 0.005,
         delay: int = 1,
     ):
+        self.code_index = code_index
+        self.date_index = date_index
         self.price = self._format(price)
         self.shift_price = self.price.groupby(level=code_index).shift(-delay)
         self.buy_price = self.shift_price[buy_column] if isinstance(self.shift_price, pd.DataFrame) else self.shift_price
         self.sell_price = self.price[sell_column] if isinstance(self.price, pd.DataFrame) else self.price
-        self.code_index = code_index
-        self.date_index = date_index
         self.commision = commision
 
     def turnover(
@@ -195,8 +195,13 @@ class Relocator:
     def profit(
         self, 
         weight: pd.DataFrame | pd.Series, 
+        span: int = -1,
     ):
         weight = self._format(weight)
+        if not weight.index.difference(self.price.index).empty:
+            raise ValueError("there are some values in your weight "
+                             f"that are not in your price, check you stock pool")
+        
         dates = weight.index.get_level_values(self.date_index).unique()
         commision = (self.turnover(weight) * self.commision)
         buy_price = self.buy_price.loc[
@@ -204,7 +209,7 @@ class Relocator:
         ]
         sell_price = self.sell_price.loc[
             self.sell_price.index.get_level_values(self.date_index).isin(dates)
-        ].groupby(level=self.code_index).shift(-1)
+        ].groupby(level=self.code_index).shift(span)
         ret = (sell_price - buy_price) / buy_price
         return weight.groupby(level=self.date_index, group_keys=False).apply(lambda x: 
             (ret.loc[x.index] * x).sum() - commision.loc[x.index.get_level_values(self.date_index)[0]]
