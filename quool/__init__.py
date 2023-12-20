@@ -20,6 +20,7 @@ from .collector import (
 
 from .backtest import (
     BackTrader,
+    EventStudy,
     Relocator,
     Strategy,
     Indicator,
@@ -29,4 +30,4 @@ from .backtest import (
     CashValueRecorder,
 )
 
-__version__ = "0.2.5"
+__version__ = "0.3.1"

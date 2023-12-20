@@ -149,7 +149,7 @@ class CashValueRecorder(Analyzer):
         return self.rets 
 
 
-class Relocator:
+class FutureReturn:
 
     def _format(self, data: pd.DataFrame):
         if isinstance(data.index, pd.MultiIndex):
@@ -157,8 +157,8 @@ class Relocator:
         elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.DatetimeIndex):
             return data.stack().reorder_levels([self.code_index, self.date_index])
         else:
-            raise ValueError("Malformed format of data")
-
+            raise ValueError("Malformed format of data")    
+    
     def __init__(
         self,
         price: pd.DataFrame,
@@ -176,6 +176,71 @@ class Relocator:
         self.buy_price = self.shift_price[buy_column] if isinstance(self.shift_price, pd.DataFrame) else self.shift_price
         self.sell_price = self.price[sell_column] if isinstance(self.price, pd.DataFrame) else self.price
         self.commision = commision
+    
+    def __call__(self, span: int = -1):
+        return self.sell_price.groupby(level=self.code_index).shift(span) / self.buy_price - 1
+
+
+class EventStudy(FutureReturn):
+    
+    def __init__(
+        self,
+        price: pd.DataFrame,
+        code_index: str = 'code',
+        date_index: str = 'date',
+        buy_column: str = "open",
+        sell_column: str = "close",
+        commision: float = 0.005,
+        delay: int = 0,
+    ):
+        super().__init__(price, code_index, date_index, 
+            buy_column, sell_column, commision, delay)
+
+    def count(
+        self,
+        event: pd.DataFrame | pd.Series,
+    ):
+        event = self._format(event)
+        return event.groupby(level=self.date_index).count()
+    
+    def abreturn(
+        self, 
+        event: pd.DataFrame | pd.Series, 
+        date_range: tuple = (-5, 6, 1),
+        agg: str = "mean",
+    ):
+        event = self._format(event)
+        ret = self(span=-1)
+        res = []
+
+        for i in np.arange(*date_range):
+            r = ret.groupby(level=self.code_index).shift(-i).loc[event.index]
+            res.append(r.agg(agg) if agg else r)
+        
+        if agg:
+            return pd.Series(res, index=pd.Index(
+                np.arange(*date_range), 
+                name=self.date_index,
+                dtype='str'
+            )).add_prefix('day')
+        else:
+            return pd.concat(res, axis=1).add_prefix('day')
+
+
+class Relocator(FutureReturn):
+
+    def __init__(
+        self,
+        price: pd.DataFrame,
+        code_index: str = 'code',
+        date_index: str = 'date',
+        buy_column: str = "open",
+        sell_column: str = "close",
+        commision: float = 0.005,
+        delay: int = 1,
+    ):
+        super().__init__(price, code_index, date_index, 
+            buy_column, sell_column, commision, delay)
 
     def turnover(
         self, 
