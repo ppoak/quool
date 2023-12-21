@@ -22,6 +22,8 @@ setup(
         'numpy',
         'joblib',
         'pandas',
+        'pyarrow',
+        'requests',
         'matplotlib',
         'backtrader',
     ],

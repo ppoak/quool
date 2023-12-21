@@ -149,7 +149,7 @@ class CashValueRecorder(Analyzer):
         return self.rets 
 
 
-class FutureReturn:
+class Return:
 
     def _format(self, data: pd.DataFrame):
         if isinstance(data.index, pd.MultiIndex):
@@ -166,7 +166,6 @@ class FutureReturn:
         date_index: str = 'date',
         buy_column: str = "open",
         sell_column: str = "close",
-        commision: float = 0.005,
         delay: int = 1,
     ):
         self.code_index = code_index
@@ -174,60 +173,58 @@ class FutureReturn:
         self.price = self._format(price)
         self.shift_price = self.price.groupby(level=code_index).shift(-delay)
         self.buy_price = self.shift_price[buy_column] if isinstance(self.shift_price, pd.DataFrame) else self.shift_price
-        self.sell_price = self.price[sell_column] if isinstance(self.price, pd.DataFrame) else self.price
-        self.commision = commision
-    
-    def __call__(self, span: int = -1):
-        return self.sell_price.groupby(level=self.code_index).shift(span) / self.buy_price - 1
+        self.sell_price = self.shift_price[sell_column] if isinstance(self.shift_price, pd.DataFrame) else self.shift_price
+
+    def ret(self, span: int = -1, log: bool = False) -> pd.Series:
+        if span < 0:
+            sell_price = self.sell_price.groupby(level=self.code_index).shift(span)
+            buy_price = self.buy_price
+            if log:
+                return np.log(sell_price / buy_price)
+            return sell_price / buy_price - 1
+        else:
+            sell_price = self.sell_price
+            buy_price = self.buy_price.groupby(level=self.code_index).shift(span)
+            if log:
+                return np.log(sell_price / buy_price)
+            return sell_price / buy_price - 1
 
 
-class EventStudy(FutureReturn):
+class EventStudy(Return):
     
     def __init__(
         self,
         price: pd.DataFrame,
         code_index: str = 'code',
         date_index: str = 'date',
-        buy_column: str = "open",
+        buy_column: str = "close",
         sell_column: str = "close",
-        commision: float = 0.005,
         delay: int = 0,
     ):
         super().__init__(price, code_index, date_index, 
-            buy_column, sell_column, commision, delay)
+            buy_column, sell_column, delay)
 
-    def count(
+    def ret(
         self,
         event: pd.DataFrame | pd.Series,
+        span: tuple = (-6, 6, 1),
     ):
         event = self._format(event)
-        return event.groupby(level=self.date_index).count()
-    
-    def abreturn(
-        self, 
-        event: pd.DataFrame | pd.Series, 
-        date_range: tuple = (-5, 6, 1),
-        agg: str = "mean",
-    ):
-        event = self._format(event)
-        ret = self(span=-1)
-        res = []
-
-        for i in np.arange(*date_range):
-            r = ret.groupby(level=self.code_index).shift(-i).loc[event.index]
-            res.append(r.agg(agg) if agg else r)
+        if not event.index.difference(self.price.index).empty:
+            raise ValueError("there are some values in your event "
+                             f"that are not in your price, check you stock pool")
         
-        if agg:
-            return pd.Series(res, index=pd.Index(
-                np.arange(*date_range), 
-                name=self.date_index,
-                dtype='str'
-            )).add_prefix('day')
-        else:
-            return pd.concat(res, axis=1).add_prefix('day')
+        res = []
+        r = super().ret(span=1)
+
+        for i in np.arange(*span):
+            res.append(r.groupby(level=self.code_index).shift(-i).loc[event.index])
+                
+        res = pd.concat(res, axis=1, keys=np.arange(*span)).add_prefix('day').fillna(0)
+        return res
 
 
-class Relocator(FutureReturn):
+class Relocator(Return):
 
     def __init__(
         self,
@@ -236,51 +233,51 @@ class Relocator(FutureReturn):
         date_index: str = 'date',
         buy_column: str = "open",
         sell_column: str = "close",
-        commision: float = 0.005,
         delay: int = 1,
     ):
         super().__init__(price, code_index, date_index, 
-            buy_column, sell_column, commision, delay)
-
-    def turnover(
-        self, 
-        weight: pd.DataFrame | pd.Series, 
-        side: str = 'both'
-    ):
-        weight = panelize(weight).fillna(0)
-        preweight = weight.groupby(level=self.code_index).shift(1).fillna(0)
-        delta = weight - preweight
-        if side == 'both':
-            return delta.groupby(level=self.date_index).apply(lambda x: x.abs().sum() / 2)
-        elif side == 'buy':
-            return delta.groupby(level=self.date_index).apply(lambda x: x[x > 0].abs().sum())
-        elif side == 'sell':
-            return delta.groupby(level=self.date_index).apply(lambda x: x[x < 0].abs().sum())
+            buy_column, sell_column, delay)
     
-    def profit(
+    def ret(
         self, 
         weight: pd.DataFrame | pd.Series, 
         span: int = -1,
+        commision: float = 0.005,
+        side: str = 'both',
+        return_tvr: bool = False,
     ):
         weight = self._format(weight)
         if not weight.index.difference(self.price.index).empty:
             raise ValueError("there are some values in your weight "
                              f"that are not in your price, check you stock pool")
         
-        dates = weight.index.get_level_values(self.date_index).unique()
-        commision = (self.turnover(weight) * self.commision)
-        buy_price = self.buy_price.loc[
-            self.buy_price.index.get_level_values(self.date_index).isin(dates)
-        ]
-        sell_price = self.sell_price.loc[
-            self.sell_price.index.get_level_values(self.date_index).isin(dates)
-        ].groupby(level=self.code_index).shift(span)
-        ret = (sell_price - buy_price) / buy_price
-        return weight.groupby(level=self.date_index, group_keys=False).apply(lambda x: 
-            (ret.loc[x.index] * x).sum() - commision.loc[x.index.get_level_values(self.date_index)[0]]
-        ).shift(1)
+        _weight = panelize(weight).fillna(0)
+        _preweight = _weight.groupby(level=self.code_index).shift(abs(span)).fillna(0)
+        delta = _weight - _preweight
+        if side == 'both':
+            tvr = delta.groupby(level=self.date_index).apply(lambda x: x.abs().sum() / 2)
+        elif side == 'buy':
+            tvr = delta.groupby(level=self.date_index).apply(lambda x: x[x > 0].abs().sum())
+        elif side == 'sell':
+            tvr = delta.groupby(level=self.date_index).apply(lambda x: x[x < 0].abs().sum())
+        else:
+            raise ValueError("side must be in ['both', 'buy', 'sell']")
+        commision *= tvr
+
+        r = super().ret(span=span).unstack(level=self.code_index)
+        res = []
+        for i in range(abs(span)):
+            _r = r.iloc[i::abs(span)] / abs(span)
+            _r = (_r.sub(commision, axis=0)).stack().reorder_levels(weight.index.names)
+            _r = _r.loc[weight.index.intersection(_r.index)]
+            res.append(_r)
+        res = pd.concat(res, axis=0).sort_index() * weight
+
+        if return_tvr:
+            return res, tvr
+        return res
     
-    def netvalue(
+    def value(
         self,
         weight: pd.DataFrame | pd.Series,    
     ):
@@ -288,15 +285,15 @@ class Relocator(FutureReturn):
         relocate_date = weight.index.get_level_values(self.date_index).unique()
         datetime_index = self.price.index.get_level_values(self.date_index).unique()
         lrd = relocate_date[0]
-        lnet = (self.price.loc[d] * self.weight.loc[lrd]).sum()
+        lnet = (self.price.loc[d] * weight.loc[lrd]).sum()
         lcnet = 1
         net = pd.Series(np.ones(datetime_index.size), index=datetime_index)
         for d in datetime_index[1:]:
-            cnet = (self.price.loc[d] * self.weight.loc[lrd]).sum() / lnet * lcnet
+            cnet = (self.price.loc[d] * weight.loc[lrd]).sum() / lnet * lcnet
             lrd = relocate_date[relocate_date <= d][-1]
             if d == lrd:
                 lcnet = cnet
-                lnet = (self.price.loc[d] * self.weight.loc[lrd]).sum()
+                lnet = (self.price.loc[d] * weight.loc[lrd]).sum()
             net.loc[d] = cnet
         return net
 
