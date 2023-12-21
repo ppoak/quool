@@ -5,7 +5,7 @@ from lxml import etree
 from tqdm.auto import tqdm
 from bs4 import BeautifulSoup
 from joblib import Parallel, delayed
-from .tools import Logger
+from .equipment import Logger
 
 
 class Request:
