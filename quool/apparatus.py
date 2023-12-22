@@ -116,34 +116,35 @@ class Weight(Return):
         self, 
         weight: pd.DataFrame | pd.Series, 
         span: int = -1,
-        commision: float = 0.005,
+        commission: float = 0.005,
         side: str = 'both',
         return_tvr: bool = False,
-    ) -> tuple[pd.DataFrame, pd.DataFrame] | pd.DataFrame:
+    ) -> tuple[pd.Series, pd.Series] | pd.Series:
         if isinstance(weight, pd.Series) and \
             isinstance(weight.index, pd.MultiIndex):
             weight = weight.unstack(level=self.code_index)
-        elif not (isinstance(weight, pd.DataFrame) or 
-            not isinstance(weight, pd.MultiIndex)):
+        elif not (isinstance(weight, pd.DataFrame) and
+            not isinstance(weight.index, pd.MultiIndex)):
             raise ValueError("the type of weight must be one-level "
                              f"DataFrame or multi-level Series")
         
         delta = weight.fillna(0) - weight.shift(abs(span)).fillna(0)
         if side == 'both':
-            tvr = delta.abs() / 2
+            tvr = (delta.abs() / 2).sum(axis=1)
         elif side == 'buy':
-            tvr = delta.where(delta > 0).abs()
+            tvr = delta.where(delta > 0).abs().sum(axis=1)
         elif side == 'sell':
-            tvr = delta.where(delta < 0).abs()
+            tvr = delta.where(delta < 0).abs().sum(axis=1)
         else:
             raise ValueError("side must be in ['both', 'buy', 'sell']")
-        commision *= tvr
+        commission *= tvr
 
         r = super().ret(span=span)
         if isinstance(self.price.index, pd.MultiIndex):
             r = r.unstack(level=self.code_index)
 
-        r = (r - commision) * weight / abs(span)
+        r = (((r * weight).sum(axis=1) - commission) 
+             / abs(span)).shift(-min(0, span)).fillna(0)
 
         if return_tvr:
             return r, tvr
@@ -155,46 +156,45 @@ class NetValue(Return):
     def __init__(
         self,
         price: pd.DataFrame | pd.Series,
+        buy_column: str = "close",
+        sell_column: str = "close",
         code_index: str = 'code',
         date_index: str = 'date',
-        buy_column: str = "open",
-        sell_column: str = "close",
-        delay: int = 1,
     ):
-        super().__init__(price, code_index, date_index, 
-            buy_column, sell_column, delay)
+        super().__init__(price, buy_column, sell_column, 
+            code_index, date_index, 0)
     
     def ret(
         self, 
         weight: pd.DataFrame | pd.Series, 
-        span: int = -1,
-        commision: float = 0.005,
+        commission: float = 0.005,
         side: str = 'both',
         return_tvr: bool = False,
-    ) -> tuple[pd.DataFrame, pd.DataFrame] | pd.DataFrame:
+    ) -> tuple[pd.Series, pd.Series] | pd.Series:
         if isinstance(weight, pd.Series) and \
-            isinstance(weight, pd.MultiIndex):
+            isinstance(weight.index, pd.MultiIndex):
             weight = weight.unstack(level=self.code_index)
         elif not (isinstance(weight, pd.DataFrame) and 
-            not isinstance(weight, pd.MultiIndex)):
+            not isinstance(weight.index, pd.MultiIndex)):
             raise ValueError("the type of weight must be one-level "
                              f"DataFrame or multi-level Series")
         
-        delta = weight.fillna(0) - weight.shift(abs(span)).fillna(0)
+        delta = weight.fillna(0) - weight.shift(1).fillna(0)
         if side == 'both':
-            tvr = delta.abs() / 2
+            tvr = (delta.abs() / 2).sum(axis=1)
         elif side == 'buy':
-            tvr = delta.where(delta > 0).abs()
+            tvr = delta.where(delta > 0).abs().sum(axis=1)
         elif side == 'sell':
-            tvr = delta.where(delta < 0).abs()
+            tvr = delta.where(delta < 0).abs().sum(axis=1)
         else:
             raise ValueError("side must be in ['both', 'buy', 'sell']")
-        commision *= tvr
-        commision.iloc[::abs(span)] = 0
+        commission *= tvr
 
-        r = super().ret(span=span / abs(span)).unstack(level=self.code_index)
-        r = (r - commision) * weight / abs(span)
-
+        r = super().ret(span=1).unstack(level=self.code_index)
+        r = (r.fillna(0) * weight.fillna(0).reindex(r.index).ffill()).sum(axis=1) - \
+            commission.reindex(r.index).fillna(0)
+            
+        
         if return_tvr:
             return r, tvr
         return r
