@@ -3,6 +3,7 @@ from .apparatus import (
     Weight,
     Event,
     NetValue,
+    PeriodEvent,
 )
 
 from .backtest import (
@@ -36,4 +37,4 @@ from .equipment import (
 )
 
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
