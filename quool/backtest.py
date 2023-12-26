@@ -165,7 +165,8 @@ class BackTrader:
             self.data.index.get_level_values(date_index).unique(),
         ], names=[code_index, date_index])).sort_index()
         self.data.loc[:, ["open", "high", "low", "close", "volume"]] = \
-            self.data.loc[:, ["open", "high", "low", "close", "volume"]].ffill()
+            self.data.loc[:, ["open", "high", "low", "close", "volume"]].groupby(
+                level=code_index).ffill()
         self.code_index = code_index
         self.date_index = date_index
     
