@@ -163,7 +163,7 @@ class BackTrader:
         self.data = self.data.reindex(pd.MultiIndex.from_product([
             self.data.index.get_level_values(code_index).unique(),
             self.data.index.get_level_values(date_index).unique(),
-        ], names=[code_index, date_index])).fillna(0)
+        ], names=[code_index, date_index])).sort_index()
         self.code_index = code_index
         self.date_index = date_index
     
