@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
@@ -261,7 +260,7 @@ class Cerebro:
                 cerebro.addobserver(observer)
         
         strats = cerebro.run(maxcpus=maxcpus)
-        if maxcpus is not None and maxcpus > 1:
+        if maxcpus is not None:
             strats = [strat[0] for strat in strats]
         
         params = ['_'.join([f'{key}({strat.params._getkwargs()[key]})' 
