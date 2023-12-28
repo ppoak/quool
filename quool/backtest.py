@@ -156,7 +156,7 @@ class Cerebro:
         code_index: str = 'code',
         date_index: str = 'date',
     ):
-        self.logger = Logger("QuoolCerebro")
+        self.logger = Logger("QuoolCerebro", display_time=False)
         self.data = data
         self.data = self._valid(data)
         self.data = self.data.reindex(pd.MultiIndex.from_product([
@@ -205,6 +205,7 @@ class Cerebro:
         minstake: int = 100,
         commission: float = 0.005,
         maxcpus: int = None,
+        param_format: str = None,
         verbose: bool = True,
         detail_img: str | Path = None,
         simple_img: str | Path = None,
@@ -263,8 +264,9 @@ class Cerebro:
         if maxcpus is not None:
             strats = [strat[0] for strat in strats]
         
-        params = ['_'.join([f'{key}({strat.params._getkwargs()[key]})' 
-            for key in kwargs.keys()]) for strat in strats]
+        if param_format is None:
+            param_format = f"_".join([f"{key}{{{key}}}" for key in kwargs.keys()])
+        params = [param_format.format(**strat.params._getkwargs()) for strat in strats]
         cashvalue = [strat.analyzers.cashvaluerecorder.get_analysis() for strat in strats]
         if benchmark is not None:
             benchmark = benchmark / benchmark.groupby(level=self.code_index).apply(lambda x: x.iloc[0])
@@ -275,15 +277,14 @@ class Cerebro:
             cashvalue = cashvalue_
         
         if verbose:
-            self.logger.info('=' * 15 + " Return " + '=' * 15)
-            for i, strat in enumerate(strats):
-                self.logger.info("-" * 15 + " total return " + "-" * 15)
-                self.logger.info(f"total return {params[i]}: "
-                    f"{(cashvalue[i]['value'].iloc[-1] / cashvalue[i]['value'].iloc[0] - 1) * 100:.2f} (%)")
-                self.logger.info('-' * 15 + " Time Drawdown " + '-' * 15)
-                self.logger.info(f'{params[i]}: {dict(strat.analyzers.timedrawdown.rets)}')
-                self.logger.info('-' * 15 + " Sharpe " + '-' * 15)
-                self.logger.info(f'{params[i]}: {dict(strat.analyzers.sharperatio.rets)}')
+            strat_df = pd.concat([pd.Series([
+                cashvalue[i]["value"].iloc[-1] / cashvalue[i]['value'].iloc[0] - 1,
+                strat.analyzers.timedrawdown.rets["maxdrawdown"],
+                strat.analyzers.timedrawdown.rets["maxdrawdownperiod"],
+                strat.analyzers.sharperatio.rets["sharperatio"]
+            ], index=["return", "maxdrawdown", "maxdrawdownperiod", "sharperatio"], name=params[i])
+            for i, strat in enumerate(strats)], axis=1)
+            self.logger.info(strat_df.T)
         
         if detail_img is not None and maxcpus is None:
             if len(datanames) > 3:
