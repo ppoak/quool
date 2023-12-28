@@ -149,7 +149,7 @@ class CashValueRecorder(Analyzer):
         return self.rets 
 
 
-class BackTrader:
+class Cerebro:
 
     def __init__(
         self, 
@@ -157,7 +157,7 @@ class BackTrader:
         code_index: str = 'code',
         date_index: str = 'date',
     ):
-        self.logger = Logger("QuoolBackTrader")
+        self.logger = Logger("QuoolCerebro")
         self.data = data
         self.data = self._valid(data)
         self.data = self.data.reindex(pd.MultiIndex.from_product([
@@ -194,27 +194,29 @@ class BackTrader:
     def run(
         self, 
         strategy: bt.Strategy, 
+        *,
         start: str = None,
         stop: str = None,
         cash: float = 1e6,
+        benchmark: pd.DataFrame | pd.Series = None,
         indicators: 'bt.Indicator | list' = None,
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
         coc: bool = False,
         minstake: int = 100,
         commission: float = 0.005,
+        maxcpus: int = None,
         verbose: bool = True,
         detail_img: str | Path = None,
         simple_img: str | Path = None,
         data_path: str | Path = None,
-        maxcpu: int = None,
         **kwargs
     ):
         start = parse_date(start) if start is not None else\
             self.data.index.get_level_values(self.date_index).min()
         stop = parse_date(stop) if stop is not None else\
             self.data.index.get_level_values(self.date_index).max()
-        cerebro = bt.Cerebro()
+        cerebro = bt.Cerebro(stdstats=False)
         cerebro.broker.setcash(cash)
         if coc:
             cerebro.broker.set_coc(True)
@@ -222,7 +224,7 @@ class BackTrader:
 
         indicators = [indicators] if not isinstance(indicators, list) else indicators
         analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
-        analyzers += [bt.analyzers.SharpeRatio, bt.analyzers.TimeDrawDown, bt.analyzers.AnnualReturn,
+        analyzers += [bt.analyzers.SharpeRatio, bt.analyzers.TimeDrawDown,
                      bt.analyzers.TimeReturn, OrderTable, CashValueRecorder]
         observers = observers if isinstance(observers, list) else [observers]
         observers += [bt.observers.DrawDown]
@@ -247,7 +249,7 @@ class BackTrader:
                 cerebro.addindicator(indicator)
         if 'minstake' not in strategy.params._getkeys():
             strategy.params.add('minstake', 1)
-        if maxcpu is None:
+        if maxcpus is None:
             cerebro.addstrategy(strategy, minstake=minstake, **kwargs)
         else:
             cerebro.optstrategy(strategy, minstake=minstake, **kwargs)
@@ -258,51 +260,55 @@ class BackTrader:
             if observer is not None:
                 cerebro.addobserver(observer)
         
-        strats = cerebro.run(maxcpu=maxcpu)
-        if maxcpu:
+        strats = cerebro.run(maxcpus=maxcpus)
+        if maxcpus is not None and maxcpus > 1:
             strats = [strat[0] for strat in strats]
-            # return strats
+        
         params = ['_'.join([f'{key}({strat.params._getkwargs()[key]})' 
             for key in kwargs.keys()]) for strat in strats]
-        timereturn = pd.DataFrame(
-            [strat.analyzers.timereturn.rets for strat in strats],
-        ).T
-        timereturn.columns = params
-        timereturn.index.name = "datetime"
-        netvalue = (timereturn + 1).cumprod()
-
+        cashvalue = [strat.analyzers.cashvaluerecorder.get_analysis() for strat in strats]
+        if benchmark is not None:
+            benchmark = benchmark / benchmark.groupby(level=self.code_index).apply(lambda x: x.iloc[0])
+            benchmark = benchmark["close"].unstack(level=self.code_index) * cash
+            cashvalue_ = []
+            for cv in cashvalue:
+                cashvalue_.append(pd.concat([cv, benchmark], axis=1).ffill())
+            cashvalue = cashvalue_
+        
         if verbose:
             self.logger.info('=' * 15 + " Return " + '=' * 15)
             for i, strat in enumerate(strats):
                 self.logger.info("-" * 15 + " total return " + "-" * 15)
-                self.logger.info(f"total return {params[i]}: {(netvalue.iloc[-1, i] - 1) * 100:.2f} (%)")
-                self.logger.info(f"annual return {params[i]}: "
-                    f"<{start.strftime('%Y')}> - <{stop.strftime('%Y')}>: "
-                    f"{strat.analyzers.annualreturn.rets}")
+                self.logger.info(f"total return {params[i]}: "
+                    f"{(cashvalue[i]['value'].iloc[-1] / cashvalue[i]['value'].iloc[0] - 1) * 100:.2f} (%)")
                 self.logger.info('-' * 15 + " Time Drawdown " + '-' * 15)
                 self.logger.info(f'{params[i]}: {dict(strat.analyzers.timedrawdown.rets)}')
                 self.logger.info('-' * 15 + " Sharpe " + '-' * 15)
                 self.logger.info(f'{params[i]}: {dict(strat.analyzers.sharperatio.rets)}')
         
-        if detail_img is not None and maxcpu is None:
+        if detail_img is not None and maxcpus is None:
             if len(datanames) > 3:
                 self.logger.warning(f"There are {len(datanames)} stocks, the image "
                       "may be nested and takes a long time to draw")
             figs = cerebro.plot(style='candel')
             fig = figs[0][0]
             fig.set_size_inches(18, 3 + 6 * len(datanames))
-            fig.savefig(detail_img, dpi=300)
+            if not isinstance(detail_img, bool):
+                fig.savefig(detail_img, dpi=300)
 
         if simple_img is not None:
-            netvalue.plot()
-            plt.savefig(simple_img)
+            fig, axes = plt.subplots(nrows=len(params), figsize=(20, 10 * len(params)))
+            axes = [axes] if len(params) == 1 else axes
+            for i, (name, cv) in enumerate(zip(params, cashvalue)):
+                    cv.plot(ax=axes[i], title=name)
+            if not isinstance(simple_img, bool):
+                fig.savefig(simple_img)
         
         if data_path is not None:
             with pd.ExcelWriter(data_path) as writer:
-                timereturn.to_excel(writer, sheet_name='RET')
-                netvalue.to_excel(writer, sheet_name='VAL')
-                for i, strat in enumerate(strats):
-                    strat.analyzers.ordertable.rets.to_excel(writer, sheet_name='ORD_' + params[i])
-                    strat.analyzers.cashvaluerecorder.rets.to_excel(writer, sheet_name='CASH_' + params[i])
-
+                for name, cv, strat in zip(params, cashvalue, strats):
+                    cv.to_excel(writer, sheet_name='CV_' + name)
+                    strat.analyzers.ordertable.rets.reset_index().to_excel(
+                        writer, sheet_name='ORD_' + name, index=False)
+    
         return strats

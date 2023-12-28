@@ -7,7 +7,7 @@ from .apparatus import (
 )
 
 from .backtest import (
-    BackTrader,
+    Cerebro,
     Strategy,
     Indicator,
     Analyzer,
@@ -37,4 +37,4 @@ from .equipment import (
 )
 
 
-__version__ = "0.4.6"
+__version__ = "0.4.7"
