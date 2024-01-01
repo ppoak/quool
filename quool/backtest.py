@@ -8,12 +8,12 @@ from .equipment import parse_date, Logger
 
 class Strategy(bt.Strategy):
     params = (("minstake", 100), )
-    logger = Logger("QuoolStrategy", display_time=False, display_name=False)
+    logger = Logger("QuoolStrategy", level=logging.DEBUG, display_time=False, display_name=False)
 
     def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
         """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
-        self.logger.log(level=level, msg=f'[{datetime}]: {text}')
+        self.logger.log(level=level, msg=f'[{datetime}] {text}')
     
     def resize(self, size: int):
         minstake = self.params._getkwargs().get("minstake", 1)
@@ -52,18 +52,10 @@ class Strategy(bt.Strategy):
 
         # broker completed order, just hint
         elif order.status in [order.Completed]:
-            self.log(f'order <{order.executed.size}> shares of '
-                     f'<{order.data._name}> at <{order.executed.price:.2f}>')
-            # record current bar number
-            self.bar_executed = len(self)
+            self.log(f'{order.data._name} ref.{order.ref} order {order.executed.size} at {order.executed.price:.2f}')
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
-            self.log(f'order <{order.data._name}> canceled, '
-                     f'margin, rejected or expired')
-
-        # except the submitted, accepted, and created status,
-        # other order status should reset order variable
-        self.order = None
+            self.log(f'{order.data._name} ref.{order.ref} canceled, margin, rejected or expired')
 
     def notify_trade(self, trade):
         """trade notification"""
@@ -71,7 +63,7 @@ class Strategy(bt.Strategy):
             # trade not closed, skip
             return
         # else, log it
-        self.log(f'<{trade.data._name}> gross profit {trade.pnl:.2f}, net profit {trade.pnlcomm:.2f}')
+        self.log(f'{trade.data._name} gross {trade.pnl:.2f}, net {trade.pnlcomm:.2f}')
 
 
 class Indicator(bt.Indicator):
@@ -107,22 +99,25 @@ class OrderTable(Analyzer):
         self.orders = []
 
     def notify_order(self, order):
-        if order.status == order.Completed:
-            if order.isbuy():
-                self.orders.append([
-                    self.data.datetime.date(0),
-                    order.data._name, order.executed.size, 
-                    order.executed.price, 'BUY']
-                )
-            elif order.issell():
-                self.orders.append([
-                    self.data.datetime.date(0),
-                    order.data._name, order.executed.size, 
-                    order.executed.price, 'SELL']
-                )
+        if not order.alive():
+            self.orders.append({
+                'datetime': order.data.datetime.date(0),
+                'code': order.data._name,
+                'ref': order.ref,
+                'type': order.ordtypename(),
+                'status': order.getstatusname(),
+                'createdprice': order.created.price,
+                'createdsize': order.created.size,
+                'excecutedprice': order.executed.price,
+                'excecutedsize': order.executed.size,
+                'pricelimit': order.pricelimit,
+                'trailamount': order.trailamount,
+                'trailpercent': order.trailpercent,
+                'exectype': order.getordername(),
+            })
         
     def get_analysis(self):
-        self.rets = pd.DataFrame(self.orders, columns=['datetime', 'code', 'size', 'price', 'direction'])
+        self.rets = pd.DataFrame(self.orders)
         self.rets["datetime"] = pd.to_datetime(self.rets["datetime"])
         self.rets = self.rets.set_index(['datetime', 'code'])
         return self.rets
@@ -130,22 +125,21 @@ class OrderTable(Analyzer):
 
 class CashValueRecorder(Analyzer):
     def __init__(self):
-        self.cash = []
-        self.value = []
-        self.date = []
+        self.cashvalue = []
 
     def next(self):
-        self.cash.append(self.strategy.broker.get_cash())
-        self.value.append(self.strategy.broker.get_value())
-        self.date.append(self.strategy.data.datetime.date(0))
+        self.cashvalue.append({
+            'datetime': self.data.datetime.date(0),
+            'cash': self.strategy.broker.get_cash(),
+            'value': self.strategy.broker.get_value(),
+        })
 
     def get_analysis(self):
-        self.rets = pd.DataFrame(
-            {'cash': self.cash, 'value': self.value}, 
-            index=pd.to_datetime(self.date)
-        )
+        self.rets = pd.DataFrame(self.cashvalue)
+        self.rets['datetime'] = pd.to_datetime(self.rets['datetime'])
+        self.rets = self.rets.set_index('datetime')
         self.rets.index.name = "datetime"
-        return self.rets 
+        return self.rets
 
 
 class Cerebro:
@@ -273,18 +267,21 @@ class Cerebro:
             benchmark = benchmark["close"].unstack(level=self.code_index) * cash
             cashvalue_ = []
             for cv in cashvalue:
-                cashvalue_.append(pd.concat([cv, benchmark], axis=1).ffill())
+                cvb = pd.concat([cv, benchmark], axis=1).ffill()
+                cvb.index.name = 'datetime'
+                cashvalue_.append(cvb)
             cashvalue = cashvalue_
         
-        if verbose:
-            strat_df = pd.concat([pd.Series([
-                cashvalue[i]["value"].iloc[-1] / cashvalue[i]['value'].iloc[0] - 1,
+        strat_df = pd.concat([pd.Series([
+                (cashvalue[i]["value"].iloc[-1] / cashvalue[i]['value'].iloc[0] - 1) * 100,
                 strat.analyzers.timedrawdown.rets["maxdrawdown"],
                 strat.analyzers.timedrawdown.rets["maxdrawdownperiod"],
                 strat.analyzers.sharperatio.rets["sharperatio"]
-            ], index=["return", "maxdrawdown", "maxdrawdownperiod", "sharperatio"], name=params[i])
-            for i, strat in enumerate(strats)], axis=1)
-            self.logger.info(strat_df.T)
+            ], index=["return(%)", "maxdrawdown(%)", "maxdrawdownperiod(days)", "sharperatio"], name=params[i])
+        for i, strat in enumerate(strats)], axis=1).T
+        
+        if verbose:
+            self.logger.info(strat_df)
         
         if detail_img is not None and maxcpus is None:
             if len(datanames) > 3:
@@ -306,6 +303,7 @@ class Cerebro:
         
         if data_path is not None:
             with pd.ExcelWriter(data_path) as writer:
+                strat_df.to_excel(writer, sheet_name='ABSTRACT')
                 for name, cv, strat in zip(params, cashvalue, strats):
                     cv.to_excel(writer, sheet_name='CV_' + name)
                     strat.analyzers.ordertable.rets.reset_index().to_excel(
