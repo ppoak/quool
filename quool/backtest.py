@@ -218,8 +218,8 @@ class Cerebro:
 
         indicators = [indicators] if not isinstance(indicators, list) else indicators
         analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
-        analyzers += [bt.analyzers.SharpeRatio, bt.analyzers.TimeDrawDown,
-                     bt.analyzers.TimeReturn, OrderTable, CashValueRecorder]
+        analyzers += [bt.analyzers.SharpeRatio, bt.analyzers.TimeDrawDown, 
+                      OrderTable, CashValueRecorder]
         observers = observers if isinstance(observers, list) else [observers]
         observers += [bt.observers.DrawDown]
         
@@ -272,16 +272,20 @@ class Cerebro:
                 cashvalue_.append(cvb)
             cashvalue = cashvalue_
         
-        strat_df = pd.concat([pd.Series([
-                (cashvalue[i]["value"].iloc[-1] / cashvalue[i]['value'].iloc[0] - 1) * 100,
-                strat.analyzers.timedrawdown.rets["maxdrawdown"],
-                strat.analyzers.timedrawdown.rets["maxdrawdownperiod"],
-                strat.analyzers.sharperatio.rets["sharperatio"]
-            ], index=["return(%)", "maxdrawdown(%)", "maxdrawdownperiod(days)", "sharperatio"], name=params[i])
-        for i, strat in enumerate(strats)], axis=1).T
+        abstract = []
+        for i, strat in enumerate(strats):
+            ab = strat.params._getkwargs()
+            ab.update({"return": (cashvalue[i]["value"].iloc[-1] / cashvalue[i]['value'].iloc[0] - 1) * 100})
+            for analyzer in strat.analyzers:
+                ret = analyzer.get_analysis()
+                if isinstance(ret, dict):
+                    ab.update(ret)
+            abstract.append(ab)
+        abstract = pd.DataFrame(abstract)
+        abstract = abstract.set_index(keys=list(kwargs.keys()))
         
         if verbose:
-            self.logger.info(strat_df)
+            self.logger.info(abstract)
         
         if detail_img is not None and maxcpus is None:
             if len(datanames) > 3:
@@ -297,13 +301,13 @@ class Cerebro:
             fig, axes = plt.subplots(nrows=len(params), figsize=(20, 10 * len(params)))
             axes = [axes] if len(params) == 1 else axes
             for i, (name, cv) in enumerate(zip(params, cashvalue)):
-                    cv.plot(ax=axes[i], title=name)
+                cv.plot(ax=axes[i], title=name)
             if not isinstance(simple_img, bool):
                 fig.savefig(simple_img)
         
         if data_path is not None:
             with pd.ExcelWriter(data_path) as writer:
-                strat_df.to_excel(writer, sheet_name='ABSTRACT')
+                abstract.reset_index().to_excel(writer, sheet_name='ABSTRACT', index=False)
                 for name, cv, strat in zip(params, cashvalue, strats):
                     cv.to_excel(writer, sheet_name='CV_' + name)
                     strat.analyzers.ordertable.rets.reset_index().to_excel(
