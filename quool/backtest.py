@@ -199,6 +199,11 @@ class Cerebro:
         minstake: int = 100,
         commission: float = 0.005,
         maxcpus: int = None,
+        preload: bool = True,
+        runonce: bool = True,
+        exactbars: bool = False,
+        optdatas: bool = True,
+        optreturn: bool = True,
         param_format: str = None,
         verbose: bool = True,
         detail_img: str | Path = None,
@@ -254,7 +259,14 @@ class Cerebro:
             if observer is not None:
                 cerebro.addobserver(observer)
         
-        strats = cerebro.run(maxcpus=maxcpus)
+        strats = cerebro.run(
+            maxcpus = maxcpus,
+            preload = preload,
+            runonce = runonce,
+            exactbars = exactbars,
+            optdatas = optdatas,
+            optreturn = optreturn,
+        )
         if maxcpus is not None:
             strats = [strat[0] for strat in strats]
         
@@ -275,7 +287,8 @@ class Cerebro:
         abstract = []
         for i, strat in enumerate(strats):
             ab = strat.params._getkwargs()
-            ab.update({"return": (cashvalue[i]["value"].iloc[-1] / cashvalue[i]['value'].iloc[0] - 1) * 100})
+            ab.update({"return": (cashvalue[i]["value"].dropna().iloc[-1] /
+                cashvalue[i]['value'].dropna().iloc[0] - 1) * 100})
             for analyzer in strat.analyzers:
                 ret = analyzer.get_analysis()
                 if isinstance(ret, dict):
@@ -303,6 +316,7 @@ class Cerebro:
             for i, (name, cv) in enumerate(zip(params, cashvalue)):
                 cv.plot(ax=axes[i], title=name)
             if not isinstance(simple_img, bool):
+                fig.tight_layout()
                 fig.savefig(simple_img)
         
         if data_path is not None:
