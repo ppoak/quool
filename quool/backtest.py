@@ -10,7 +10,7 @@ class Strategy(bt.Strategy):
     params = (("minstake", 100), )
     logger = Logger("QuoolStrategy", level=logging.DEBUG, display_time=False, display_name=False)
 
-    def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
+    def log(self, text: str, level: int = logging.DEBUG, datetime: pd.Timestamp = None):
         """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
         self.logger.log(level=level, msg=f'[{datetime}] {text}')
@@ -279,7 +279,11 @@ class Cerebro:
             benchmark = benchmark["close"].unstack(level=self.code_index) * cash
             cashvalue_ = []
             for cv in cashvalue:
-                cvb = pd.concat([cv, benchmark], axis=1).ffill()
+                cvb = pd.concat([cv, benchmark, (
+                    -benchmark.pct_change().sub(
+                        cv["value"].pct_change(), axis=0
+                    ).fillna(0) + 1
+                ).cumprod().add_prefix("ex-") * cash], axis=1).ffill()
                 cvb.index.name = 'datetime'
                 cashvalue_.append(cvb)
             cashvalue = cashvalue_
