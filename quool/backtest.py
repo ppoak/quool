@@ -291,8 +291,10 @@ class Cerebro:
         abstract = []
         for i, strat in enumerate(strats):
             ab = strat.params._getkwargs()
-            ab.update({"return": (cashvalue[i]["value"].dropna().iloc[-1] /
-                cashvalue[i]['value'].dropna().iloc[0] - 1) * 100})
+            ret = (cashvalue[i].dropna().iloc[-1] /
+                cashvalue[i].dropna().iloc[0] - 1) * 100
+            ret = ret.drop(index="cash").add_prefix("return_").add_suffix("(%)")
+            ab.update(ret.to_dict())
             for analyzer in strat.analyzers:
                 ret = analyzer.get_analysis()
                 if isinstance(ret, dict):
