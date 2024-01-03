@@ -7,15 +7,52 @@ from .equipment import parse_date, Logger
 
 
 class Strategy(bt.Strategy):
+    """
+    A pre-defined trading strategy class for backtesting using Backtrader.
+
+    Attributes:
+        params (tuple): Parameters for the strategy, e.g., minimum stake size.
+        logger (Logger): Custom logger for logging strategy events.
+
+    Methods:
+        log(self, text, level, datetime): Logs messages with a timestamp.
+        resize(self, size): Adjusts the order size to comply with minimum stake.
+        buy(self, ...): Places a buy order with adjusted size.
+        sell(self, ...): Places a sell order with adjusted size.
+        notify_order(self, order): Handles notifications for order status.
+        notify_trade(self, trade): Handles notifications for trade executions.
+
+    Example:
+        class MyStrategy(Strategy):
+            def __init__(self):
+                # Strategy initialization code here
+    """
+
     params = (("minstake", 100), )
     logger = Logger("QuoolStrategy", level=logging.DEBUG, display_time=False, display_name=False)
 
     def log(self, text: str, level: int = logging.DEBUG, datetime: pd.Timestamp = None):
-        """Logging function"""
+        """
+        Logs messages for the strategy with a timestamp.
+
+        Args:
+            text (str): The message to log.
+            level (int): The logging level (e.g., logging.DEBUG).
+            datetime (pd.Timestamp, optional): The timestamp for the log message.
+        """
         datetime = datetime or self.data.datetime.date(0)
         self.logger.log(level=level, msg=f'[{datetime}] {text}')
     
     def resize(self, size: int):
+        """
+        Adjusts the order size to comply with the strategy's minimum stake.
+
+        Args:
+            size (int): The intended size of the order.
+
+        Returns:
+            int: The adjusted size of the order.
+        """
         minstake = self.params._getkwargs().get("minstake", 1)
         if size is not None:
             size = max(minstake, (size // minstake) * minstake)
@@ -26,6 +63,20 @@ class Strategy(bt.Strategy):
         exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, 
         trailpercent=None, parent=None, transmit=True, **kwargs
     ):
+        """
+        Places a buy order with adjusted size.
+
+        This method adjusts the order size using `resize` method and then
+        places a buy order using the parent class's `buy` method.
+
+        Args:
+            data, size, price, plimit, exectype, valid, tradeid, oco, 
+            trailamount, trailpercent, parent, transmit, **kwargs: 
+            Parameters for the buy order (see Backtrader documentation for details).
+
+        Returns:
+            The order object returned by the parent class's `buy` method.
+        """
         size = self.resize(size)
         return super().buy(data, size, price, plimit, 
             exectype, valid, tradeid, oco, trailamount, 
@@ -36,13 +87,35 @@ class Strategy(bt.Strategy):
         exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, 
         trailpercent=None, parent=None, transmit=True, **kwargs
     ):
+        """
+        Places a sell order with adjusted size.
+
+        This method adjusts the order size using `resize` method and then
+        places a sell order using the parent class's `sell` method.
+
+        Args:
+            data, size, price, plimit, exectype, valid, tradeid, oco, 
+            trailamount, trailpercent, parent, transmit, **kwargs: 
+            Parameters for the sell order (see Backtrader documentation for details).
+
+        Returns:
+            The order object returned by the parent class's `sell` method.
+        """
         size = self.resize(size)
         return super().sell(data, size, price, plimit, 
             exectype, valid, tradeid, oco, trailamount, 
             trailpercent, parent, transmit, **kwargs)
 
     def notify_order(self, order: bt.Order):
-        """order notification"""
+        """
+        Handles notifications for order status.
+
+        This method logs the status of orders, including completed, canceled, 
+        margin calls, rejected, and expired orders.
+
+        Args:
+            order (bt.Order): The order for which the notification is received.
+        """
         # order possible status:
         # 'Created'、'Submitted'、'Accepted'、'Partial'、'Completed'、
         # 'Canceled'、'Expired'、'Margin'、'Rejected'
@@ -58,7 +131,14 @@ class Strategy(bt.Strategy):
             self.log(f'{order.data._name} ref.{order.ref} canceled, margin, rejected or expired')
 
     def notify_trade(self, trade):
-        """trade notification"""
+        """
+        Handles notifications for trade executions.
+
+        This method logs the details of closed trades, including profit and loss.
+
+        Args:
+            trade (bt.Trade): The trade for which the notification is received.
+        """
         if not trade.isclosed:
             # trade not closed, skip
             return
@@ -143,6 +223,24 @@ class CashValueRecorder(Analyzer):
 
 
 class Cerebro:
+    """
+    A free-to-go trading environment class that integrates with Backtrader for strategy testing.
+
+    Attributes:
+        logger (Logger): An instance of a custom Logger class for logging.
+        data (pd.DataFrame): The input data for backtesting.
+        code_index (str): Level name in 'data' that represents the stock symbol.
+        date_index (str): Level name in 'data' that represents the dates.
+
+    Methods:
+        __init__(self, data, code_index, date_index): Initializes the Cerebro environment.
+        _valid(self, data): Validates and preprocesses the input data.
+        run(self, strategy, ...): Executes the specified trading strategy.
+
+    Example:
+        cerebro = Cerebro(data=my_dataframe)
+        cerebro.run(strategy=my_strategy)
+    """
 
     def __init__(
         self, 
@@ -164,6 +262,22 @@ class Cerebro:
         self.date_index = date_index
     
     def _valid(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Validates and preprocesses the provided data for backtesting.
+
+        Ensures the data is a DataFrame and contains necessary columns ('close', 'open', 'high', 'low').
+        Missing columns are generated based on available data.
+
+        Args:
+            data (pd.DataFrame): The trading data to be validated.
+
+        Returns:
+            pd.DataFrame: The validated and potentially modified data.
+
+        Raises:
+            ValueError: If 'data' does not contain a 'close' column.
+        """
+
         if isinstance(data, pd.DataFrame) and not 'close' in data.columns:
             raise ValueError('Your data should at least have a column named close')
         
@@ -202,15 +316,43 @@ class Cerebro:
         preload: bool = True,
         runonce: bool = True,
         exactbars: bool = False,
+        optstrats: bool = False,
         optdatas: bool = True,
         optreturn: bool = True,
         param_format: str = None,
         verbose: bool = True,
-        detail_img: str | Path = None,
-        simple_img: str | Path = None,
-        data_path: str | Path = None,
+        oldimg: str | Path = None,
+        image: str | Path = None,
+        result: str | Path = None,
         **kwargs
     ):
+        """
+        Runs a trading strategy using the Backtrader framework.
+
+        Args:
+            strategy (bt.Strategy): The trading strategy to be tested.
+            start (str): Start date for the backtesting period.
+            stop (str): End date for the backtesting period.
+            cash (float): Initial cash in the brokerage account.
+            benchmark (pd.DataFrame | pd.Series): Benchmark data for comparison.
+            indicators, analyzers, observers (list): Backtrader elements to be added.
+            coc (bool): Cheat-on-close flag.
+            minstake (int): Minimum stake size.
+            commission (float): Commission per trade.
+            maxcpus (int): Number of CPUs for parallel processing.
+            preload, runonce, exactbars (bool): Data preloading and execution flags.
+            optstrats, optdatas, optreturn (bool): Optimization flags.
+            param_format (str): Format string for parameter names.
+            verbose (bool): Verbosity flag.
+            oldimg, image, result (str | Path): File paths for saving outputs.
+            **kwargs: Additional parameters for the strategy.
+
+        Returns:
+            list: A list of strategy instances after backtesting.
+
+        Example:
+            cerebro.run(strategy=MyStrategy, cash=10000, start='2020-01-01', stop='2020-12-31')
+        """
         start = parse_date(start) if start is not None else\
             self.data.index.get_level_values(self.date_index).min()
         stop = parse_date(stop) if stop is not None else\
@@ -248,7 +390,7 @@ class Cerebro:
                 cerebro.addindicator(indicator)
         if 'minstake' not in strategy.params._getkeys():
             strategy.params.add('minstake', 1)
-        if maxcpus is None:
+        if not optstrats:
             cerebro.addstrategy(strategy, minstake=minstake, **kwargs)
         else:
             cerebro.optstrategy(strategy, minstake=minstake, **kwargs)
@@ -267,7 +409,7 @@ class Cerebro:
             optdatas = optdatas,
             optreturn = optreturn,
         )
-        if maxcpus is not None:
+        if optstrats:
             strats = [strat[0] for strat in strats]
         
         if param_format is None:
@@ -306,27 +448,27 @@ class Cerebro:
         if verbose:
             self.logger.info(abstract)
         
-        if detail_img is not None and maxcpus is None:
+        if oldimg is not None and not optstrats:
             if len(datanames) > 3:
                 self.logger.warning(f"There are {len(datanames)} stocks, the image "
                       "may be nested and takes a long time to draw")
             figs = cerebro.plot(style='candel')
             fig = figs[0][0]
             fig.set_size_inches(18, 3 + 6 * len(datanames))
-            if not isinstance(detail_img, bool):
-                fig.savefig(detail_img, dpi=300)
+            if not isinstance(oldimg, bool):
+                fig.savefig(oldimg, dpi=300)
 
-        if simple_img is not None:
+        if image is not None:
             fig, axes = plt.subplots(nrows=len(params), figsize=(20, 10 * len(params)))
             axes = [axes] if len(params) == 1 else axes
             for i, (name, cv) in enumerate(zip(params, cashvalue)):
                 cv.plot(ax=axes[i], title=name)
-            if not isinstance(simple_img, bool):
+            if not isinstance(image, bool):
                 fig.tight_layout()
-                fig.savefig(simple_img)
+                fig.savefig(image)
         
-        if data_path is not None:
-            with pd.ExcelWriter(data_path) as writer:
+        if result is not None:
+            with pd.ExcelWriter(result) as writer:
                 abstract.reset_index().to_excel(writer, sheet_name='ABSTRACT', index=False)
                 for name, cv, strat in zip(params, cashvalue, strats):
                     cv.to_excel(writer, sheet_name='CV_' + name)

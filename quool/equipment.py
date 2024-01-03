@@ -61,6 +61,27 @@ class _FileFormatter(__TimeFormatter):
 
 
 class Logger(logging.Logger):
+    """
+    A custom Logger class that extends Python's standard logging.Logger.
+
+    This Logger allows output to both console and file with configurable display options.
+
+    Attributes:
+        name (str): Name of the logger.
+        level (int): Logging level (e.g., logging.DEBUG, logging.INFO).
+        stream (bool): Flag to enable or disable console logging.
+        file (str): Path to a log file for file logging.
+        display_time (bool): Flag to display timestamps in log messages.
+        display_name (bool): Flag to display the logger's name in log messages.
+
+    Methods:
+        __init__(self, name, level, stream, file, display_time, display_name): Initializes the Logger object.
+
+    Example:
+        logger = Logger(name="MyLogger", level=logging.INFO, file="log.txt")
+        logger.info("This is an info message")
+    """
+
     def __init__(
         self, 
         name: str = None, 
@@ -70,6 +91,17 @@ class Logger(logging.Logger):
         display_time: bool = True,
         display_name: bool = False,
     ):
+        """
+        Initializes the Logger object.
+
+        Args:
+            name (str, optional): Name of the logger. Defaults to 'QuoolLogger'.
+            level (int, optional): Logging level. Defaults to logging.DEBUG.
+            stream (bool, optional): Whether to log to console. Defaults to True.
+            file (str, optional): File path to log to. Defaults to None (no file logging).
+            display_time (bool, optional): Whether to display timestamps. Defaults to True.
+            display_name (bool, optional): Whether to display the logger's name. Defaults to False.
+        """
         name = name or 'QuoolLogger'
         super().__init__(name, level)
 
@@ -94,7 +126,27 @@ def parse_date(
     format_: str = None,
     errors: str = 'ignore'
 ) -> tuple:
-    """parse the date string to the Timestamp format"""
+    """
+    Parses a date string or a list of date strings into pandas.Timestamp format.
+
+    Args:
+        date (str | list, optional): The date string or list of date strings to parse. Defaults to None.
+        default (str, optional): Default date string to use if 'date' is None. Defaults to '20000104'.
+        format_ (str, optional): The format string to use for parsing. If None, pandas will infer the format. Defaults to None.
+        errors (str, optional): Specifies how to handle errors. 
+                                'ignore' returns the original input if parsing fails,
+                                'raise' will raise an error, and 
+                                'coerce' will set invalid parsing as NaT (Not a Time). Defaults to 'ignore'.
+
+    Returns:
+        pandas.Timestamp | list[pandas.Timestamp]: The parsed date(s). If 'date' is a single string, returns a single Timestamp. 
+                                                  If 'date' is a list, returns a list of Timestamps. 
+                                                  Returns the input as is if parsing fails and errors is set to 'ignore'.
+
+    Example:
+        single_date = parse_date("2021-01-01")
+        multiple_dates = parse_date(["2021-01-01", "2021-02-01"])
+    """
     if not isinstance(date, list):
         try:
             date = (
@@ -111,7 +163,21 @@ def parse_date(
 def parse_commastr(
     commastr: 'str | list',
 ) -> pd.Index:
-    """parse the string with comma into a list"""
+    """
+    Parses a comma-separated string into a list of strings, or returns the list if the input is already a list.
+
+    Args:
+        commastr (str | list): A comma-separated string or a list of strings.
+
+    Returns:
+        list: A list of strings derived from the comma-separated input string. 
+              If the input is already a list, it is returned as is. 
+              If the input is None, None is returned.
+
+    Example:
+        result = parse_commastr("apple, banana, cherry")
+        # result will be ['apple', 'banana', 'cherry']
+    """
     if isinstance(commastr, str):
         commastr = commastr.split(',')
         return list(map(lambda x: x.strip(), commastr))
@@ -121,7 +187,27 @@ def parse_commastr(
         return commastr
 
 def panelize(data: pd.DataFrame | pd.Series) -> pd.Series | pd.DataFrame:
-    """to make a multi-index DataFrame or Series in a panel data form"""
+    """
+    Ensures that a DataFrame or Series with a MultiIndex covers all combinations of index levels.
+
+    If the data's MultiIndex does not cover all combinations of its levels, the data is reindexed 
+    to include all possible combinations, filling missing combinations with NaN.
+
+    Args:
+        data (pd.DataFrame | pd.Series): The DataFrame or Series to be reindexed.
+
+    Returns:
+        pd.DataFrame | pd.Series: The reindexed DataFrame or Series with a complete MultiIndex.
+
+    Example:
+        df = pd.DataFrame({
+            'value': [1, 2, 3]
+        }, index=pd.MultiIndex.from_tuples([
+            ('A', 'x'), ('B', 'y'), ('C', 'z')
+        ], names=['first', 'second']))
+        panelized_df = panelize(df)
+        # panelized_df will have a complete MultiIndex with all combinations of 'first' and 'second' levels.
+    """
     if isinstance(data, (pd.DataFrame, pd.Series))\
         and isinstance(data.index, pd.MultiIndex):
         levels = [data.index.get_level_values(i).unique() 
@@ -134,8 +220,22 @@ def panelize(data: pd.DataFrame | pd.Series) -> pd.Series | pd.DataFrame:
         raise ValueError("only series and dataframe with multiindex is available")
 
 def reduce_mem_usage(df: pd.DataFrame):
-    """iterate through all the columns of a dataframe and modify the data type
-    to reduce memory usage.
+    """
+    Reduces the memory usage of a pandas DataFrame by downcasting data types.
+
+    Iterates through all columns of the DataFrame and modifies the data type
+    to the most memory-efficient type that still supports the range of values
+    in each column.
+
+    Args:
+        df (pd.DataFrame): The DataFrame whose memory usage is to be reduced.
+
+    Returns:
+        pd.DataFrame: The DataFrame with optimized memory usage.
+
+    Example:
+        optimized_df = reduce_mem_usage(original_df)
+        # optimized_df will have the same values as original_df but with reduced memory usage.
     """
     logger = Logger("QuoolReduceMemUsage")
     start_mem = df.memory_usage().sum()
@@ -169,6 +269,24 @@ def reduce_mem_usage(df: pd.DataFrame):
     return df
 
 def format_code(code, format_str = '{market}.{code}', upper: bool = True):
+    """
+    Formats a stock code according to a specified pattern.
+
+    Args:
+        code (str): The stock code to format.
+        format_str (str, optional): The format string to use. Defaults to '{market}.{code}'.
+        upper (bool, optional): Flag to convert the market code to uppercase. Defaults to True.
+
+    Returns:
+        str: The formatted stock code.
+
+    Raises:
+        ValueError: If the input code format is not understood.
+
+    Example:
+        formatted_code = format_code('600000', upper=True)
+        # formatted_code will be 'SH.600000'
+    """
     if len(c := code.split('.')) == 2:
         dig_code = c.pop(0 if c[0].isdigit() else 1)
         market_code = c[0]
@@ -189,6 +307,19 @@ def format_code(code, format_str = '{market}.{code}', upper: bool = True):
         raise ValueError("Your input code is not unstood")
 
 def strip_stock_code(code: str):
+    """
+    Strips the market prefix from a stock code.
+
+    Args:
+        code (str): The stock code with potential market prefix.
+
+    Returns:
+        str: The stock code without the market prefix.
+
+    Example:
+        stripped_code = strip_stock_code('SZ.000001')
+        # stripped_code will be '000001'
+    """
     code_pattern = r'\.?[Ss][Zz]\.?|\.?[Ss][Hh]\.?|\.?[Bb][Jj]\.?'\
         '|\.?[Oo][Ff]\.?'
     return re.sub(code_pattern, '', code)

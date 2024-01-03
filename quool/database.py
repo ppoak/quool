@@ -7,6 +7,32 @@ from .equipment import parse_commastr, parse_date
 
 
 class Table:
+    """
+    A class for managing large datasets in a fragmented, file-based structure using Parquet files.
+
+    Attributes:
+        path (Path): The file path to the database or data storage directory.
+        name (str): The base name of the data storage directory.
+        spliter (Callable): Function to divide a DataFrame into several partitions.
+        namer (Callable): Function to name a specific DataFrame partition.
+
+    Methods:
+        __init__(self, uri, spliter, namer, create): Initializes the Table object.
+        fragments (property): Lists all data fragments in the storage directory.
+        columns (property): Lists column names in the last fragment.
+        _read_fragment(self, fragment): Reads a specified fragment from storage.
+        read(self, columns, filters): Reads data with optional filtering.
+        update(self, df): Updates the database with new data.
+        add(self, df): Adds new columns to the database.
+        delete(self, index): Deletes rows from the database.
+        remove(self, fragment): Removes specified fragments from the database.
+        sub(self, column): Deletes specified columns from the database.
+        rename(self, column): Renames columns in the database.
+
+    Example:
+        table = Table(uri="path/to/data", create=True)
+        table.add(df=my_dataframe)
+    """
 
     def __init__(
         self,
@@ -15,13 +41,14 @@ class Table:
         namer: pd.Grouper | Callable | None = None,
         create: bool = True,
     ):
-        """Create Table Class
-        ======================
-        uri: str or Path, the target path to the database
-        spliter: pd.Grouper or Callable, the split function to divide 
-            a dataframe into several partitions
-        namer: pd.Grouper or Callable, the naming function to name a
-            specific dataframe partition
+        """
+        Initializes the Table object.
+
+        Args:
+            uri (str | Path): Path to the database or data storage directory.
+            spliter (pd.Grouper | Callable, optional): Function to divide a DataFrame into partitions.
+            namer (pd.Grouper | Callable, optional): Function to name DataFrame partitions.
+            create (bool, optional): Whether to create the directory if it doesn't exist.
         """
         self.path = Path(uri).expanduser().resolve()
         self.name = self.path.stem
@@ -32,10 +59,22 @@ class Table:
     
     @property
     def fragments(self):
+        """
+        Lists the names of all data fragments in the storage directory.
+
+        Returns:
+            List[str]: Names of the data fragments.
+        """
         return sorted([f.stem for f in list(self.path.glob('**/*.parquet'))])
     
     @property
     def columns(self):
+        """
+        Lists the column names in the last data fragment.
+
+        Returns:
+            pd.Index: Column names.
+        """
         if self.fragments:
             return self._read_fragment(self.fragments[-1]).columns
         else:
@@ -78,9 +117,14 @@ class Table:
         self,
         fragment: list | str = None,
     ):
-        """Read a given fragment
-        ========================
-        fragment: str or list, fragment to be provided
+        """
+        Reads a specified fragment from storage.
+
+        Args:
+            fragment (list | str, optional): The name(s) of the fragment(s) to read.
+
+        Returns:
+            pd.DataFrame: The data from the specified fragment(s).
         """
         fragment = fragment or self.fragments
         fragment = [fragment] if not isinstance(fragment, list) else fragment
@@ -92,10 +136,15 @@ class Table:
         columns: str | list[str] | None = None,
         filters: list[list[tuple]] = None,
     ):
-        """Reading Data
-        ===============
-        columns: str, list[str], the columns to be read
-        filters: filter format can be referred to `pd.read_parquet`
+        """
+        Reads data from storage with optional filtering.
+
+        Args:
+            columns (str | list[str], optional): The columns to read.
+            filters (list[list[tuple]], optional): Filters for reading the data.
+
+        Returns:
+            pd.DataFrame: The read data.
         """
         df = pd.read_parquet(
             self.path, 
@@ -109,12 +158,12 @@ class Table:
         self,
         df: pd.DataFrame | pd.Series,
     ):
-        """Update the database
-        =======================
-        df: DataFrame, the dataframe to be saved into the database, 
-            note the columns should be aligned,
-        fragment: str, to specify which fragment to save the df
-        """        
+        """
+        Updates the database with new data.
+
+        Args:
+            df (pd.DataFrame | pd.Series): The DataFrame or Series to update the database with.
+        """ 
         if isinstance(df, pd.Series):
             df = df.to_frame()
         
@@ -127,9 +176,11 @@ class Table:
         self,
         df: pd.Series | pd.DataFrame
     ):
-        """Add (a) column(s)
-        ================
-        df: DataFrame, data in extra column
+        """
+        Adds new columns to the database.
+
+        Args:
+            df (pd.Series | pd.DataFrame): The data to add to the database.
         """
         if isinstance(df, pd.Series):
             df = df.to_frame()
@@ -149,6 +200,12 @@ class Table:
         self,
         index: pd.Index,
     ):
+        """
+        Deletes rows from the database.
+
+        Args:
+            index (pd.Index): Index of the rows to delete.
+        """
         related_fragment = self.__related_frag(pd.DataFrame(index=index))
         for frag in related_fragment:
             df = self._read_fragment(frag)
@@ -159,9 +216,11 @@ class Table:
         self,
         fragment: str | list = None,
     ):
-        """Remove fragment
-        ===================
-        fragment: str or list, specify which fragment(s) to be removed
+        """
+        Removes specified fragments from the database.
+
+        Args:
+            fragment (str | list, optional): The fragment(s) to remove.
         """
         fragment = fragment or self.fragments
         fragment = [fragment] if not isinstance(fragment, list) else fragment
@@ -172,9 +231,11 @@ class Table:
         self,
         column: str | list
     ):
-        """Delete (a) column(s)
-        ================
-        column: str or list, column name(s)
+        """
+        Deletes specified columns from the database.
+
+        Args:
+            column (str | list): The column(s) to delete.
         """
         column = parse_commastr(column)
         for frag in self.fragments:
@@ -186,9 +247,11 @@ class Table:
         self,
         column: dict
     ):
-        """Rename (a) column(s)
-        ================
-        column: dict, `{<old column name(s)>: <new column name(s)>}`
+        """
+        Renames columns in the database.
+
+        Args:
+            column (dict): A mapping of old column names to new column names.
         """
         column = parse_commastr(column)
         for frag in self.fragments:
@@ -208,6 +271,22 @@ class Table:
         
 
 class FrameTable(Table):
+    """
+    A subclass of Table designed for handling data frames with enhanced index management.
+
+    Attributes:
+        spliter (Callable): Function to divide a DataFrame into several partitions.
+        namer (Callable): Function to name a specific DataFrame partition.
+        index_name (str): Name of the index column used in the stored data frames.
+
+    Methods:
+        __init__(self, uri, spliter, namer, index_name, create): Initializes the FrameTable object.
+        read(self, column, index): Reads data with optional column and index filtering.
+
+    Example:
+        frame_table = FrameTable(uri="path/to/data", create=True)
+        data = frame_table.read(column="my_column", index=["index1", "index2"])
+    """
 
     def __init__(
         self, 
@@ -217,6 +296,16 @@ class FrameTable(Table):
         index_name: str = '__index_level_0__', 
         create: bool = True
     ):
+        """
+        Initializes the FrameTable object.
+
+        Args:
+            uri (str | Path): Path to the database or data storage directory.
+            spliter (pd.Grouper | Callable, optional): Function to divide a DataFrame into partitions.
+            namer (pd.Grouper | Callable, optional): Function to name DataFrame partitions.
+            index_name (str, optional): Name of the index column in stored data frames.
+            create (bool, optional): Whether to create the directory if it doesn't exist.
+        """
         self.spliter = spliter or (lambda x: 1)
         self.namer = namer or (lambda x: self.name)
         self.index_name = index_name
@@ -227,6 +316,16 @@ class FrameTable(Table):
         column: str | list = None,
         index: str | list = None,
     ):
+        """
+        Reads data from the storage with optional column and index filtering.
+
+        Args:
+            column (str | list, optional): The column(s) to read from the data.
+            index (str | list, optional): The index value(s) to filter the data.
+
+        Returns:
+            pd.DataFrame: The filtered data frame.
+        """
         filters = None
         if index is not None:
             filters = [(self.index_name, "in", parse_commastr(index))]
@@ -234,6 +333,21 @@ class FrameTable(Table):
 
 
 class PanelTable(Table):
+    """
+    A specialized subclass of Table for handling panel data with time and categorical indexing.
+
+    Attributes:
+        date_index (str): The name of the index column representing dates.
+        code_index (str): The name of the index column representing categorical dimensions, like stock codes.
+
+    Methods:
+        __init__(self, uri, spliter, namer, date_index, code_index): Initializes the PanelTable object.
+        read(self, field, code, start, stop, filters): Reads data with optional field, code, time, and other filters.
+
+    Example:
+        panel_table = PanelTable(uri="path/to/panel/data")
+        data = panel_table.read(field="price", code="AAPL", start="2020-01-01", stop="2020-12-31")
+    """
 
     def __init__(
         self,
@@ -243,6 +357,16 @@ class PanelTable(Table):
         date_index: str = '__index_level_0__',
         code_index: str = '__index_level_1__',
     ):
+        """
+        Initializes the PanelTable object.
+
+        Args:
+            uri (str | Path): Path to the database or data storage directory.
+            spliter (str | list | dict | pd.Series | Callable, optional): Function or parameter to divide the DataFrame into partitions based on time.
+            namer (str | list | dict | pd.Series | Callable, optional): Function or parameter to name DataFrame partitions.
+            date_index (str, optional): Name of the index column for dates.
+            code_index (str, optional): Name of the index column for categorical dimensions.
+        """
         spliter = spliter or pd.Grouper(level=date_index, freq='M', sort=True)
         namer = namer or (lambda x: x.index.get_level_values(date_index)[0].strftime(r'%Y%m'))
         super().__init__(uri, spliter, namer)
@@ -257,6 +381,19 @@ class PanelTable(Table):
         stop: str = None,
         filters: list[list[tuple]] = None,
     ) -> pd.Series | pd.DataFrame:
+        """
+        Reads data from the storage with optional filtering by field, code, time range, and other conditions.
+
+        Args:
+            field (str | list, optional): The field(s) to read from the data.
+            code (str | list, optional): The code(s) to filter the data.
+            start (str | list, optional): The start date(s) for the time range filter.
+            stop (str, optional): The end date for the time range filter.
+            filters (list[list[tuple]], optional): Additional filters for reading the data.
+
+        Returns:
+            pd.Series | pd.DataFrame: The filtered data.
+        """
         code = parse_commastr(code)
         field = parse_commastr(field)
         filters = filters or []
