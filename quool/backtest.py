@@ -316,7 +316,6 @@ class Cerebro:
         preload: bool = True,
         runonce: bool = True,
         exactbars: bool = False,
-        optstrats: bool = False,
         optdatas: bool = True,
         optreturn: bool = True,
         param_format: str = None,
@@ -390,7 +389,7 @@ class Cerebro:
                 cerebro.addindicator(indicator)
         if 'minstake' not in strategy.params._getkeys():
             strategy.params.add('minstake', 1)
-        if not optstrats:
+        if maxcpus is not None and maxcpus > 1:
             cerebro.addstrategy(strategy, minstake=minstake, **kwargs)
         else:
             cerebro.optstrategy(strategy, minstake=minstake, **kwargs)
@@ -409,7 +408,7 @@ class Cerebro:
             optdatas = optdatas,
             optreturn = optreturn,
         )
-        if optstrats:
+        if maxcpus is not None:
             strats = [strat[0] for strat in strats]
         
         if param_format is None:
@@ -448,7 +447,7 @@ class Cerebro:
         if verbose:
             self.logger.info(abstract)
         
-        if oldimg is not None and not optstrats:
+        if oldimg is not None and maxcpus is None:
             if len(datanames) > 3:
                 self.logger.warning(f"There are {len(datanames)} stocks, the image "
                       "may be nested and takes a long time to draw")
