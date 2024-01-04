@@ -198,8 +198,9 @@ class OrderTable(Analyzer):
         
     def get_analysis(self):
         self.rets = pd.DataFrame(self.orders)
-        self.rets["datetime"] = pd.to_datetime(self.rets["datetime"])
-        self.rets = self.rets.set_index(['datetime', 'code'])
+        if not self.rets.empty:
+            self.rets["datetime"] = pd.to_datetime(self.rets["datetime"])
+            self.rets = self.rets.set_index(['datetime', 'code'])
         return self.rets
 
 
@@ -300,7 +301,7 @@ class Cerebro:
 
     def run(
         self, 
-        strategy: bt.Strategy, 
+        strategy: bt.Strategy | list[bt.Strategy], 
         *,
         start: str = None,
         stop: str = None,
@@ -368,6 +369,7 @@ class Cerebro:
                       OrderTable, CashValueRecorder]
         observers = observers if isinstance(observers, list) else [observers]
         observers += [bt.observers.DrawDown]
+        strategy = [strategy] if not isinstance(strategy, list) else strategy
         
         more = set(self.data.columns.to_list()) - set(['open', 'high', 'low', 'close', 'volume'])
         PandasData = type("_PandasData", (bt.feeds.PandasData,), {"lines": tuple(more), "params": tuple(zip(more, [-1] * len(more)))})
@@ -387,12 +389,16 @@ class Cerebro:
         for indicator in indicators:
             if indicator is not None:
                 cerebro.addindicator(indicator)
-        if 'minstake' not in strategy.params._getkeys():
-            strategy.params.add('minstake', 1)
-        if maxcpus is not None and maxcpus > 1:
-            cerebro.addstrategy(strategy, minstake=minstake, **kwargs)
+        for strat in strategy:
+            if 'minstake' not in strat.params._getkeys():
+                strat.params.add('minstake', 1)
+        if maxcpus is None:
+            for strat in strategy:
+                cerebro.addstrategy(strat, minstake=minstake, **kwargs)
         else:
-            cerebro.optstrategy(strategy, minstake=minstake, **kwargs)
+            if len(strategy) > 1:
+                raise ValueError("multiple strategies are not supported in optstrats mode")
+            cerebro.optstrategy(strategy[0], minstake=minstake, **kwargs)
         for analyzer in analyzers:
             if analyzer is not None:
                 cerebro.addanalyzer(analyzer)
@@ -409,6 +415,8 @@ class Cerebro:
             optreturn = optreturn,
         )
         if maxcpus is not None:
+            # here we only get first element because backtrader doesn't
+            # support multiple strategies in optstrategy mode
             strats = [strat[0] for strat in strats]
         
         if param_format is None:
