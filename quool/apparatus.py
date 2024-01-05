@@ -43,7 +43,7 @@ class Return:
             self.buy_price = self.price
             self.sell_price = self.price
     
-    def ret(self, span: int = -1, log: bool = False) -> pd.Series:
+    def ret(self, span: int = -1, log: bool = False) -> pd.Series | pd.DataFrame:
         if not isinstance(self.price.index, pd.MultiIndex):
             if span < 0:
                 sell_price = self.sell_price.shift(span)
@@ -80,21 +80,27 @@ class Event(Return):
         super().__init__(price, buy_column, sell_column,
             code_index, date_index, 0)
 
+    def _ret(
+        self,
+        event: pd.Series,
+        span: tuple = (-5, 6, 1),
+    ):
+        if not isinstance(self.price.index, type(event.index)):
+            raise ValueError("the type of price and event must be the same")
+        
+        res = []
+        r = super().ret(span=1)
+        for i in np.arange(*span):
+            res.append(r.groupby(level=self.code_index).shift(-i).loc[event.index])
+        res = pd.concat(res, axis=1, keys=np.arange(*span)).add_prefix('day').fillna(0)
+        return res
+        
     def ret(
         self,
         event: pd.Series,
         span: tuple = (-5, 6, 1),
     ) -> tuple[pd.Series, pd.Series]:
-        if not isinstance(self.price.index, type(event.index)):
-            raise ValueError("the type of price and event must be the same")
-
-        res = []
-        r = super().ret(span=1)
-
-        for i in np.arange(*span):
-            res.append(r.groupby(level=self.code_index).shift(-i).loc[event.index])
-                
-        res = pd.concat(res, axis=1, keys=np.arange(*span)).add_prefix('day').fillna(0)
+        res = self._ret(event, span)
         dayres = res.mean(axis=0)
         cumres = (1 + res).cumprod(axis=1)
         cumres = cumres.div(cumres["day0"], axis=0).mean(axis=0)
@@ -117,7 +123,7 @@ class PeriodEvent(Return):
         super().__init__(price, buy_column, sell_column,
             code_index, date_index, delay)
     
-    def __compute(
+    def __ret(
         self, _event: pd.Series, 
         start: int | float | str, 
         stop: int | float | str
@@ -163,7 +169,7 @@ class PeriodEvent(Return):
             raise ValueError("there are labels that are not start-stop labels")
 
         res = event.groupby(level=self.code_index).apply(
-            self.__compute, start=start, stop=stop)
+            self.__ret, start=start, stop=stop)
         return res
 
 
@@ -180,6 +186,22 @@ class Weight(Return):
     ):
         super().__init__(price, buy_column, sell_column,
             code_index, date_index, delay)
+    
+    def _ret(
+        self,
+        weight: pd.DataFrame | pd.Series, 
+        span: int = -1,
+    ):
+        if isinstance(weight.index, type(self.price.index)):
+            r = super().ret(span)
+        elif isinstance(weight.index, pd.MultiIndex):
+            r = super().ret(span).stack().reorder_levels(
+                [self.code_index, self.date_index])
+        elif isinstance(weight.index, pd.Index):
+            r = super().ret(span).unstack(
+                level=self.code_index)
+
+        return r * weight
     
     def ret(
         self, 
@@ -208,12 +230,9 @@ class Weight(Return):
             raise ValueError("side must be in ['both', 'buy', 'sell']")
         commission *= tvr
 
-        r = super().ret(span=span)
-        if isinstance(self.price.index, pd.MultiIndex):
-            r = r.unstack(level=self.code_index)
-
-        r = (((r * weight).sum(axis=1) - commission) 
-             / abs(span)).shift(-min(0, span)).fillna(0)
+        r = self._ret(weight, span)
+        r = ((r.sum(axis=1) - commission) / 
+             abs(span)).shift(-min(0, span)).fillna(0)
 
         if return_tvr:
             return r, tvr
@@ -232,6 +251,26 @@ class NetValue(Return):
     ):
         super().__init__(price, buy_column, sell_column, 
             code_index, date_index, 0)
+    
+    def _ret(
+        self,
+        weight: pd.DataFrame | pd.Series,
+    ):
+        if isinstance(weight.index, type(self.price.index)):
+            r = super().ret(span=1)
+        elif isinstance(weight.index, pd.MultiIndex):
+            r = super().ret(span=1).stack().reorder_levels(
+                [self.code_index, self.date_index])
+        elif isinstance(weight.index, pd.Index):
+            r = super().ret(span=1).unstack(
+                level=self.code_index)
+        
+        weight = weight.fillna(0).reindex(r.index)
+        if isinstance(weight.index, pd.MultiIndex):
+            weight = weight.groupby(self.code_index).ffill()
+        
+        r = r.fillna(0) * weight
+        return r
     
     def ret(
         self, 
@@ -259,10 +298,8 @@ class NetValue(Return):
             raise ValueError("side must be in ['both', 'buy', 'sell']")
         commission *= tvr
 
-        r = super().ret(span=1).unstack(level=self.code_index)
-        r = (r.fillna(0) * weight.fillna(0).reindex(r.index).ffill()).sum(axis=1) - \
-            commission.reindex(r.index).fillna(0)
-            
+        r = self._ret(weight)
+        r = r.sum(axis=1) - commission.reindex(r.index).fillna(0)
         
         if return_tvr:
             return r, tvr
