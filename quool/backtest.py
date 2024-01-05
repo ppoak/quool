@@ -278,11 +278,11 @@ class Cerebro:
     Attributes:
         logger (Logger): An instance of a custom Logger class for logging.
         data (pd.DataFrame): The input data for backtesting.
-        code_index (str): Level name in 'data' that represents the stock symbol.
-        date_index (str): Level name in 'data' that represents the dates.
+        code_level (str): Level name in 'data' that represents the stock symbol.
+        date_level (str): Level name in 'data' that represents the dates.
 
     Methods:
-        __init__(self, data, code_index, date_index): Initializes the Cerebro environment.
+        __init__(self, data, code_level, date_level): Initializes the Cerebro environment.
         _valid(self, data): Validates and preprocesses the input data.
         run(self, strategy, ...): Executes the specified trading strategy.
 
@@ -294,21 +294,21 @@ class Cerebro:
     def __init__(
         self, 
         data: pd.DataFrame, 
-        code_index: str = 'code',
-        date_index: str = 'date',
+        code_level: str = 'code',
+        date_level: str = 'date',
     ):
         self.logger = Logger("QuoolCerebro", display_time=False)
         self.data = data
         self.data = self._valid(data)
         self.data = self.data.reindex(pd.MultiIndex.from_product([
-            self.data.index.get_level_values(code_index).unique(),
-            self.data.index.get_level_values(date_index).unique(),
-        ], names=[code_index, date_index])).sort_index()
+            self.data.index.get_level_values(code_level).unique(),
+            self.data.index.get_level_values(date_level).unique(),
+        ], names=[code_level, date_level])).sort_index()
         self.data.loc[:, ["open", "high", "low", "close", "volume"]] = \
             self.data.loc[:, ["open", "high", "low", "close", "volume"]].groupby(
-                level=code_index).ffill()
-        self.code_index = code_index
-        self.date_index = date_index
+                level=code_level).ffill()
+        self.code_level = code_level
+        self.date_level = date_level
     
     def _valid(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -402,9 +402,9 @@ class Cerebro:
             cerebro.run(strategy=MyStrategy, cash=10000, start='2020-01-01', stop='2020-12-31')
         """
         start = parse_date(start) if start is not None else\
-            self.data.index.get_level_values(self.date_index).min()
+            self.data.index.get_level_values(self.date_level).min()
         stop = parse_date(stop) if stop is not None else\
-            self.data.index.get_level_values(self.date_index).max()
+            self.data.index.get_level_values(self.date_level).max()
         cerebro = bt.Cerebro(stdstats=False)
         cerebro.broker.setcash(cash)
         if coc:
@@ -425,11 +425,11 @@ class Cerebro:
         bt.metabase._PandasData = PandasData
         # add data
         if isinstance(self.data.index, pd.MultiIndex):
-            datanames = self.data.index.get_level_values(self.code_index).unique().to_list()
+            datanames = self.data.index.get_level_values(self.code_level).unique().to_list()
         else:
             datanames = ['data']
         for dn in datanames:
-            d = self.data.xs(dn, level=self.code_index) if \
+            d = self.data.xs(dn, level=self.code_level) if \
                 isinstance(self.data.index, pd.MultiIndex) else self.data
             feed = PandasData(dataname=d, fromdate=start, todate=stop)
             cerebro.adddata(feed, name=dn)
@@ -472,8 +472,8 @@ class Cerebro:
         params = [param_format.format(**strat.params._getkwargs()) for strat in strats]
         cashvalue = [strat.analyzers.cashvaluerecorder.get_analysis() for strat in strats]
         if benchmark is not None:
-            benchmark = benchmark / benchmark.groupby(level=self.code_index).apply(lambda x: x.iloc[0])
-            benchmark = benchmark["close"].unstack(level=self.code_index) * cash
+            benchmark = benchmark / benchmark.groupby(level=self.code_level).apply(lambda x: x.iloc[0])
+            benchmark = benchmark["close"].unstack(level=self.code_level) * cash
             cashvalue_ = []
             for cv in cashvalue:
                 cvb = pd.concat([cv, benchmark, (

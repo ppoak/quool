@@ -337,11 +337,11 @@ class PanelTable(Table):
     A specialized subclass of Table for handling panel data with time and categorical indexing.
 
     Attributes:
-        date_index (str): The name of the index column representing dates.
-        code_index (str): The name of the index column representing categorical dimensions, like stock codes.
+        date_level (str): The name of the index column representing dates.
+        code_level (str): The name of the index column representing categorical dimensions, like stock codes.
 
     Methods:
-        __init__(self, uri, spliter, namer, date_index, code_index): Initializes the PanelTable object.
+        __init__(self, uri, spliter, namer, date_level, code_level): Initializes the PanelTable object.
         read(self, field, code, start, stop, filters): Reads data with optional field, code, time, and other filters.
 
     Example:
@@ -354,8 +354,8 @@ class PanelTable(Table):
         uri: str | Path,
         spliter: str | list | dict | pd.Series | Callable | None = None,
         namer: str | list | dict | pd.Series | Callable | None = None,
-        date_index: str = '__index_level_0__',
-        code_index: str = '__index_level_1__',
+        date_level: str = '__index_level_0__',
+        code_level: str = '__index_level_1__',
     ):
         """
         Initializes the PanelTable object.
@@ -364,14 +364,14 @@ class PanelTable(Table):
             uri (str | Path): Path to the database or data storage directory.
             spliter (str | list | dict | pd.Series | Callable, optional): Function or parameter to divide the DataFrame into partitions based on time.
             namer (str | list | dict | pd.Series | Callable, optional): Function or parameter to name DataFrame partitions.
-            date_index (str, optional): Name of the index column for dates.
-            code_index (str, optional): Name of the index column for categorical dimensions.
+            date_level (str, optional): Name of the index column for dates.
+            code_level (str, optional): Name of the index column for categorical dimensions.
         """
-        spliter = spliter or pd.Grouper(level=date_index, freq='M', sort=True)
-        namer = namer or (lambda x: x.index.get_level_values(date_index)[0].strftime(r'%Y%m'))
+        spliter = spliter or pd.Grouper(level=date_level, freq='M', sort=True)
+        namer = namer or (lambda x: x.index.get_level_values(date_level)[0].strftime(r'%Y%m'))
         super().__init__(uri, spliter, namer)
-        self.date_index = date_index
-        self.code_index = code_index
+        self.date_level = date_level
+        self.code_level = code_level
     
     def read(
         self, 
@@ -405,17 +405,17 @@ class PanelTable(Table):
                 
         elif not isinstance(start, list):
             filters += [
-                (self.date_index, ">=", parse_date(start)), 
-                (self.date_index, "<=", parse_date(stop)), 
+                (self.date_level, ">=", parse_date(start)), 
+                (self.date_level, "<=", parse_date(stop)), 
             ]
             if code is not None:
-                filters.append((self.code_index, "in", code))
+                filters.append((self.code_level, "in", code))
             return super().read(field, filters)
         
         elif isinstance(start, list) and stop is None:
-            filters += [(self.date_index, "in", parse_date(start))]
+            filters += [(self.date_level, "in", parse_date(start))]
             if code is not None:
-                filters.append((self.code_index, "in", code))
+                filters.append((self.code_level, "in", code))
             return super().read(field, filters)
         
         else:
