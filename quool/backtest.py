@@ -480,7 +480,7 @@ class Cerebro:
                     -benchmark.pct_change().sub(
                         cv["value"].pct_change(), axis=0
                     ).fillna(0) + 1
-                ).cumprod().add_prefix("ex-") * cash], axis=1).ffill()
+                ).cumprod().add_prefix("ex(").add_suffix(')') * cash], axis=1).ffill()
                 cvb.index.name = 'datetime'
                 cashvalue_.append(cvb)
             cashvalue = cashvalue_
@@ -490,7 +490,7 @@ class Cerebro:
             ab = strat.params._getkwargs()
             ret = (cashvalue[i].dropna().iloc[-1] /
                 cashvalue[i].dropna().iloc[0] - 1) * 100
-            ret = ret.drop(index="cash").add_prefix("return_").add_suffix("(%)")
+            ret = ret.drop(index="cash").add_prefix("return(").add_suffix(")(%)")
             ab.update(ret.to_dict())
             for analyzer in strat.analyzers:
                 ret = analyzer.get_analysis()
