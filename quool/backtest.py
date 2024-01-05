@@ -173,34 +173,82 @@ class Observer(bt.Observer):
         self.logger.log(level=level, msg=f'[{datetime}]: {text}')
 
 
-class OrderTable(Analyzer):
+class TradeOrderRecorder(Analyzer):
+    params = (
+        ("with_order", True),
+        ("only_not_alive", True),
+        ("with_trade", True),
+        ("only_trade_close", True),
+    )
 
     def __init__(self):
-        self.orders = []
+        self.trade_order = []
 
     def notify_order(self, order):
-        if not order.alive():
-            self.orders.append({
-                'datetime': order.data.datetime.date(0),
+        if order.alive() and not self.params.only_not_alive:
+            self.trade_order.append({
+                'notify_time': order.data.datetime.date(0),
                 'code': order.data._name,
-                'ref': order.ref,
+                'reference': order.ref,
                 'type': order.ordtypename(),
                 'status': order.getstatusname(),
-                'createdprice': order.created.price,
-                'createdsize': order.created.size,
-                'excecutedprice': order.executed.price,
-                'excecutedsize': order.executed.size,
-                'pricelimit': order.pricelimit,
-                'trailamount': order.trailamount,
-                'trailpercent': order.trailpercent,
-                'exectype': order.getordername(),
+                'created_time': bt.num2date(order.created.dt),
+                'created_price': order.created.price,
+                'created_size': order.created.size,
+                'price_limit': order.pricelimit,
+                'trail_amount': order.trailamount,
+                'trail_percent': order.trailpercent,
+                'execute_type': order.getordername(),
+            })
+        
+        if not order.alive():
+            self.trade_order.append({
+                'notify_time': order.data.datetime.date(0),
+                'code': order.data._name,
+                'reference': order.ref,
+                'type': order.ordtypename(),
+                'status': order.getstatusname(),
+                'created_time': bt.num2date(order.created.dt),
+                'created_price': order.created.price,
+                'created_size': order.created.size,
+                'executed_time': bt.num2date(order.executed.dt),
+                'executed_price': order.executed.price,
+                'executed_size': order.executed.size,
+                'price_limit': order.pricelimit,
+                'trail_amount': order.trailamount,
+                'trail_percent': order.trailpercent,
+                'execute_type': order.getordername(),
+            })
+    
+    def notify_trade(self, trade):
+        if not trade.isclosed and not self.params.only_trade_close:
+            self.trade_order.append({
+                'notify_time': trade.data.datetime.date(0),
+                'code': trade.data._name,
+                'reference': trade.ref,
+                'type': 'Trade',
+                'status': trade.status_names[trade.status],
+                'created_time': trade.open_datetime(),
+            })
+        
+        if trade.isclosed:
+            self.trade_order.append({
+                'notify_time': trade.data.datetime.date(0),
+                'code': trade.data._name,
+                'reference': trade.ref,
+                'type': 'Trade',
+                'status': trade.status_names[trade.status],
+                'created_time': trade.open_datetime(),
+                'executed_time': trade.close_datetime(),
+                'profit': trade.pnl,
+                'net_profit': trade.pnlcomm,
             })
         
     def get_analysis(self):
-        self.rets = pd.DataFrame(self.orders)
+        self.rets = pd.DataFrame(self.trade_order)
         if not self.rets.empty:
-            self.rets["datetime"] = pd.to_datetime(self.rets["datetime"])
-            self.rets = self.rets.set_index(['datetime', 'code'])
+            self.rets["notify_time"] = pd.to_datetime(self.rets["notify_time"])
+            self.rets = self.rets.set_index(['notify_time', 'code'])
         return self.rets
 
 
@@ -366,7 +414,7 @@ class Cerebro:
         indicators = [indicators] if not isinstance(indicators, list) else indicators
         analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
         analyzers += [bt.analyzers.SharpeRatio, bt.analyzers.TimeDrawDown, 
-                      OrderTable, CashValueRecorder]
+                      TradeOrderRecorder, CashValueRecorder]
         observers = observers if isinstance(observers, list) else [observers]
         observers += [bt.observers.DrawDown]
         strategy = [strategy] if not isinstance(strategy, list) else strategy
@@ -479,7 +527,7 @@ class Cerebro:
                 abstract.reset_index().to_excel(writer, sheet_name='ABSTRACT', index=False)
                 for name, cv, strat in zip(params, cashvalue, strats):
                     cv.to_excel(writer, sheet_name='CV_' + name)
-                    strat.analyzers.ordertable.rets.reset_index().to_excel(
-                        writer, sheet_name='ORD_' + name, index=False)
+                    strat.analyzers.tradeorderrecorder.rets.reset_index().to_excel(
+                        writer, sheet_name='TO_' + name, index=False)
     
         return strats
