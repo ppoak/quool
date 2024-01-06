@@ -190,15 +190,15 @@ class Weight(Return):
     def _ret(
         self,
         weight: pd.DataFrame | pd.Series, 
-        span: int = -1,
+        rebalance: int = -1,
     ):
         if isinstance(weight.index, type(self.price.index)):
-            r = super().ret(span)
+            r = super().ret(rebalance)
         elif isinstance(weight.index, pd.MultiIndex):
-            r = super().ret(span).stack().reorder_levels(
+            r = super().ret(rebalance).stack().reorder_levels(
                 [self.code_level, self.date_level])
         elif isinstance(weight.index, pd.Index):
-            r = super().ret(span).unstack(
+            r = super().ret(rebalance).unstack(
                 level=self.code_level)
 
         return r * weight
@@ -206,7 +206,7 @@ class Weight(Return):
     def ret(
         self, 
         weight: pd.DataFrame | pd.Series, 
-        span: int = -1,
+        rebalance: int = -1,
         commission: float = 0.005,
         side: str = 'both',
         return_tvr: bool = False,
@@ -219,27 +219,27 @@ class Weight(Return):
             raise ValueError("the type of weight must be one-level "
                              f"DataFrame or multi-level Series")
         
-        delta = weight.fillna(0) - weight.shift(abs(span)).fillna(0)
+        delta = weight.fillna(0) - weight.shift(abs(rebalance)).fillna(0)
         if side == 'both':
-            tvr = (delta.abs() / 2).sum(axis=1)
+            tvr = (delta.abs() / 2).sum(axis=1) / abs(rebalance)
         elif side == 'buy':
-            tvr = delta.where(delta > 0).abs().sum(axis=1)
+            tvr = delta.where(delta > 0).abs().sum(axis=1) / abs(rebalance)
         elif side == 'sell':
-            tvr = delta.where(delta < 0).abs().sum(axis=1)
+            tvr = delta.where(delta < 0).abs().sum(axis=1) / abs(rebalance)
         else:
             raise ValueError("side must be in ['both', 'buy', 'sell']")
         commission *= tvr
 
-        r = self._ret(weight, span)
+        r = self._ret(weight, rebalance)
         r = ((r.sum(axis=1) - commission) / 
-             abs(span)).shift(-min(0, span)).fillna(0)
+             abs(rebalance)).shift(-min(0, rebalance)).fillna(0)
 
         if return_tvr:
             return r, tvr
         return r
 
 
-class NetValue(Return):
+class Rebalance(Return):
 
     def __init__(
         self,

@@ -521,6 +521,8 @@ class Cerebro:
             if not isinstance(image, bool):
                 fig.tight_layout()
                 fig.savefig(image)
+            else:
+                fig.show()
         
         if result is not None:
             with pd.ExcelWriter(result) as writer:

@@ -2,7 +2,7 @@ from .apparatus import (
     Return,
     Weight,
     Event,
-    NetValue,
+    Rebalance,
     PeriodEvent,
 )
 
@@ -37,4 +37,4 @@ from .equipment import (
 )
 
 
-__version__ = "0.4.21"
+__version__ = "0.4.22"
