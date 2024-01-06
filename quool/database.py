@@ -185,6 +185,9 @@ class Table:
         if isinstance(df, pd.Series):
             df = df.to_frame()
         
+        if not (df.columns == df.columns.astype('str')).all():
+            raise TypeError("all columns or name should be string type")
+        
         if not df.columns.intersection(self.columns).empty:
             raise ValueError("existing field found, please update it")
         
