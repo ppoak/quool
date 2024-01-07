@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
@@ -179,6 +180,8 @@ class TradeOrderRecorder(Analyzer):
         ("only_not_alive", True),
         ("with_trade", True),
         ("only_trade_close", True),
+        ("code_level", "code"),
+        ("date_level", "notify_time")
     )
 
     def __init__(self):
@@ -187,8 +190,8 @@ class TradeOrderRecorder(Analyzer):
     def notify_order(self, order):
         if order.alive() and not self.params.only_not_alive:
             self.trade_order.append({
-                'notify_time': order.data.datetime.date(0),
-                'code': order.data._name,
+                self.params.date_level: order.data.datetime.date(0),
+                self.params.code_level: order.data._name,
                 'reference': order.ref,
                 'type': order.ordtypename(),
                 'status': order.getstatusname(),
@@ -203,8 +206,8 @@ class TradeOrderRecorder(Analyzer):
         
         if not order.alive():
             self.trade_order.append({
-                'notify_time': order.data.datetime.date(0),
-                'code': order.data._name,
+                self.params.date_level: order.data.datetime.date(0),
+                self.params.code_level: order.data._name,
                 'reference': order.ref,
                 'type': order.ordtypename(),
                 'status': order.getstatusname(),
@@ -223,18 +226,20 @@ class TradeOrderRecorder(Analyzer):
     def notify_trade(self, trade):
         if not trade.isclosed and not self.params.only_trade_close:
             self.trade_order.append({
-                'notify_time': trade.data.datetime.date(0),
-                'code': trade.data._name,
+                self.params.date_level: trade.data.datetime.date(0),
+                self.params.code_level: trade.data._name,
                 'reference': trade.ref,
                 'type': 'Trade',
                 'status': trade.status_names[trade.status],
                 'created_time': trade.open_datetime(),
+                'created_price': trade.price,
+                'created_size': trade.size,
             })
         
         if trade.isclosed:
             self.trade_order.append({
-                'notify_time': trade.data.datetime.date(0),
-                'code': trade.data._name,
+                self.params.date_level: trade.data.datetime.date(0),
+                self.params.code_level: trade.data._name,
                 'reference': trade.ref,
                 'type': 'Trade',
                 'status': trade.status_names[trade.status],
@@ -247,27 +252,30 @@ class TradeOrderRecorder(Analyzer):
     def get_analysis(self):
         self.rets = pd.DataFrame(self.trade_order)
         if not self.rets.empty:
-            self.rets["notify_time"] = pd.to_datetime(self.rets["notify_time"])
-            self.rets = self.rets.set_index(['notify_time', 'code'])
+            self.rets[self.params.date_level] = pd.to_datetime(self.rets[self.params.date_level])
+            self.rets = self.rets.set_index([self.params.date_level, self.params.code_level])
         return self.rets
 
 
 class CashValueRecorder(Analyzer):
+    params = (
+        ("date_level", "date"),
+    )
     def __init__(self):
         self.cashvalue = []
 
     def next(self):
         self.cashvalue.append({
-            'datetime': self.data.datetime.date(0),
+            self.params.date_level: self.data.datetime.date(0),
             'cash': self.strategy.broker.get_cash(),
             'value': self.strategy.broker.get_value(),
         })
 
     def get_analysis(self):
         self.rets = pd.DataFrame(self.cashvalue)
-        self.rets['datetime'] = pd.to_datetime(self.rets['datetime'])
-        self.rets = self.rets.set_index('datetime')
-        self.rets.index.name = "datetime"
+        self.rets[self.params.date_level] = pd.to_datetime(self.rets[self.params.date_level])
+        self.rets = self.rets.set_index(self.params.date_level)
+        self.rets.index.name = self.params.date_level
         return self.rets
 
 
@@ -354,13 +362,14 @@ class Cerebro:
         start: str = None,
         stop: str = None,
         cash: float = 1e6,
-        benchmark: pd.DataFrame | pd.Series = None,
+        benchmark: pd.Series = None,
         indicators: 'bt.Indicator | list' = None,
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
         coc: bool = False,
         minstake: int = 100,
         commission: float = 0.005,
+        riskfreerate: float = 0.02,
         maxcpus: int = None,
         preload: bool = True,
         runonce: bool = True,
@@ -382,7 +391,7 @@ class Cerebro:
             start (str): Start date for the backtesting period.
             stop (str): End date for the backtesting period.
             cash (float): Initial cash in the brokerage account.
-            benchmark (pd.DataFrame | pd.Series): Benchmark data for comparison.
+            benchmark (pd.Series): Benchmark data for comparison.
             indicators, analyzers, observers (list): Backtrader elements to be added.
             coc (bool): Cheat-on-close flag.
             minstake (int): Minimum stake size.
@@ -410,20 +419,12 @@ class Cerebro:
         if coc:
             cerebro.broker.set_coc(True)
         cerebro.broker.setcommission(commission=commission)
-
-        indicators = [indicators] if not isinstance(indicators, list) else indicators
-        analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
-        analyzers += [bt.analyzers.SharpeRatio, bt.analyzers.TimeDrawDown, 
-                      TradeOrderRecorder, CashValueRecorder]
-        observers = observers if isinstance(observers, list) else [observers]
-        observers += [bt.observers.DrawDown]
-        strategy = [strategy] if not isinstance(strategy, list) else strategy
         
+        # add data
         more = set(self.data.columns.to_list()) - set(['open', 'high', 'low', 'close', 'volume'])
         PandasData = type("_PandasData", (bt.feeds.PandasData,), {"lines": tuple(more), "params": tuple(zip(more, [-1] * len(more)))})
         # without setting bt.metabase._PandasData, PandasData cannot be pickled
         bt.metabase._PandasData = PandasData
-        # add data
         if isinstance(self.data.index, pd.MultiIndex):
             datanames = self.data.index.get_level_values(self.code_level).unique().to_list()
         else:
@@ -433,10 +434,32 @@ class Cerebro:
                 isinstance(self.data.index, pd.MultiIndex) else self.data
             feed = PandasData(dataname=d, fromdate=start, todate=stop)
             cerebro.adddata(feed, name=dn)
-        
+
+        # add indicators
+        indicators = indicators if isinstance(indicators, list) else [indicators]
         for indicator in indicators:
             if indicator is not None:
                 cerebro.addindicator(indicator)
+        
+        # add analyzers
+        analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
+        cerebro.addanalyzer(bt.analyzers.SharpeRatio, riskfreerate=riskfreerate)
+        cerebro.addanalyzer(bt.analyzers.TimeDrawDown)
+        cerebro.addanalyzer(TradeOrderRecorder, date_level=self.date_level, code_level=self.code_level)
+        cerebro.addanalyzer(CashValueRecorder, date_level=self.date_level)
+        for analyzer in analyzers:
+            if analyzer is not None:
+                cerebro.addanalyzer(analyzer)
+
+        # add observers
+        observers = observers if isinstance(observers, list) else [observers]
+        cerebro.addobserver(bt.observers.DrawDown)
+        for observer in observers:
+            if observer is not None:
+                cerebro.addobserver(observer)
+
+        # add strategies
+        strategy = [strategy] if not isinstance(strategy, list) else strategy
         for strat in strategy:
             if 'minstake' not in strat.params._getkeys():
                 strat.params.add('minstake', 1)
@@ -447,13 +470,8 @@ class Cerebro:
             if len(strategy) > 1:
                 raise ValueError("multiple strategies are not supported in optstrats mode")
             cerebro.optstrategy(strategy[0], minstake=minstake, **kwargs)
-        for analyzer in analyzers:
-            if analyzer is not None:
-                cerebro.addanalyzer(analyzer)
-        for observer in observers:
-            if observer is not None:
-                cerebro.addobserver(observer)
         
+        # run strategies
         strats = cerebro.run(
             maxcpus = maxcpus,
             preload = preload,
@@ -471,31 +489,65 @@ class Cerebro:
             param_format = f"_".join([f"{key}{{{key}}}" for key in kwargs.keys()])
         params = [param_format.format(**strat.params._getkwargs()) for strat in strats]
         cashvalue = [strat.analyzers.cashvaluerecorder.get_analysis() for strat in strats]
+
+        # add benchmark if available
         if benchmark is not None:
-            benchmark = benchmark / benchmark.groupby(level=self.code_level).apply(lambda x: x.iloc[0])
-            benchmark = benchmark["close"].unstack(level=self.code_level) * cash
+            if (not isinstance(benchmark, pd.Series) or 
+                not isinstance(benchmark.index, pd.Index)):
+                raise TypeError('benchmark must be a pandas Series with datetime index')
+            
+            benchmark = benchmark.copy().ffill()
+            benchmark.name = benchmark.name or 'benchmark'
+            benchmark = benchmark / benchmark.dropna().iloc[0] * cash
             cashvalue_ = []
             for cv in cashvalue:
                 cvb = pd.concat([cv, benchmark, (
-                    -benchmark.pct_change().sub(
-                        cv["value"].pct_change(), axis=0
-                    ).fillna(0) + 1
-                ).cumprod().add_prefix("ex(").add_suffix(')') * cash], axis=1).ffill()
+                    (cv["value"].pct_change() - benchmark.pct_change())
+                    .fillna(0) + 1).cumprod().to_frame(benchmark.name)
+                    .add_prefix("ex(").add_suffix(')') * cash
+                ], axis=1).ffill()
                 cvb.index.name = 'datetime'
                 cashvalue_.append(cvb)
             cashvalue = cashvalue_
-        
+            
         abstract = []
         for i, strat in enumerate(strats):
+            # basic parameters
             ab = strat.params._getkwargs()
+            # add return to abstract
             ret = (cashvalue[i].dropna().iloc[-1] /
                 cashvalue[i].dropna().iloc[0] - 1) * 100
             ret = ret.drop(index="cash").add_prefix("return(").add_suffix(")(%)")
             ab.update(ret.to_dict())
+            tor = strat.analyzers.tradeorderrecorder.get_analysis()
+            trd = tor[(tor["type"] == 'Trade') & (tor["status"] == "Closed")]
+            if not trd.empty:
+                # add trade count
+                ab.update({"trade_count": trd.shape[0]})
+                # add trade win rate
+                wr = trd[trd["net_profit"] > 0].shape[0] / trd.shape[0]
+                ab.update({"winrate(%)": wr * 100})
+                # add average holding days
+                avhd = (trd["executed_time"] - trd["created_time"]).mean()
+                ab.update({"average_holding_days": avhd})
+                # add average return rate
+                avrr = (trd["net_profit"].values / (cashvalue[i].loc[
+                    trd["created_time"].values, "value"].values)).mean()
+                ab.update({"average_return(%)": avrr * 100})
+            # return dicomposed to beta and alpha
+            if benchmark is not None:
+                sc = cashvalue[i].iloc[:, 1].pct_change().dropna()
+                bc = cashvalue[i].iloc[:, 2].pct_change().dropna()
+                beta = sc.corr(bc) * sc.std() / bc.std()
+                alpha = ab["return(value)(%)"] - (riskfreerate * 100 + beta * 
+                    (ab[f"return({benchmark.name})(%)"] - riskfreerate * 100))
+                ab.update({"alpha(%)": alpha, "beta": beta})
+            # other analyzers information
             for analyzer in strat.analyzers:
                 ret = analyzer.get_analysis()
                 if isinstance(ret, dict):
                     ab.update(ret)
+            # append result
             abstract.append(ab)
         abstract = pd.DataFrame(abstract)
         abstract = abstract.set_index(keys=list(kwargs.keys()))
