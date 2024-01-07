@@ -79,17 +79,37 @@ class Table:
             return self._read_fragment(self.fragments[-1]).columns
         else:
             return pd.Index([])
+    
+    @property
+    def dtypes(self):
+        """
+        Lists the dtypes of columns in the last data fragment.
+
+        Returns:
+            pd.Series: Column dtypes.
+        """
+        if self.fragments:
+            return self._read_fragment(self.fragments[-1]).dtypes
+        else:
+            return pd.Series([])
 
     def __fragment_path(self, fragment: str):
         return (self.path / fragment).with_suffix('.parquet')
     
     def __related_frag(self, df: pd.DataFrame | pd.Series):
-        frags = df.groupby(self.spliter).apply(self.namer)
+        # in case of empty dataframe
+        frags = df.groupby(self.spliter).apply(
+            lambda x: np.nan if x.empty else self.namer(x)
+        ).dropna()
         if frags.empty:
             return []
         return frags.unique().tolist()
     
     def __update_frag(self, frag: pd.DataFrame):
+        # in case of empty dataframe
+        if frag.empty:
+            return
+        
         name = self.namer(frag)
         if name in self.fragments:
             frag_dat = self._read_fragment(name)
@@ -104,10 +124,16 @@ class Table:
             frag.reindex(columns=self.columns).to_parquet(self.__fragment_path(name))
     
     def __add_frag(self, frag: pd.DataFrame):
+        # in case of empty dataframe
+        if frag.empty:
+            return
+        
         name = self.namer(frag)
         if name in self.fragments:
             frag_dat = self._read_fragment(name)
-            frag_dat = pd.concat([frag_dat, frag], axis=1, join='inner')
+            # here we need to use outer join for inner join may delete data
+            frag_dat = pd.concat([frag_dat, frag], axis=1, join='outer')
+            frag_dat = frag_dat.astype(frag.dtypes)
             frag_dat.to_parquet(self.__fragment_path(name))
         else:
             frag.reindex(columns=self.columns.union(frag.columns)
@@ -193,10 +219,12 @@ class Table:
         
         df.groupby(self.spliter).apply(self.__add_frag)
         related_fragment = self.__related_frag(df)
+        dtypes = self._read_fragment(related_fragment[0]).dtypes
         columns = df.columns if isinstance(df, pd.DataFrame) else [df.name]
         for frag in set(self.fragments) - set(related_fragment):
             d = self._read_fragment(frag)
             d[columns] = np.nan
+            d = d.astype(dtypes)
             d.to_parquet(self.__fragment_path(frag))
     
     def delete(
