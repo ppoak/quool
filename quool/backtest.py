@@ -4,7 +4,7 @@ import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .equipment import parse_date, Logger
+from .equipment import parse_date, Logger, panelize
 
 
 class Strategy(bt.Strategy):
@@ -29,7 +29,12 @@ class Strategy(bt.Strategy):
                 # Strategy initialization code here
     """
 
-    params = (("minstake", 100), )
+    params = (
+        ("minstake", 1), 
+        ("minshare", 100), 
+        ("splitfactor", "splitfactor"),
+        ("divfactor", "divfactor"),
+    )
     logger = Logger("QuoolStrategy", level=logging.DEBUG, display_time=False, display_name=False)
 
     def log(self, text: str, level: int = logging.DEBUG, datetime: pd.Timestamp = None):
@@ -43,6 +48,28 @@ class Strategy(bt.Strategy):
         """
         datetime = datetime or self.data.datetime.date(0)
         self.logger.log(level=level, msg=f'[{datetime}] {text}')
+
+    def split_dividend(self):
+        """Process split and dividend information on market."""
+        for data in self.datas:
+            divfactor = getattr(data, self.params.divfactor)[0]
+            splitfactor = getattr(data, self.params.splitfactor)[0]
+            position = self.getposition(data)
+            size = position.size
+            # hold the stock which has dividend
+            if size and not np.isnan(divfactor):
+                orig_value = self.broker.get_value()
+                orig_cash = self.broker.get_cash()
+                dividend = divfactor * size
+                self.broker.set_cash(orig_cash + dividend)
+                self.broker._value = orig_value + dividend
+            # hold the stock which has split
+            if size and not np.isnan(splitfactor):
+                splitsize = int(size * splitfactor)
+                splitvalue = splitsize * data.close[0]
+                orig_value = size * position.price
+                position.set(size=size + splitsize, 
+                    price=(orig_value + splitvalue) / (size + splitsize))
     
     def resize(self, size: int):
         """
@@ -55,10 +82,13 @@ class Strategy(bt.Strategy):
             int: The adjusted size of the order.
         """
         minstake = self.params._getkwargs().get("minstake", 1)
+        minshare = self.params._getkwargs().get("minshare", 1)
         if size is not None:
             size = max(minstake, (size // minstake) * minstake)
+        if size is not None and size < minshare:
+            raise ValueError(f"order size {size} is smaller than {minshare}.")
         return size
-    
+
     def buy(
         self, data=None, size=None, price=None, plimit=None, 
         exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, 
@@ -308,13 +338,10 @@ class Cerebro:
         self.logger = Logger("QuoolCerebro", display_time=False)
         self.data = data
         self.data = self._valid(data)
-        self.data = self.data.reindex(pd.MultiIndex.from_product([
-            self.data.index.get_level_values(code_level).unique(),
-            self.data.index.get_level_values(date_level).unique(),
-        ], names=[code_level, date_level])).sort_index()
+        self.data = panelize(self.data).sort_index()
         self.data.loc[:, ["open", "high", "low", "close", "volume"]] = \
             self.data.loc[:, ["open", "high", "low", "close", "volume"]].groupby(
-                level=code_level).ffill()
+                level=code_level).ffill().fillna(0)
         self.code_level = code_level
         self.date_level = date_level
     
@@ -367,7 +394,10 @@ class Cerebro:
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
         coc: bool = False,
-        minstake: int = 100,
+        minstake: int = 1,
+        minshare: int = 100,
+        divfactor: str = "divfactor",
+        splitfactor: str = "splitfactor",
         commission: float = 0.005,
         riskfreerate: float = 0.02,
         maxcpus: int = None,
@@ -460,12 +490,10 @@ class Cerebro:
 
         # add strategies
         strategy = [strategy] if not isinstance(strategy, list) else strategy
-        for strat in strategy:
-            if 'minstake' not in strat.params._getkeys():
-                strat.params.add('minstake', 1)
         if maxcpus is None:
             for strat in strategy:
-                cerebro.addstrategy(strat, minstake=minstake, **kwargs)
+                cerebro.addstrategy(strat, minstake=minstake, minshare=minshare, 
+                    divfactor=divfactor, splitfactor=splitfactor, **kwargs)
         else:
             if len(strategy) > 1:
                 raise ValueError("multiple strategies are not supported in optstrats mode")
@@ -514,6 +542,8 @@ class Cerebro:
         for i, strat in enumerate(strats):
             # basic parameters
             ab = strat.params._getkwargs()
+            ab.pop("minshare"); ab.pop("minstake")
+            ab.pop("splitfactor"); ab.pop("divfactor")
             # add return to abstract
             ret = (cashvalue[i].dropna().iloc[-1] /
                 cashvalue[i].dropna().iloc[0] - 1) * 100
