@@ -51,9 +51,14 @@ class Strategy(bt.Strategy):
 
     def split_dividend(self):
         """Process split and dividend information on market."""
+        if not (self.params.divfactor or self.params.splitfactor):
+            raise ValueError("at least one factor should be provided")
+        
         for data in self.datas:
-            divfactor = getattr(data, self.params.divfactor)[0]
-            splitfactor = getattr(data, self.params.splitfactor)[0]
+            divfactor = getattr(data, self.params.divfactor)[0] \
+                if self.params.divfactor else np.nan
+            splitfactor = getattr(data, self.params.splitfactor)[0] \
+                if self.params.splitfactor else np.nan
             position = self.getposition(data)
             size = position.size
             # hold the stock which has dividend
@@ -394,10 +399,6 @@ class Cerebro:
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
         coc: bool = False,
-        minstake: int = 1,
-        minshare: int = 100,
-        divfactor: str = "divfactor",
-        splitfactor: str = "splitfactor",
         commission: float = 0.005,
         riskfreerate: float = 0.02,
         maxcpus: int = None,
@@ -492,12 +493,11 @@ class Cerebro:
         strategy = [strategy] if not isinstance(strategy, list) else strategy
         if maxcpus is None:
             for strat in strategy:
-                cerebro.addstrategy(strat, minstake=minstake, minshare=minshare, 
-                    divfactor=divfactor, splitfactor=splitfactor, **kwargs)
+                cerebro.addstrategy(strat, **kwargs)
         else:
             if len(strategy) > 1:
                 raise ValueError("multiple strategies are not supported in optstrats mode")
-            cerebro.optstrategy(strategy[0], minstake=minstake, **kwargs)
+            cerebro.optstrategy(strategy[0], **kwargs)
         
         # run strategies
         strats = cerebro.run(
@@ -542,8 +542,6 @@ class Cerebro:
         for i, strat in enumerate(strats):
             # basic parameters
             ab = strat.params._getkwargs()
-            ab.pop("minshare"); ab.pop("minstake")
-            ab.pop("splitfactor"); ab.pop("divfactor")
             # add return to abstract
             ret = (cashvalue[i].dropna().iloc[-1] /
                 cashvalue[i].dropna().iloc[0] - 1) * 100
