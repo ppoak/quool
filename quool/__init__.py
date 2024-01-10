@@ -18,6 +18,7 @@ from .backtest import (
 
 from .collector import (
     Request,
+    WeiXin,
 )
 
 from .database import (
@@ -37,4 +38,4 @@ from .equipment import (
 )
 
 
-__version__ = "0.4.27"
+__version__ = "0.5.0"

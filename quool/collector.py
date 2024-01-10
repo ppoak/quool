@@ -2,10 +2,11 @@ import time
 import random
 import requests
 from lxml import etree
+from pathlib import Path
 from tqdm.auto import tqdm
+from .equipment import Logger
 from bs4 import BeautifulSoup
 from joblib import Parallel, delayed
-from .equipment import Logger
 
 
 class Request:
@@ -67,7 +68,7 @@ class Request:
         self.method = method
 
         self.headers = headers or {}
-        if not (self.headers.get('user-agent') and self.headers.get('User-Agent')):
+        if not (self.headers.get('user-agent') or self.headers.get('User-Agent')):
             self.headers['User-Agent'] = random.choice(self.ua)
         if headers:
             self.headers.update(headers)
@@ -214,3 +215,128 @@ class Request:
 
     def __repr__(self):
         return self.__str__()
+
+
+class WeiXin:
+    """
+    This is a WeiXin interface for login, notification
+    """
+
+    webhook_base = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={key}"
+    qrcode_base = "https://open.weixin.qq.com/connect/qrcode/{uuid}"
+    service_base = "https://open.weixin.qq.com/connect/qrconnect?appid={app_id}&scope=snsapi_login&redirect_uri={redirect_url}"
+    logincheck_base = "https://lp.open.weixin.qq.com/connect/l/qrconnect?uuid={uuid}&_={timestamp}"
+    upload_base = "https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key={key}&type={type}"
+
+    @classmethod
+    def login(cls, appid: str, redirect_url: str):
+        logger = Logger("WeiXinLogin")
+        headers = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5.2 Safari/605.1.15"}
+
+        service_url = cls.service_base.format(appid=appid, redirect_url=redirect_url)
+        serv_resp = requests.get(service_url, headers=headers)
+        serv_resp.raise_for_status()
+        soup = BeautifulSoup(serv_resp.text, 'html.parser')
+        qrcode_img = soup.find('img', class_='qrcode lightBorder')
+        uuid = qrcode_img['src'].split('/')[-1]
+
+        qrcode_url = qrcode_url.format(uuid=uuid)
+        qrcode_resp = requests.get(qrcode_url, headers=headers)
+        temp_qrcode_path = Path("login.png")
+        with open(temp_qrcode_path, "wb") as qrcode_file:
+            qrcode_file.write(qrcode_resp.content)
+        logger.info(f"Please scan the QRCode to Login >>> {temp_qrcode_path}")
+
+        def _login_check(_u):
+            lp_response = requests.get(_u, headers=headers)
+            lp_response.raise_for_status()
+            variables = lp_response.text.split(';')[:-1]
+            wx_errorcode = variables[0].split('=')[-1]
+            wx_code = variables[1].split('=')[-1][1:-1]
+            return wx_errorcode, wx_code
+        
+        wx_errorcode = '408'
+        while True:
+            timestamp = time.time()
+            if wx_errorcode == '405':
+                logger.info("Login Success")
+                temp_qrcode_path.unlink()
+                return wx_code
+            
+            elif wx_errorcode == '408':
+                url = cls.lp_url.format(uuid=uuid, timestamp=int(timestamp))
+                wx_errorcode, wx_code = _login_check(url)
+                
+            elif wx_errorcode == '404':
+                logger.info("Scan Success, Please confirm Login on mobile phone")
+                url = f"{cls.lp_url.format(uuid=uuid, timestamp=int(timestamp))}&last=404"
+                wx_errorcode, wx_code = _login_check(url)
+                
+            else:
+                logger.critical("Unknown error, please try again")
+                return
+            
+    @classmethod
+    def notify(
+        cls, 
+        key: str, 
+        content_or_path: str = "",
+        message_type: str = "text",
+        mentions: str | list = None
+    ):
+        notify_url = cls.webhook_base.format(key=key)
+        
+        mention_mobiles = []
+        if mentions is not None:
+            if not isinstance(mentions, list):
+                mentions = [mentions]
+            for i, mention in enumerate(mentions):
+                if mention.isdigit():
+                    mention_mobiles.append(mentions.pop(i))
+        mentions = mentions or []
+        mention_mobiles = mention_mobiles or []
+        
+        if message_type in ["file", "voice"]:
+            upload_url = cls.upload_base.format(key=key, type=message_type)
+            if not content_or_path:
+                raise ValueError("path is required for file and voice")
+            path = Path(content_or_path)
+            with path.open('rb') as fp:
+                file_info = {"media": (
+                    path.name, fp.read(), 
+                    "multipart/form-data", 
+                    {'Content-Length': str(path.stat().st_size)}
+                )}
+                resp = requests.post(upload_url, files=file_info)
+
+            resp.raise_for_status()
+            resp = resp.json()
+            if resp["errcode"] != 0:
+                raise requests.RequestException(resp["errmsg"])
+            media_id = resp["media_id"]
+            message = {
+                "msgtype": message_type,
+                message_type: {
+                    "media_id": media_id, 
+                    "mentioned_list": mentions,
+                    "mentioned_mobile_list": mention_mobiles,
+                },
+            }
+            resp = requests.post(notify_url, json=message)
+            return resp.json()
+    
+        elif message_type in ["text", "markdown"]:
+            message = {
+                "msgtype": message_type,
+                message_type: {
+                    "content": content_or_path,
+                    "mentioned_list": mentions,
+                    "mentioned_mobile_list": mention_mobiles,
+                }
+            }
+            resp = requests.post(notify_url, json=message)
+            return resp.json()
+
+        else:
+            raise ValueError(f"Unsupported message type: {message_type}")
+        
