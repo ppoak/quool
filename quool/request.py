@@ -463,6 +463,40 @@ class WeiboSearch:
 
 
 class AkShare:
+    """
+    AkShare is a class designed to interface with the AkShare API, providing methods to fetch 
+    a variety of financial data. It simplifies the process of accessing and retrieving data 
+    related to stock markets, ETFs, and other financial instruments.
+
+    Class Attributes:
+        - TODAY: A pd.Timestamp object representing today's date.
+        - START: A string representing the default start date for fetching historical data.
+        - logger: A Logger object for logging messages.
+
+    Class Methods:
+        - market_daily: Retrieves daily market prices for a specific stock.
+        - stock_quote: Fetches real-time quotes for stocks in the A-share market.
+        - plate_quote: Obtains real-time quotes for industry plates.
+        - etf_market_daily: Gets daily market prices for a specific ETF.
+        - stock_fund_flow: Retrieves fund flow data for a specific stock.
+        - stock_fund_rank: Fetches fund flow rankings for stocks.
+        - plate_info: Provides information about stocks within a specific plate.
+        - balance_sheet: Fetches balance sheet data for a given stock.
+        - profit_sheet: Retrieves profit sheet data for a given stock.
+        - cashflow_sheet: Obtains cash flow sheet data for a specified stock.
+        - index_weight: Fetches index weight data for a given stock index.
+
+    Usage Example:
+    --------------
+    # Fetching daily market data for a specific stock
+    daily_data = AkShare.market_daily('600000', start='20200101', end='20201231')
+
+    # Obtaining real-time quotes for stocks
+    stock_data = AkShare.stock_quote()
+
+    # Getting balance sheet data for a stock
+    balance_data = AkShare.balance_sheet('600000')
+    """
     TODAY = pd.to_datetime(datetime.datetime.today()).normalize()
     START = '20050101'
     logger = Logger("QuoolAkShare")
@@ -647,7 +681,28 @@ class AkShare:
         return data
 
 
-class Em:
+class EastMoney:
+    """
+    The 'Em' class is designed to interface with East Money (东方财富网) for fetching 
+    financial data and analysis. It provides methods to access various types of 
+    financial information such as stock market movements and expert analyses.
+
+    Class Attributes:
+        - headers: Standard headers used for HTTP requests to East Money.
+
+    Class Methods:
+        - look_updown: Fetches real-time rise and fall data for a specific stock.
+
+    Usage Example:
+    --------------
+    # Fetching rise and fall data for a given stock code
+    stock_movement = Em.look_updown('600000')
+
+    Notes:
+    ------
+    This class primarily targets the Chinese stock market and is useful for investors 
+    and analysts focusing on this market.
+    """
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Safari/605.1.15",
@@ -669,7 +724,36 @@ class Em:
 
 
 class StockUS:
-    
+    """
+    The 'StockUS' class is tailored for interacting with the stock.us market API. 
+    It provides functionalities to fetch stock prices, index prices, and research 
+    reports from the US market.
+
+    Class Attributes:
+        - __root: The root URL for the stock.us API.
+        - headers: Standard headers for API requests.
+        - category: Dictionary mapping category IDs to their descriptions.
+
+    Class Methods:
+        - index_price: Fetches historical price data for a specified index.
+        - cn_price: Retrieves historical price data for a specific Chinese stock.
+        - report_list: Lists research reports based on various criteria.
+        - report_search: Searches for research reports based on keywords or other filters.
+
+    Usage Example:
+    --------------
+    # Fetching historical price data for a US index
+    index_data = StockUS.index_price('NASDAQ')
+
+    # Searching for research reports in the US stock market
+    reports = StockUS.report_search(keyword='technology', period='1m')
+
+    Notes:
+    ------
+    This class is particularly useful for users interested in the stock.us api, 
+    providing easy access to a wide range of financial data.
+    """
+
     __root = "https://api.stock.us/api/v1/"
     headers = {
         "Host": "api.stock.us",
