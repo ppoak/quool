@@ -19,10 +19,13 @@ setup(
     install_requires = [
         'bs4',
         'tqdm',
+        'lxml',
         'numpy',
         'joblib',
         'pandas',
         'pyarrow',
+        'akshare',
+        'requests',
         'requests',
         'matplotlib',
         'backtrader',
