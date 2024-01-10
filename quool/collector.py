@@ -219,7 +219,31 @@ class Request:
 
 class WeiXin:
     """
-    This is a WeiXin interface for login, notification
+    This class provides an interface for interacting with WeChat for functionalities like QR code-based login and sending notifications through WeChat Work.
+
+    Usage Example:
+    --------------
+    # Login example
+    wx = WeiXin()
+    # or you can
+    wx = WeiXin
+    app_id = 'your_app_id'
+    redirect_url = 'your_redirect_url'
+    login_code = wx.login(app_id, redirect_url)
+    
+    # Notification example
+    key = 'your_webhook_key'
+    message = 'Hello, WeChat!'
+    WeiXin.notify(key, message, message_type='text')
+
+    Class Attributes:
+    -----------------
+    - webhook_base: The base URL for sending webhook notifications.
+    - qrcode_base: The base URL for generating QR codes.
+    - service_base: The base URL for the QR code login service.
+    - logincheck_base: The base URL for checking QR code login status.
+    - upload_base: The base URL for uploading media for notifications.
+
     """
 
     webhook_base = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={key}"
@@ -230,6 +254,21 @@ class WeiXin:
 
     @classmethod
     def login(cls, appid: str, redirect_url: str):
+        """
+        Initiates the login process by generating a QR code for WeChat login.
+        
+        Parameters:
+        - appid (str): The app ID for WeChat login.
+        - redirect_url (str): The URL to redirect after successful login.
+
+        Returns:
+        - str: A login code if the login is successful, otherwise None.
+
+        Usage Example:
+        --------------
+        wx = WeiXin()
+        login_code = wx.login('your_app_id', 'your_redirect_url')
+        """
         logger = Logger("WeiXinLogin")
         headers = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5.2 Safari/605.1.15"}
 
@@ -284,6 +323,22 @@ class WeiXin:
         message_type: str = "text",
         mentions: str | list = None
     ):
+        """
+        Sends a notification message to WeChat Work using the webhook.
+
+        Parameters:
+        - key (str): The webhook key for the WeChat Work API.
+        - content_or_path (str): The message content (for text/markdown) or the path to the file (for file/voice).
+        - message_type (str): Type of the message ('text', 'markdown', 'file', 'voice').
+        - mentions (str | list): List of users or mobile numbers to mention in the message.
+
+        Returns:
+        - dict: The response from the WeChat API.
+
+        Usage Example:
+        --------------
+        WeiXin.notify('your_webhook_key', 'Hello, WeChat!', 'text')
+        """
         notify_url = cls.webhook_base.format(key=key)
         
         mention_mobiles = []
