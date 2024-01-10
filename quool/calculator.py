@@ -559,6 +559,9 @@ class Preprocessor:
         elif isinstance(data, pd.Series) and isinstance(data, pd.MultiIndex):
             data = data.unstck(level=self.code_level)
             self.stacked = True
+        elif isinstance(data, pd.DataFrame) and isinstance(data, pd.MultiIndex) and data.columns.size == 1:
+            data = data.unstck(level=self.code_level)
+            self.stacked = True
         else:
             raise ValueError("data must be pd.DataFrame or pd.Series")
         return data
