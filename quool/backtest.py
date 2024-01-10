@@ -181,6 +181,28 @@ class Strategy(bt.Strategy):
         # else, log it
         self.log(f'{trade.data._name} gross {trade.pnl:.2f}, net {trade.pnlcomm:.2f}')
 
+class RebalanceStrategy(Strategy):
+
+    params = (("ratio", 0.95), )
+
+    def __init__(self) -> None:
+        self.holdings = pd.Series(
+            np.zeros(len(self.datas)), 
+            index=[d._name for d in self.datas], name='holdings'
+        )
+
+    def next(self):
+        target = pd.Series(dict([(d._name, d.portfolio[0]) for d in self.datas]), name='target')
+        dec = target[target < self.holdings]
+        inc = target[target > self.holdings]
+        # sell before buy
+        for d in dec.index:
+            self.order_target_percent(data=d, target=target.loc[d] * (1 - self.p.ratio))
+        for i in inc.index:
+            self.order_target_percent(data=i, target=target.loc[i] * (1 - self.p.ratio))
+        if not dec.empty or not inc.empty:
+            self.holdings = target
+
 
 class Indicator(bt.Indicator):
     logger = Logger('QuoolIndicator', display_time=False, display_name=False)
