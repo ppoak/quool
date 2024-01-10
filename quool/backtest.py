@@ -4,7 +4,7 @@ import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .tools import parse_date, Logger, panelize
+from .tool import parse_date, Logger, panelize
 
 
 class Strategy(bt.Strategy):

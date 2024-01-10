@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Callable
-from .tools import parse_commastr, parse_date
+from .tool import parse_commastr, parse_date
 
 
 class Table:
