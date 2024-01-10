@@ -14,7 +14,7 @@ from tqdm.auto import tqdm
 from bs4 import BeautifulSoup
 from urllib.parse import quote
 from joblib import Parallel, delayed
-from .equipment import Logger, strip_stock_code, format_code
+from .tools import Logger, strip_stock_code, format_code
 
 
 class Request:
