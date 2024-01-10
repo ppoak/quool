@@ -1,5 +1,7 @@
 import time
+import base64
 import random
+import hashlib
 import requests
 from lxml import etree
 from pathlib import Path
@@ -329,7 +331,7 @@ class WeiXin:
         Parameters:
         - key (str): The webhook key for the WeChat Work API.
         - content_or_path (str): The message content (for text/markdown) or the path to the file (for file/voice).
-        - message_type (str): Type of the message ('text', 'markdown', 'file', 'voice').
+        - message_type (str): Type of the message ('text', 'markdown', 'image', 'file', 'voice').
         - mentions (str | list): List of users or mobile numbers to mention in the message.
 
         Returns:
@@ -376,6 +378,25 @@ class WeiXin:
                     "mentioned_list": mentions,
                     "mentioned_mobile_list": mention_mobiles,
                 },
+            }
+            resp = requests.post(notify_url, json=message)
+            return resp.json()
+
+        elif message_type in ["image"]:
+            path = Path(content_or_path)
+            with path.open('rb') as fp:
+                image_orig = fp.read()
+                image_base64 = base64.b64encode(image_orig).decode('ascii')
+                image_md5 = hashlib.md5(image_orig).hexdigest()
+                
+            message = {
+                "msgtype": message_type,
+                message_type: {
+                    "base64": image_base64,
+                    "md5": image_md5,
+                    "mentioned_list": mentions,
+                    "mentioned_mobile_list": mention_mobiles,
+                }
             }
             resp = requests.post(notify_url, json=message)
             return resp.json()
