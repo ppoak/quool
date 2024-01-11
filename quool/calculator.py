@@ -563,13 +563,11 @@ class RobustScaler:
         self.fitted = False
     
     def fit(self, data: pd.DataFrame | pd.Series):
-        if isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
-            pass
-        elif isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
+        if isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
             data = data.unstack(level=self.code_level)
         elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
             data = data.iloc[:, 0].unstack(level=self.code_level)
-        else:
+        elif isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
             raise TypeError("Invalid data format.")
         
         if self.method == "mad":
@@ -653,13 +651,11 @@ class StandardScaler:
         self.fitted = False
     
     def fit(self, data: pd.DataFrame | pd.Series):
-        if isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
-            pass
-        elif isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
+        if isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
             data = data.unstack(level=self.code_level)
         elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
             data = data.iloc[:, 0].unstack(level=self.code_level)
-        else:
+        elif isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
             raise TypeError("Invalid data format.")
         
         if self.method == "zscore":
@@ -693,139 +689,93 @@ class StandardScaler:
         self.fit(data)
         return self.transform(data)
 
-class FillNA(Preprocessor):
-    """
-    A subclass of Preprocessor that focuses on handling missing values (NaNs) in financial data.
-
-    This class offers various methods for imputing missing data, suitable for different analysis scenarios.
-
-    Inherits:
-    - All attributes and methods from Preprocessor class.
-    """
-
-    def _zero(self, data: pd.DataFrame):
-        """
-        Fills missing values with zero.
-
-        Parameters:
-        - data (pd.DataFrame): The data with missing values.
-
-        Returns:
-        - pd.DataFrame: The data with missing values filled with zero.
-        """
-        return data.fillna(0)
-    
-    def _mean(self, data: pd.DataFrame):
-        """
-        Fills missing values with the mean of each column.
-
-        Parameters:
-        - data (pd.DataFrame): The data with missing values.
-
-        Returns:
-        - pd.DataFrame: The data with missing values filled with the mean of each column.
-        """
-        return data.T.fillna(data.mean(axis=1)).T
-    
-    def _median(self, data: pd.DataFrame):
-        """
-        Fills missing values with the median of each column.
-
-        Parameters:
-        - data (pd.DataFrame): The data with missing values.
-
-        Returns:
-        - pd.DataFrame: The data with missing values filled with the median of each column.
-        """
-        return data.T.fillna(data.median(axis=1)).T
-    
-    def _ffill(self, data: pd.DataFrame):
-        """
-        Forward fills missing values.
-
-        Parameters:
-        - data (pd.DataFrame): The data with missing values.
-
-        Returns:
-        - pd.DataFrame: The data with missing values forward filled.
-        """
-        return data.ffill()
-    
-    def _bfill(self, data: pd.DataFrame):
-        """
-        Backward fills missing values.
-
-        Parameters:
-        - data (pd.DataFrame): The data with missing values.
-
-        Returns:
-        - pd.DataFrame: The data with missing values backward filled.
-        """
-        return data.bfill()
-    
-    def __call__(self, method: str = 'zero'):
-        """
-        Processes the data to handle missing values using the specified method.
-
-        Parameters:
-        - method (str): The method to use for handling missing values ('zero', 'mean', 'median', 'ffill', or 'bfill').
-
-        Returns:
-        - pd.DataFrame: The processed data with missing values handled according to the specified method.
-
-        Raises:
-        - ValueError: If the method is not one of the specified options.
-        """
-        if method == 'zero':
-            data = self._zero(self.data)
-        elif method == 'mean':
-            data = self._mean(self.data)
-        elif method == 'median':
-            data = self._median(self.data)
-        elif method == 'ffill':
-            data = self._ffill(self.data)
-        elif method == 'bfill':
-            data = self._bfill(self.data)
-        else:
-            raise ValueError('method must be "zero", "mean", "median", "ffill", or "bfill"')
-        return self.__recover(data)
-
-
-class Corr(Preprocessor):
-    """
-    A subclass of Preprocessor that calculates the correlation between two datasets.
-
-    This class is designed to compare two sets of financial data (for example, stock prices and returns) and compute their correlation.
-
-    Inherits:
-    - All attributes and methods from Preprocessor class.
-    """
+class Imputer:
 
     def __init__(
-        self, 
-        data_left: pd.DataFrame | pd.Series,
-        data_right: pd.DataFrame | pd.Series,
+        self,
+        method: str = "mean", 
+        code_level: str | int = 0,
+        date_level: str | int = 1,
+    ) -> None:
+        self.method = method
+        self.code_level = code_level
+        self.date_level = date_level
+        self.fitted = False
+        
+    def _mean(self, data: pd.DataFrame):
+        return data.T.fillna(self.filler).T
+    
+    def _median(self, data: pd.DataFrame):
+        return data.T.fillna(self.filler).T
+    
+    def _mod(self, data: pd.DataFrame):
+        return data.T.fillna(self.filler).T
+    
+    def fit(self, data: pd.DataFrame):
+        if isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
+            data = data.unstack(level=self.code_level)
+        elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
+            data = data.iloc[:, 0].unstack(level=self.code_level)
+        elif isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
+            raise TypeError("Invalid data format.")
+        
+        if self.method == "median":
+            self.filler = data.median(axis=1)
+        elif self.method == "mod":
+            self.filler = data.mode(axis=1)
+        elif self.method == "mean":
+            self.filler = data.mean(axis=1)
+        else:
+            raise ValueError("Invalid method.")
+        self.fitted = True
+
+    def transform(self, data: pd.DataFrame):
+        if self.method == 'mean':
+            return self._mean(data)
+        elif self.method == 'median':
+            return self._median(data)
+        elif self.method == 'mod':
+            return self._mod(data)
+        else:
+            raise ValueError('method must be "zero", "mean", "median", "ffill", or "bfill"')
+        
+    def fit_transform(self, data: pd.DataFrame):
+        self.fit(data)
+        return self.transform(data)
+
+
+class Corr:
+
+    def __init__(
+        self,
+        method: str = 'pearson',
         code_level: str | int = 0, 
         date_level: str | int = 1,
     ) -> None:
-        """
-        Initializes the Corr object with two datasets and configuration for processing.
-
-        Parameters:
-        - data_left (pd.DataFrame | pd.Series): The first dataset for correlation calculation.
-        - data_right (pd.DataFrame | pd.Series): The second dataset for correlation calculation.
-        - code_level (str | int): The level in the MultiIndex that represents the unique identifier for each financial instrument.
-        - date_level (str | int): The level in the MultiIndex that represents the date.
-
-        The constructor transforms the input data using the __transform method inherited from Preprocessor.
-        """
+        self.method = method
         self.code_level = code_level
         self.date_level = date_level
 
-        self.data_right = self.__transform(data_right)
-        self.data_left = self.__transform(data_left)
+    def fit(self, left: pd.DataFrame | pd.Series, right: pd.DataFrame | pd.Series):
+        if isinstance(left, pd.Series) and isinstance(left.index, pd.MultiIndex):
+            left = left.unstack(level=self.code_level)
+        elif isinstance(left, pd.DataFrame) and isinstance(left.index, pd.MultiIndex) and left.columns.size == 1:
+            left = left.iloc[:, 0].unstack(level=self.code_level)
+        elif isinstance(left, pd.DataFrame) and not isinstance(left.index, pd.MultiIndex):
+            raise TypeError("Invalid left data format.")
+        
+        if isinstance(right, pd.Series) and isinstance(right.index, pd.MultiIndex):
+            right = right.unstack(level=self.code_level)
+        elif isinstance(right, pd.DataFrame) and isinstance(right.index, pd.MultiIndex) and right.columns.size == 1:
+            right = right.iloc[:, 0].unstack(level=self.code_level)
+        elif isinstance(right, pd.DataFrame) and not isinstance(right.index, pd.MultiIndex):
+            raise TypeError("Invalid right data format.")
+        
+        self.left = left
+        self.right = right
+        self.fitted = True
 
-    def __call__(self, method: str = 'pearson'):
+    def transform(self):
         """
         Calculates the correlation between the two datasets.
 
@@ -837,7 +787,8 @@ class Corr(Preprocessor):
 
         This method computes the correlation for each time period using the specified method.
         """
-        data = self.data_left.corrwith(
-            self.data_right, axis=1, method=method)
-        return self.__recover(data)
-
+        return self.left.corrwith(self.right, axis=1, method=self.method)
+    
+    def fit_transform(self, left: pd.DataFrame | pd.Series, right: pd.DataFrame | pd.Series):
+        self.fit(left, right)
+        return self.transform()
