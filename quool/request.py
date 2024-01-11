@@ -193,7 +193,7 @@ class Request:
     def soup(self):
         return [BeautifulSoup(res.text, 'html.parser')  if res is not None else None for res in self.responses]
 
-    def __call__(self, para: bool = True, *args, **kwargs):
+    def request_callback(self, para: bool = True, *args, **kwargs):
         """
         Makes requests (parallel or sequential) when the instance is called.
 
@@ -990,7 +990,7 @@ class WeiXin:
     def notify(
         cls, 
         key: str, 
-        content_or_path: str = "",
+        content_or_path: str,
         message_type: str = "text",
         mentions: str | list = None
     ):
