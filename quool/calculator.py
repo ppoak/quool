@@ -222,24 +222,20 @@ class PeriodEvent(Return):
     
     def __init__(
         self,
-        price: pd.Series,
         buy_column: str = "close",
         sell_column: str = "close",
+        delay: int = 1,
         code_level: str | int = 0,
         date_level: str | int = 1,
-        delay: int = 1,
     ):
         """
         Initializes the PeriodEvent object with price data and configuration.
 
         The constructor ensures that the price data is a pandas Series with a MultiIndex. It then initializes the superclass with the provided data and configuration.
         """
-        if not isinstance(price.index, pd.MultiIndex):
-            raise ValueError("price must be a Series or DataFrame with MultiIndex")
-        super().__init__(price, buy_column, sell_column,
-            code_level, date_level, delay)
+        super().__init__(buy_column, sell_column, delay, code_level, date_level)
     
-    def __call(
+    def _compute(
         self, _event: pd.Series, 
         start: int | float | str, 
         stop: int | float | str
@@ -286,12 +282,16 @@ class PeriodEvent(Return):
         
         return sell_price / buy_price - 1
         
-    def fit_transform(
-        self,
-        event: pd.Series,
-        start: int | float | str,
-        stop: int | float | str,
-    ) -> pd.Series:
+    def fit(self, price: pd.Series, event: pd.Series):
+        if not isinstance(price.index, pd.MultiIndex):
+            raise ValueError("price must be a Series or DataFrame with MultiIndex")
+        if not isinstance(price.index, type(event.index)):
+            raise ValueError("the type of price and event must be the same")
+        
+        self.event = event
+        super().fit(price)
+        
+    def transform(self, start: int | float | str, stop: int | float | str) -> pd.Series:
         """
         A wrapper around the __call method for applying the return calculation over multiple periods.
 
@@ -305,14 +305,24 @@ class PeriodEvent(Return):
 
         This method processes multiple periods in the event series and applies the return calculation to each.
         """
-        if not isinstance(self.price.index, type(event.index)):
-            raise ValueError("the type of price and event must be the same")
-        if set(event.unique()) - set([start, stop]):
+        if not self.fitted:
+            raise ValueError("The model has not been fitted yet.")
+        if set(self.event.unique()) - set([start, stop]):
             raise ValueError("there are labels that are not start-stop labels")
 
-        res = event.groupby(level=self.code_level).apply(
-            self.__call, start=start, stop=stop)
+        res = self.event.groupby(level=self.code_level).apply(
+            self._compute, start=start, stop=stop)
         return res
+    
+    def fit_transform(
+        self,
+        price: pd.Series,
+        event: pd.Series,
+        start: int | float | str,
+        stop: int | float | str,
+    ):
+        self.fit(price, event)
+        return self.transform(start, stop)
 
 
 class Weight(Return):
