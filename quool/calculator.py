@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
+from .tool import _Estimator, NotFittedError
 
 
-class Return:
+class Return(_Estimator):
     """
     A class to calculate the returns of financial instruments based on provided pricing data.
 
@@ -19,7 +20,6 @@ class Return:
 
     def __init__(
         self,
-        price: pd.DataFrame | pd.Series,
         buy_column: str = "open",
         sell_column: str = "close",
         code_level: str | int = 0,
@@ -34,37 +34,36 @@ class Return:
         - For a MultiIndexed DataFrame, groups by the code level and shifts the price data by the delay, and sets the buy and sell prices based on the specified columns.
         - For a MultiIndexed Series, groups by the code level and shifts the price data by the delay.
         """
+        super().__init__(buy_column=buy_column, sell_column=sell_column,
+            code_level=code_level, date_level=date_level, delay=delay)
+    
+    def fit(self, price: pd.DataFrame | pd.Series):
         if isinstance(price, pd.DataFrame) and not \
             isinstance(price.index, pd.MultiIndex):
-            self.date_level = price.index.name
-            self.code_level = price.columns.name
-            if self.code_level is None:
-                self.code_level = code_level
-                price.columns.name = self.code_level
-            if self.date_level is None:
-                self.date_level = date_level
-                price.index.name = self.date_level
-            self.price = price.shift(-delay)
+            self.code_level = price.columns.name or self.code_level
+            self.date_level = price.index.name or self.date_level
+            self.price = price.shift(-self.delay)
             self.buy_price = self.price
             self.sell_price = self.price
         
         elif isinstance(price, pd.DataFrame) and \
             isinstance(price.index, pd.MultiIndex):
-            self.date_level = date_level
-            self.code_level = code_level
-            self.price = price.groupby(level=self.code_level).shift(-delay)
-            self.buy_price = self.price[buy_column]
-            self.sell_price = self.price[sell_column]
+            self.price = price.groupby(level=self.code_level).shift(-self.delay)
+            self.buy_price = self.price[self.buy_column]
+            self.sell_price = self.price[self.sell_column]
         
         elif isinstance(price, pd.Series) and \
             isinstance(price.index, pd.MultiIndex):
-            self.date_level = date_level
-            self.code_level = code_level
-            self.price = price.groupby(level=self.code_level).shift(-delay)
+            self.price = price.groupby(level=self.code_level).shift(-self.delay)
             self.buy_price = self.price
             self.sell_price = self.price
+        
+        else:
+            raise TypeError("price should be DataFrame with MultiIndex, SingleIndex or Series with MultiIndex")
+        
+        self.fitted = True
     
-    def __call__(self, span: int = -1, log: bool = False) -> pd.Series | pd.DataFrame:
+    def transform(self, span: int) -> pd.Series | pd.DataFrame:
         """
         Calculates the return over a specified span.
 
@@ -77,6 +76,9 @@ class Return:
 
         This method handles both regular and MultiIndexed data, calculating returns based on the specified span and whether to use logarithmic or simple returns.
         """
+        if not self.fitted:
+            raise NotFittedError
+        
         if not isinstance(self.price.index, pd.MultiIndex):
             if span < 0:
                 sell_price = self.sell_price.shift(span)
@@ -93,9 +95,21 @@ class Return:
                 sell_price = self.sell_price
                 buy_price = self.buy_price.groupby(level=self.code_level).shift(span)
         
-        if log:
-            return np.log(sell_price / buy_price)
         return sell_price / buy_price - 1
+    
+    def transform_log(self, span: int) -> pd.Series | pd.DataFrame:
+        return np.log(self.transform(span=span) + 1)
+    
+    def fit_transform(
+        self, 
+        price: pd.DataFrame | pd.Series, 
+        span: int,
+        log: bool = False
+    ) -> pd.Series | pd.DataFrame:
+        self.fit(price)
+        if log:
+            return self.transform_log(span=span)
+        return self.transform(span=span)
 
 
 class Event(Return):
@@ -130,7 +144,7 @@ class Event(Return):
         super().__init__(price, buy_column, sell_column,
             code_level, date_level, 0)
 
-    def call(
+    def fit(
         self,
         event: pd.Series,
         span: tuple = (-5, 6, 1),
@@ -151,13 +165,13 @@ class Event(Return):
             raise ValueError("the type of price and event must be the same")
         
         res = []
-        r = super()(span=1)
+        r = super().transform(span=1)
         for i in np.arange(*span):
             res.append(r.groupby(level=self.code_level).shift(-i).loc[event.index])
         res = pd.concat(res, axis=1, keys=np.arange(*span)).add_prefix('day').fillna(0)
         return res
         
-    def __call__(
+    def fit_transform(
         self,
         event: pd.Series,
         span: tuple = (-5, 6, 1),
@@ -174,7 +188,7 @@ class Event(Return):
 
         This method is a wrapper around the 'call' method that additionally calculates the mean and cumulative mean returns for the specified span.
         """
-        res = self.call(event, span)
+        res = self.fit(event, span)
         dayres = res.mean(axis=0)
         cumres = (1 + res).cumprod(axis=1)
         cumres = cumres.div(cumres["day0"], axis=0).mean(axis=0)
@@ -262,7 +276,7 @@ class PeriodEvent(Return):
         
         return sell_price / buy_price - 1
         
-    def __call__(
+    def fit_transform(
         self,
         event: pd.Series,
         start: int | float | str,
@@ -341,17 +355,17 @@ class Weight(Return):
         This method calculates returns based on the weight of each instrument at each time point, taking into account rebalancing frequency.
         """
         if isinstance(weight.index, type(self.price.index)):
-            r = super().__call__(rebalance)
+            r = super().fit_transform(rebalance)
         elif isinstance(weight.index, pd.MultiIndex):
-            r = super().__call__(rebalance).stack().reorder_levels(
+            r = super().fit_transform(rebalance).stack().reorder_levels(
                 [self.code_level, self.date_level])
         elif isinstance(weight.index, pd.Index):
-            r = super().__call__(rebalance).unstack(
+            r = super().fit_transform(rebalance).unstack(
                 level=self.code_level)
 
         return r * weight
     
-    def __call__(
+    def fit_transform(
         self, 
         weight: pd.DataFrame | pd.Series, 
         rebalance: int = -1,
@@ -448,12 +462,12 @@ class Rebalance(Return):
         This method calculates returns for each time period, taking into account the weights of each instrument in the portfolio.
         """
         if isinstance(weight.index, type(self.price.index)):
-            r = super().__call__(span=1)
+            r = super().fit_transform(span=1)
         elif isinstance(weight.index, pd.MultiIndex):
-            r = super().__call__(span=1).stack().reorder_levels(
+            r = super().fit_transform(span=1).stack().reorder_levels(
                 [self.code_level, self.date_level])
         elif isinstance(weight.index, pd.Index):
-            r = super().__call__(span=1).unstack(
+            r = super().fit_transform(span=1).unstack(
                 level=self.code_level)
         
         weight = weight.fillna(0).reindex(r.index)
@@ -463,7 +477,7 @@ class Rebalance(Return):
         r = r.fillna(0) * weight
         return r
     
-    def __call__(
+    def fit_transform(
         self, 
         weight: pd.DataFrame | pd.Series, 
         commission: float = 0.005,

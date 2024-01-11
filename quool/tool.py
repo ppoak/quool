@@ -1,4 +1,5 @@
 import re
+import abc
 import logging
 import numpy as np
 import pandas as pd
@@ -118,6 +119,36 @@ class Logger(logging.Logger):
                 display_time=display_time, display_name=display_name
             ))
             self.addHandler(file_handler)
+
+
+class _Estimator(abc.ABC):
+
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        self.fitted = False
+    
+    @abc.abstractmethod
+    def fit(self, data: pd.DataFrame | pd.Series, *args, **kwargs):
+        raise NotImplementedError
+    
+    @abc.abstractmethod
+    def transform(self, data: pd.DataFrame | pd.Series, *args, **kwargs):
+        raise NotImplementedError
+    
+    @abc.abstractmethod
+    def fit_transform(self, data: pd.DataFrame | pd.Series, *args, **kwargs):
+        raise NotImplementedError
+
+    def predict(self, data: pd.DataFrame | pd.Series, *args, **kwargs):
+        raise NotImplementedError
+    
+    def score(self, data: pd.DataFrame | pd.Series, *args, **kwargs):
+        raise NotImplementedError
+
+
+class NotFittedError(Exception):
+    pass
 
 
 def parse_date(
