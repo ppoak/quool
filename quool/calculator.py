@@ -1,9 +1,29 @@
+import abc
 import numpy as np
 import pandas as pd
 from .tool import DimFormatter
 
 
-class Return:
+class Calculator(abc.ABC):
+
+    def __init__(self, **params) -> None:
+        for key, value in params.items():
+            setattr(self, key, value)
+        self.fitted = False
+    
+    @abc.abstractmethod
+    def fit(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    @abc.abstractmethod
+    def transform(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    def fit_transform(self, *args, **kwargs):
+        raise NotImplementedError
+
+
+class Return(Calculator):
     """
     A class to calculate the returns of financial instruments based on provided pricing data.
 
@@ -567,7 +587,7 @@ class Rebalance(Return):
         return self.transform(commission, side, return_tvr)
 
 
-class RobustScaler:
+class RobustScaler(Calculator):
     """
     A subclass of Preprocessor that focuses on detecting and handling outliers in financial data.
 
@@ -584,11 +604,8 @@ class RobustScaler:
         code_level: str | int = 0,
         date_level: str | int = 1,
     ) -> None:
-        self.method = method
-        self.n = n
-        self.code_level = code_level
-        self.date_level = date_level
-        self.fitted = False
+        super().__init__(method=method, n=n, 
+            code_level=code_level, date_level=date_level)
     
     def fit(self, data: pd.DataFrame | pd.Series):
         formatter = DimFormatter(data)
@@ -651,7 +668,7 @@ class RobustScaler:
         return self.fit(data).transform()
 
 
-class StandardScaler:
+class StandardScaler(Calculator):
 
     def __init__(
         self,
@@ -659,10 +676,8 @@ class StandardScaler:
         code_level: str | int = 0,
         date_level: str | int = 1,
     ) -> None:
-        self.method = method
-        self.code_level = code_level
-        self.date_level = date_level
-        self.fitted = False
+        super().__init__(method=method, 
+            code_level=code_level, date_level=date_level)
     
     def fit(self, data: pd.DataFrame | pd.Series):
         formatter = DimFormatter(data)
@@ -700,7 +715,7 @@ class StandardScaler:
         return self.fit(data).transform()
 
 
-class Imputer:
+class Imputer(Calculator):
 
     def __init__(
         self,
@@ -708,10 +723,8 @@ class Imputer:
         code_level: str | int = 0,
         date_level: str | int = 1,
     ) -> None:
-        self.method = method
-        self.code_level = code_level
-        self.date_level = date_level
-        self.fitted = False
+        super().__init__(method=method,
+            code_level=code_level, date_level=date_level)
         
     def fit(self, data: pd.DataFrame):
         formatter = DimFormatter(data)
@@ -751,7 +764,7 @@ class Imputer:
         return self.fit(data).transform()
 
 
-class Corr:
+class Corr(Calculator):
 
     def __init__(
         self,
@@ -759,10 +772,8 @@ class Corr:
         code_level: str | int = 0, 
         date_level: str | int = 1,
     ) -> None:
-        self.method = method
-        self.code_level = code_level
-        self.date_level = date_level
-        self.fitted = False
+        super().__init__(method=method,
+            code_level=code_level, date_level=date_level)
 
     def fit(self, left: pd.DataFrame | pd.Series, right: pd.DataFrame | pd.Series):
         left_formatter = DimFormatter(left)
@@ -800,7 +811,7 @@ class Corr:
         return self.fit(left, right).transform()
 
 
-class Layer:
+class Layer(Calculator):
 
     def __init__(
         self,
@@ -808,10 +819,8 @@ class Layer:
         code_level: int = 0,
         date_level: int = 1,
     ) -> None:
-        self.ngroup = ngroup
-        self.code_level = code_level
-        self.date_level = date_level
-        self.fitted = False
+        super().__init__(ngroup=ngroup,
+            code_level=code_level, date_level=date_level)
     
     def fit(self, data: pd.DataFrame | pd.Series):
         formatter = DimFormatter(data)
