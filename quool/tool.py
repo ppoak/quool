@@ -1,5 +1,4 @@
 import re
-import abc
 import logging
 import numpy as np
 import pandas as pd
@@ -119,6 +118,87 @@ class Logger(logging.Logger):
                 display_time=display_time, display_name=display_name
             ))
             self.addHandler(file_handler)
+
+
+class DimFormatter:
+
+    def __init__(self, data: pd.DataFrame | pd.Series) -> None:
+        if not isinstance(data, (pd.DataFrame, pd.Series)):
+            raise TypeError('data must be a pandas DataFrame or Series')
+        self.data = data
+
+    @property
+    def dimshape(self):
+        if isinstance(self.data, pd.Series):
+            return (self.data.index.nlevels, )
+        return (self.data.index.nlevels, self.data.columns.nlevels)
+    
+    @property
+    def naxes(self):
+        return len(self.data.shape)
+    
+    @property
+    def ndims(self):
+        return np.sum(self.dimshape)
+    
+    @property
+    def rowdim(self):
+        return self.dimshape[0]
+    
+    @property
+    def coldim(self):
+        if isinstance(self.data, pd.Series):
+            return None
+        return self.dimshape[1]
+    
+    @property
+    def dimnames(self):
+        if isinstance(self.data, pd.Series):
+            return self.data.index.names
+        return self.data.index.names + self.data.columns.names
+
+    @property
+    def rowname(self):
+        return self.data.index.names
+
+    @property
+    def colname(self):
+        if isinstance(self.data, pd.Series):
+            return None
+        return self.data.columns.names
+    
+    def swapdim(self, fromdim: int | str, todim: int | str):
+        rowdim = self.rowdim
+        if self.naxes > 1:
+            fromdim = self.dimnames.index(fromdim) if isinstance(fromdim, str) else fromdim
+            fromdim = fromdim + self.ndims if fromdim < 0 else fromdim
+            todim = self.dimnames.index(todim) if isinstance(todim, str) else todim
+            todim = todim + self.ndims if todim < 0 else todim
+            if fromdim < rowdim and todim < rowdim:
+                # this is on axis 0
+                self.data = self.data.swaplevel(i=fromdim, j=todim, axis=0)
+            elif fromdim >= rowdim and todim >= rowdim:
+                # this is on axis 1
+                self.data = self.data.swaplevel(i=fromdim, j=todim, axis=1)
+            elif fromdim < rowdim and todim >= rowdim:
+                # this is from axis 0 to axis 1
+                self.data = self.data.unstack(level=fromdim)
+                self.data = self.data.swaplevel(i=-1, j=todim - rowdim, axis=1)
+            elif fromdim >= rowdim and todim < rowdim:
+                # this is from axis 1 to axis 0
+                self.data = self.data.stack(level=int(fromdim - rowdim))
+                if self.naxes > 1:
+                    self.data = self.data.swaplevel(i=-1, j=todim, axis=0)
+                else:
+                    self.data = self.data.swaplevel(i=-1, j=todim)
+        else:
+            if todim < 0:
+                # when todim < 0, meaning data needs to be unstacked to extend axes
+                self.data = self.data.unstack(level=fromdim)
+            else:
+                # when todim > 0 or todim is string type (changed to int), naively reorder
+                self.data = self.data.swaplevel(i=fromdim, j=todim)
+        return self.data
 
 
 def parse_date(

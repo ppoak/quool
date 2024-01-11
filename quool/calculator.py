@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from .tool import DimFormatter
 
 
 class Return:
@@ -41,35 +42,45 @@ class Return:
         self.fitted = False
     
     def fit(self, price: pd.DataFrame | pd.Series):
-        if isinstance(price, pd.DataFrame) and \
-           isinstance(price.index, pd.MultiIndex) and \
-           price.columns.size == 1:
+        formatter = DimFormatter(price)
+        if formatter.ndims > 3:
+            raise ValueError("Return only supports 3-dimension data at most")
+        
+        if formatter.naxes > 1 and price.shape[1] == 1 and formatter.rowdim > 1:
+            # allow single-column dataframe with MultiIndex to be treated as series
             price = price.iloc[:, 0]
             
-        if isinstance(price, pd.DataFrame) and not \
-            isinstance(price.index, pd.MultiIndex):
+        if formatter.naxes > 1 and formatter.rowdim == 1:
+            # DataFrame with Index
             self.code_level = price.columns.name or self.code_level
             self.date_level = price.index.name or self.date_level
             price = price.shift(-self.delay)
             self.buy_price = price
             self.sell_price = price
         
-        elif isinstance(price, pd.DataFrame) and \
-            isinstance(price.index, pd.MultiIndex):
+        elif formatter.naxes > 1 and formatter.rowdim > 1:
+            # DataFrame with MultiIndex
             price = price.groupby(level=self.code_level).shift(-self.delay)
             self.buy_price = price[self.buy]
             self.sell_price = price[self.sell]
         
-        elif isinstance(price, pd.Series) and \
-            isinstance(price.index, pd.MultiIndex):
+        elif formatter.naxes == 1 and formatter.rowdim > 1:
+            # Series with MultiIndex
             price = price.groupby(level=self.code_level).shift(-self.delay)
             self.buy_price = price
             self.sell_price = price
         
+        elif formatter.naxes == 1 and formatter.rowdim == 1:
+            # Series with Index
+            price = price.shift(-self.delay)
+            self.buy_price = price
+            self.sell_price = price
+        
         else:
-            raise TypeError("price should be DataFrame with MultiIndex, SingleIndex or Series with MultiIndex")
+            raise TypeError("invalid data format")
         
         self.fitted = True
+        return self
     
     def transform(self, span: int) -> pd.Series | pd.DataFrame:
         """
@@ -87,7 +98,8 @@ class Return:
         if not self.fitted:
             raise ValueError("Return unfitted")
         
-        if not isinstance(self.price.index, pd.MultiIndex):
+        formatter = DimFormatter(self.buy_price)
+        if formatter.naxes > 1:
             if span < 0:
                 sell_price = self.sell_price.shift(span)
                 buy_price = self.buy_price
@@ -161,23 +173,19 @@ class Event(Return):
 
         This method calculates returns for each day within the specified span around the events and aligns them with the event dates.
         """
-        if isinstance(event, pd.DataFrame) and event.columns.size == 1:
-            event = event.iloc[:, 0]
-        if isinstance(price, pd.DataFrame) and price.columns.size == 1:
-            price = price.iloc[:, 0]
-
-        if not isinstance(event.index, pd.MultiIndex) and isinstance(event, pd.DataFrame):
-            event = event.stack().swaplevel()
-        elif not isinstance(event.index, pd.MultiIndex) and isinstance(event, pd.Series):
-            raise ValueError("event should either be a series with MultiIndex or a DataFrame with Index")
+        price_formatter = DimFormatter(price)
+        event_formatter = DimFormatter(event)
+        if price_formatter.ndims != 2 or event_formatter.ndims != 2:
+            raise ValueError("price and event data must be two-dimensional")
         
-        if not isinstance(price.index, pd.MultiIndex) and isinstance(price, pd.DataFrame):
-            price = price.stack().swaplevel()
-        elif not isinstance(price.index, pd.MultiIndex) and isinstance(price, pd.Series):
-            raise ValueError("price should either be a series with MultiIndex or a DataFrame with Index")
+        if event_formatter.rowdim == 1:
+            event = event_formatter.swapdim(-1, 0)
+        if price_formatter.rowdim == 1:
+            price = price_formatter.swapdim(-1, 0)
         
         self.event = event
         super().fit(price)
+        return self
         
     def transform(self, span: tuple) -> pd.Series:
         """
@@ -210,8 +218,7 @@ class Event(Return):
         event: pd.DataFrame | pd.Series, 
         span: tuple = (-5, 6, 1)
     ) -> pd.Series | pd.DataFrame:
-        self.fit(price, event)
-        return self.transform(span)
+        return self.fit(price, event).transform(span)
 
 
 class PeriodEvent(Return):
@@ -292,23 +299,20 @@ class PeriodEvent(Return):
         return sell_price / buy_price - 1
         
     def fit(self, price: pd.Series | pd.DataFrame, event: pd.Series | pd.DataFrame):
-        if isinstance(event, pd.DataFrame) and event.columns.size == 1:
-            event = event.iloc[:, 0]
-        if isinstance(price, pd.DataFrame) and price.columns.size == 1:
-            price = price.iloc[:, 0]
+        price_formatter = DimFormatter(price)
+        event_formatter = DimFormatter(event)
 
-        if not isinstance(event.index, pd.MultiIndex) and isinstance(event, pd.DataFrame):
-            event = event.stack().swaplevel()
-        elif not isinstance(event.index, pd.MultiIndex) and isinstance(event, pd.Series):
-            raise ValueError("event should either be a series with MultiIndex or a DataFrame with Index")
+        if price_formatter.ndims != 2 or event_formatter.ndims != 2:
+            raise ValueError("price and event data must be two-dimensional")
         
-        if not isinstance(price.index, pd.MultiIndex) and isinstance(price, pd.DataFrame):
-            price = price.stack().swaplevel()
-        elif not isinstance(price.index, pd.MultiIndex) and isinstance(price, pd.Series):
-            raise ValueError("price should either be a series with MultiIndex or a DataFrame with Index")
+        if event_formatter.rowdim == 1:
+            event = event_formatter.swapdim(-1, 0)
+        if price_formatter.rowdim == 1:
+            price = price_formatter.swapdim(-1, 0)
         
         self.event = event
         super().fit(price)
+        return self
         
     def transform(self, start: int | float | str, stop: int | float | str) -> pd.Series:
         """
@@ -339,8 +343,7 @@ class PeriodEvent(Return):
         start: int | float | str,
         stop: int | float | str,
     ):
-        self.fit(price, event)
-        return self.transform(start, stop)
+        return self.fit(price, event).transform(start, stop)
 
 
 class Weight(Return):
@@ -386,17 +389,19 @@ class Weight(Return):
 
         This method calculates returns based on the weight of each instrument at each time point, taking into account rebalancing frequency.
         """
-        if isinstance(weight, pd.Series) and isinstance(weight.index, pd.MultiIndex):
-            weight = weight.unstack(level=self.code_level)
-        elif not (isinstance(weight, pd.DataFrame) and not isinstance(weight.index, pd.MultiIndex)):
-            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
-        if isinstance(price, pd.Series) and isinstance(price.index, pd.MultiIndex):
-            price = price.unstack(level=self.code_level)
-        elif not (isinstance(price, pd.DataFrame) and not isinstance(price.index, pd.MultiIndex)):
-            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
+        price_formatter = DimFormatter(price)
+        weight_formatter = DimFormatter(weight)
+        if price_formatter.ndims != 2 or weight_formatter.ndims != 2:
+            raise ValueError("price and event data must be two-dimensional")
+        
+        if weight_formatter.naxes == 1:
+            weight = weight_formatter.swapdim(self.code_level, -1)
+        if price_formatter.naxes == 1:
+            price = price.unstack(self.code_level, -1)
         
         self.weight = weight
         super().fit(price)
+        return self
         
     def transform(
         self, 
@@ -450,8 +455,7 @@ class Weight(Return):
         side: str = 'both',
         return_tvr: bool = False,
     ):
-        self.fit(price, weight)
-        return self.transform(rebalance, commission, side, return_tvr)
+        return self.fit(price, weight).transform(rebalance, commission, side, return_tvr)
 
 
 class Rebalance(Return):
@@ -494,17 +498,19 @@ class Rebalance(Return):
 
         This method calculates returns for each time period, taking into account the weights of each instrument in the portfolio.
         """
-        if isinstance(weight, pd.Series) and isinstance(weight.index, pd.MultiIndex):
-            weight = weight.unstack(level=self.code_level)
-        elif not (isinstance(weight, pd.DataFrame) and not isinstance(weight.index, pd.MultiIndex)):
-            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
-        if isinstance(price, pd.Series) and isinstance(price.index, pd.MultiIndex):
-            price = price.unstack(level=self.code_level)
-        elif not (isinstance(price, pd.DataFrame) and not isinstance(price.index, pd.MultiIndex)):
-            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
+        price_formatter = DimFormatter(price)
+        weight_formatter = DimFormatter(weight)
+        if price_formatter.ndims != 2 or weight_formatter.ndims != 2:
+            raise ValueError("price and event data must be two-dimensional")
+        
+        if weight_formatter.naxes == 1:
+            weight = weight_formatter.swapdim(self.code_level, -1)
+        if price_formatter.naxes == 1:
+            price = price.unstack(self.code_level, -1)
         
         self.weight = weight
-        self.fit(price)
+        super().fit(price)
+        return self    
     
     def transform(
         self, 
@@ -540,7 +546,7 @@ class Rebalance(Return):
             raise ValueError("side must be in ['both', 'buy', 'sell']")
         commission *= tvr
         
-        r = self.transform(span=1)
+        r = super().transform(span=1)
         weight = self.weight.fillna(0).reindex(r.index).ffill()
         r *= weight
         r = r.sum(axis=1) - commission.reindex(r.index).fillna(0)
@@ -585,12 +591,12 @@ class RobustScaler:
         self.fitted = False
     
     def fit(self, data: pd.DataFrame | pd.Series):
-        if isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
-            data = data.unstack(level=self.code_level)
-        elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
-            data = data.iloc[:, 0].unstack(level=self.code_level)
-        elif isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
-            raise TypeError("Invalid data format.")
+        formatter = DimFormatter(data)
+        if formatter.ndims != 2:
+            raise ValueError("data must be two-dimensional")
+        
+        if formatter.rowdim == 2:
+            data = formatter.swapdim(self.code_level, -1)
         
         if self.method == "mad":
             median = data.median(axis=1)
@@ -609,24 +615,11 @@ class RobustScaler:
         else:
             raise ValueError("Invalid method.")
         
+        self.data = data
         self.fitted = True
+        return self
 
-    def _mad(self, data: pd.DataFrame):
-        return data.clip(self.thresh_down, self.thresh_up, axis=1).where(~data.isna())
-    
-    def _std(self, data: pd.DataFrame):
-        return data.clip(self.thresh_down, self.thresh_up, axis=1).where(~data.isna())
-
-    def _iqr(self, data: pd.DataFrame):
-        data = data.mask(
-            data.ge(self.thresh_up, axis=0), np.nan, axis=0
-        ).where(~data.isna())
-        data = data.mask(
-            data.le(self.thresh_down, axis=0), np.nan, axis=0
-        ).where(~data.isna())
-        return data
-    
-    def transform(self, data: pd.DataFrame) -> pd.DataFrame:
+    def transform(self) -> pd.DataFrame:
         """
         Processes the data to handle outliers using the specified method.
 
@@ -645,18 +638,17 @@ class RobustScaler:
         if not self.fitted:
             raise ValueError("the model is not fitted yet")
 
-        if self.method == 'mad':
-            return self._mad(data)
-        elif self.method == 'std':
-            return self._std(data)
+        if self.method == 'mad' or self.method == "std":
+            return self.data.clip(self.thresh_down, self.thresh_up, axis=1).where(~self.data.isna())
         elif self.method == 'iqr':
-            return self._iqr(data)
+            return self.data.mask(
+                self.data.ge(self.thresh_up, axis=0) & self.data.le(self.thresh_down, axis=0), 
+            np.nan, axis=0).where(~self.data.isna())
         else:
             raise ValueError('method must be "mad", "std" or "iqr"')
 
     def fit_transform(self, data: pd.DataFrame | pd.Series) -> pd.DataFrame:
-        self.fit(data)
-        return self.transform(data)
+        return self.fit(data).transform()
 
 
 class StandardScaler:
@@ -673,12 +665,12 @@ class StandardScaler:
         self.fitted = False
     
     def fit(self, data: pd.DataFrame | pd.Series):
-        if isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
-            data = data.unstack(level=self.code_level)
-        elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
-            data = data.iloc[:, 0].unstack(level=self.code_level)
-        elif isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
-            raise TypeError("Invalid data format.")
+        formatter = DimFormatter(data)
+        if formatter.ndims != 2:
+            raise ValueError("data must be two-dimensional")
+        
+        if formatter.rowdim == 2:
+            data = formatter.swapdim(self.code_level, -1)
         
         if self.method == "zscore":
             self.mean = data.mean(axis=1)
@@ -688,28 +680,25 @@ class StandardScaler:
             self.min = data.min(axis=1)
         else:
             raise ValueError("Invalid method.")
+
+        self.data = data
         self.fitted = True
+        return self
 
-    def _zscore(self, data: pd.DataFrame):
-        return data.sub(self.mean, axis=0).div(self.std, axis=0)
-
-    def _minmax(self, data: pd.DataFrame):
-        return data.sub(self.min, axis=0).div((self.max - self.min), axis=0)
-
-    def transform(self, data: pd.DataFrame):
+    def transform(self):
         if not self.fitted:
             raise ValueError("the model is not fitted yet")
 
         if self.method == 'zscore':
-            return self._zscore(data)
+            return self.data.sub(self.mean, axis=0).div(self.std, axis=0)
         elif self.method == 'minmax':
-            return self._minmax(data)
+            return self.data.sub(self.min, axis=0).div((self.max - self.min), axis=0)
         else:
             raise ValueError('method must be "zscore" or "minmax"')
 
     def fit_transform(self, data: pd.DataFrame):
-        self.fit(data)
-        return self.transform(data)
+        return self.fit(data).transform()
+
 
 class Imputer:
 
@@ -724,22 +713,13 @@ class Imputer:
         self.date_level = date_level
         self.fitted = False
         
-    def _mean(self, data: pd.DataFrame):
-        return data.T.fillna(self.filler).T
-    
-    def _median(self, data: pd.DataFrame):
-        return data.T.fillna(self.filler).T
-    
-    def _mod(self, data: pd.DataFrame):
-        return data.T.fillna(self.filler).T
-    
     def fit(self, data: pd.DataFrame):
-        if isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
-            data = data.unstack(level=self.code_level)
-        elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
-            data = data.iloc[:, 0].unstack(level=self.code_level)
-        elif isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
-            raise TypeError("Invalid data format.")
+        formatter = DimFormatter(data)
+        if formatter.ndims != 2:
+            raise ValueError("data must be two-dimensional")
+        
+        if formatter.rowdim == 2:
+            data = formatter.swapdim(self.code_level, -1)
         
         if self.method == "median":
             self.filler = data.median(axis=1)
@@ -749,21 +729,26 @@ class Imputer:
             self.filler = data.mean(axis=1)
         else:
             raise ValueError("Invalid method.")
+        
+        self.data = data
         self.fitted = True
+        return self
 
-    def transform(self, data: pd.DataFrame):
+    def transform(self):
+        if not self.fitted:
+            raise ValueError("the model is not fitted yet")
+
         if self.method == 'mean':
-            return self._mean(data)
+            return self.data.T.fillna(self.filler).T
         elif self.method == 'median':
-            return self._median(data)
+            return self.data.T.fillna(self.filler).T
         elif self.method == 'mod':
-            return self._mod(data)
+            return self.data.T.fillna(self.filler).T
         else:
             raise ValueError('method must be "zero", "mean", "median", "ffill", or "bfill"')
         
     def fit_transform(self, data: pd.DataFrame):
-        self.fit(data)
-        return self.transform(data)
+        return self.fit(data).transform()
 
 
 class Corr:
@@ -779,23 +764,20 @@ class Corr:
         self.date_level = date_level
 
     def fit(self, left: pd.DataFrame | pd.Series, right: pd.DataFrame | pd.Series):
-        if isinstance(left, pd.Series) and isinstance(left.index, pd.MultiIndex):
-            left = left.unstack(level=self.code_level)
-        elif isinstance(left, pd.DataFrame) and isinstance(left.index, pd.MultiIndex) and left.columns.size == 1:
-            left = left.iloc[:, 0].unstack(level=self.code_level)
-        elif isinstance(left, pd.DataFrame) and not isinstance(left.index, pd.MultiIndex):
-            raise TypeError("Invalid left data format.")
+        left_formatter = DimFormatter(left)
+        right_formatter = DimFormatter(right)
+        if left_formatter.ndims != 2 or right_formatter.ndims != 2:
+            raise ValueError("left and right must be two-dimensional")
         
-        if isinstance(right, pd.Series) and isinstance(right.index, pd.MultiIndex):
-            right = right.unstack(level=self.code_level)
-        elif isinstance(right, pd.DataFrame) and isinstance(right.index, pd.MultiIndex) and right.columns.size == 1:
-            right = right.iloc[:, 0].unstack(level=self.code_level)
-        elif isinstance(right, pd.DataFrame) and not isinstance(right.index, pd.MultiIndex):
-            raise TypeError("Invalid right data format.")
+        if left_formatter.rowdim == 2:
+            left = left_formatter.swapdim(self.code_level, -1)
+        if right_formatter.rowdim == 2:
+            right = right_formatter.swapdim(self.code_level, -1)
         
         self.left = left
         self.right = right
         self.fitted = True
+        return self
 
     def transform(self):
         """
@@ -812,5 +794,4 @@ class Corr:
         return self.left.corrwith(self.right, axis=1, method=self.method)
     
     def fit_transform(self, left: pd.DataFrame | pd.Series, right: pd.DataFrame | pd.Series):
-        self.fit(left, right)
-        return self.transform()
+        return self.fit(left, right).transform()
