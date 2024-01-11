@@ -342,26 +342,20 @@ class Weight(Return):
 
     def __init__(
         self,
-        price: pd.DataFrame | pd.Series,
         buy_column: str = "open",
         sell_column: str = "close",
+        delay: int = 1,
         code_level: str | int = 0,
         date_level: str | int = 1,
-        delay: int = 1,
     ):
         """
         Initializes the Weight object with price data and configuration.
 
         The constructor calls the superclass initialization with the provided data and configuration.
         """
-        super().__init__(price, buy_column, sell_column,
-            code_level, date_level, delay)
+        super().__init__(buy_column, sell_column, delay, code_level, date_level)
     
-    def call(
-        self,
-        weight: pd.DataFrame | pd.Series, 
-        rebalance: int = -1,
-    ):
+    def fit(self, price: pd.DataFrame | pd.Series, weight: pd.DataFrame | pd.Series):
         """
         Calculates the weighted returns based on the provided weights.
 
@@ -374,20 +368,16 @@ class Weight(Return):
 
         This method calculates returns based on the weight of each instrument at each time point, taking into account rebalancing frequency.
         """
-        if isinstance(weight.index, type(self.price.index)):
-            r = super().fit_transform(rebalance)
-        elif isinstance(weight.index, pd.MultiIndex):
-            r = super().fit_transform(rebalance).stack().reorder_levels(
-                [self.code_level, self.date_level])
-        elif isinstance(weight.index, pd.Index):
-            r = super().fit_transform(rebalance).unstack(
-                level=self.code_level)
-
-        return r * weight
-    
-    def fit_transform(
+        if isinstance(weight, pd.Series) and isinstance(weight.index, pd.MultiIndex):
+            weight = weight.unstack(level=self.code_level)
+        elif not (isinstance(weight, pd.DataFrame) and not isinstance(weight.index, pd.MultiIndex)):
+            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
+        
+        self.weight = weight
+        super().fit(price)
+        
+    def transform(
         self, 
-        weight: pd.DataFrame | pd.Series, 
         rebalance: int = -1,
         commission: float = 0.005,
         side: str = 'both',
@@ -407,16 +397,11 @@ class Weight(Return):
         - tuple[pd.Series, pd.Series] | pd.Series: The weighted returns and, optionally, the turnover rate.
 
         This method provides an extended functionality to calculate returns with the option to include the cost of turnover and commission.
-        """
-        if isinstance(weight, pd.Series) and \
-            isinstance(weight.index, pd.MultiIndex):
-            weight = weight.unstack(level=self.code_level)
-        elif not (isinstance(weight, pd.DataFrame) and
-            not isinstance(weight.index, pd.MultiIndex)):
-            raise ValueError("the type of weight must be one-level "
-                             f"DataFrame or multi-level Series")
-        
-        delta = weight.fillna(0) - weight.shift(abs(rebalance)).fillna(0)
+        """        
+        if not self.fitted:
+            raise ValueError("the model is not fitted yet")
+
+        delta = self.weight.fillna(0) - self.weight.shift(abs(rebalance)).fillna(0)
         if side == 'both':
             tvr = (delta.abs() / 2).sum(axis=1) / abs(rebalance)
         elif side == 'buy':
@@ -427,13 +412,26 @@ class Weight(Return):
             raise ValueError("side must be in ['both', 'buy', 'sell']")
         commission *= tvr
 
-        r = self.call(weight, rebalance)
-        r = ((r.sum(axis=1) - commission) / 
-             abs(rebalance)).shift(-min(0, rebalance)).fillna(0)
+        r = super().transform(rebalance)
+        if isinstance(r, pd.Series):
+            r = r.unstack(level=self.code_level)
+        r = ((r.sum(axis=1) - commission) / abs(rebalance)).shift(-min(0, rebalance)).fillna(0)
 
         if return_tvr:
             return r, tvr
         return r
+
+    def fit_transform(
+        self,
+        price: pd.DataFrame | pd.Series,
+        weight: pd.DataFrame | pd.Series,
+        rebalance: int = -1,
+        commission: float = 0.005,
+        side: str = 'both',
+        return_tvr: bool = False,
+    ):
+        self.fit(price, weight)
+        return self.transform(rebalance, commission, side, return_tvr)
 
 
 class Rebalance(Return):
