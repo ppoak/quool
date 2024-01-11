@@ -8,8 +8,8 @@ class Return:
 
     Parameters:
     - price (pd.DataFrame | pd.Series): The pricing data, either as a DataFrame or a Series.
-    - buy_column (str): The column name in the DataFrame to be used for the buy price.
-    - sell_column (str): The column name in the DataFrame to be used for the sell price.
+    - buy (str): The column name in the DataFrame to be used for the buy price.
+    - sell (str): The column name in the DataFrame to be used for the sell price.
     - code_level (str | int): The level in the MultiIndex DataFrame or Series that represents the unique identifier for each financial instrument.
     - date_level (str | int): The level in the MultiIndex DataFrame or Series that represents the date.
     - delay (int): The delay in days for the transaction (e.g., a delay of 1 means the sell price is 1 day after the buy price).
@@ -19,8 +19,8 @@ class Return:
 
     def __init__(
         self,
-        buy_column: str = "open",
-        sell_column: str = "close",
+        buy: str = "open",
+        sell: str = "close",
         delay: int = 1,
         code_level: str | int = 0,
         date_level: str | int = 1,
@@ -33,8 +33,8 @@ class Return:
         - For a MultiIndexed DataFrame, groups by the code level and shifts the price data by the delay, and sets the buy and sell prices based on the specified columns.
         - For a MultiIndexed Series, groups by the code level and shifts the price data by the delay.
         """
-        self.buy_column = buy_column
-        self.sell_column = sell_column
+        self.buy = buy
+        self.sell = sell
         self.delay = delay
         self.code_level = code_level
         self.date_level = date_level
@@ -50,21 +50,21 @@ class Return:
             isinstance(price.index, pd.MultiIndex):
             self.code_level = price.columns.name or self.code_level
             self.date_level = price.index.name or self.date_level
-            self.price = price.shift(-self.delay)
-            self.buy_price = self.price
-            self.sell_price = self.price
+            price = price.shift(-self.delay)
+            self.buy_price = price
+            self.sell_price = price
         
         elif isinstance(price, pd.DataFrame) and \
             isinstance(price.index, pd.MultiIndex):
-            self.price = price.groupby(level=self.code_level).shift(-self.delay)
-            self.buy_price = self.price[self.buy_column]
-            self.sell_price = self.price[self.sell_column]
+            price = price.groupby(level=self.code_level).shift(-self.delay)
+            self.buy_price = price[self.buy]
+            self.sell_price = price[self.sell]
         
         elif isinstance(price, pd.Series) and \
             isinstance(price.index, pd.MultiIndex):
-            self.price = price.groupby(level=self.code_level).shift(-self.delay)
-            self.buy_price = self.price
-            self.sell_price = self.price
+            price = price.groupby(level=self.code_level).shift(-self.delay)
+            self.buy_price = price
+            self.sell_price = price
         
         else:
             raise TypeError("price should be DataFrame with MultiIndex, SingleIndex or Series with MultiIndex")
@@ -128,16 +128,16 @@ class Event(Return):
 
     Parameters:
     - price (pd.Series): The pricing data as a pandas Series with a MultiIndex.
-    - buy_column (str): The column name to be used for the buy price.
-    - sell_column (str): The column name to be used for the sell price.
+    - buy (str): The column name to be used for the buy price.
+    - sell (str): The column name to be used for the sell price.
     - code_level (str | int): The level in the MultiIndex that represents the unique identifier for each financial instrument.
     - date_level (str | int): The level in the MultiIndex that represents the date.
     """
     
     def __init__(
         self,
-        buy_column: str = "close",
-        sell_column: str = "close",
+        buy: str = "close",
+        sell: str = "close",
         code_level: str | int = 0,
         date_level: str | int = 1,
     ):
@@ -146,9 +146,9 @@ class Event(Return):
 
         The constructor ensures that the price data is a pandas Series with a MultiIndex. It then initializes the superclass with the provided data and configuration.
         """
-        super().__init__(buy_column, sell_column, 0, code_level, date_level)
+        super().__init__(buy, sell, 0, code_level, date_level)
 
-    def fit(self, price: pd.Series, event: pd.Series):
+    def fit(self, price: pd.Series | pd.DataFrame, event: pd.Series | pd.DataFrame):
         """
         Analyzes the price data around the given events.
 
@@ -161,11 +161,20 @@ class Event(Return):
 
         This method calculates returns for each day within the specified span around the events and aligns them with the event dates.
         """
-        if not isinstance(price.index, pd.MultiIndex):
-            raise ValueError("price must be a Series or DataFrame with MultiIndex")
+        if isinstance(event, pd.DataFrame) and event.columns.size == 1:
+            event = event.iloc[:, 0]
+        if isinstance(price, pd.DataFrame) and price.columns.size == 1:
+            price = price.iloc[:, 0]
+
+        if not isinstance(event.index, pd.MultiIndex) and isinstance(event, pd.DataFrame):
+            event = event.stack().swaplevel()
+        elif not isinstance(event.index, pd.MultiIndex) and isinstance(event, pd.Series):
+            raise ValueError("event should either be a series with MultiIndex or a DataFrame with Index")
         
-        if not isinstance(self.price.index, type(event.index)):
-            raise ValueError("the type of price and event must be the same")
+        if not isinstance(price.index, pd.MultiIndex) and isinstance(price, pd.DataFrame):
+            price = price.stack().swaplevel()
+        elif not isinstance(price.index, pd.MultiIndex) and isinstance(price, pd.Series):
+            raise ValueError("price should either be a series with MultiIndex or a DataFrame with Index")
         
         self.event = event
         super().fit(price)
@@ -213,8 +222,8 @@ class PeriodEvent(Return):
 
     Parameters:
     - price (pd.Series): The pricing data as a pandas Series with a MultiIndex.
-    - buy_column (str): The column name to be used for the buy price.
-    - sell_column (str): The column name to be used for the sell price.
+    - buy (str): The column name to be used for the buy price.
+    - sell (str): The column name to be used for the sell price.
     - code_level (str | int): The level in the MultiIndex that represents the unique identifier for each financial instrument.
     - date_level (str | int): The level in the MultiIndex that represents the date.
     - delay (int): The delay in days for the transaction.
@@ -222,8 +231,8 @@ class PeriodEvent(Return):
     
     def __init__(
         self,
-        buy_column: str = "close",
-        sell_column: str = "close",
+        buy: str = "close",
+        sell: str = "close",
         delay: int = 1,
         code_level: str | int = 0,
         date_level: str | int = 1,
@@ -233,7 +242,7 @@ class PeriodEvent(Return):
 
         The constructor ensures that the price data is a pandas Series with a MultiIndex. It then initializes the superclass with the provided data and configuration.
         """
-        super().__init__(buy_column, sell_column, delay, code_level, date_level)
+        super().__init__(buy, sell, delay, code_level, date_level)
     
     def _compute(
         self, _event: pd.Series, 
@@ -282,11 +291,21 @@ class PeriodEvent(Return):
         
         return sell_price / buy_price - 1
         
-    def fit(self, price: pd.Series, event: pd.Series):
-        if not isinstance(price.index, pd.MultiIndex):
-            raise ValueError("price must be a Series or DataFrame with MultiIndex")
-        if not isinstance(price.index, type(event.index)):
-            raise ValueError("the type of price and event must be the same")
+    def fit(self, price: pd.Series | pd.DataFrame, event: pd.Series | pd.DataFrame):
+        if isinstance(event, pd.DataFrame) and event.columns.size == 1:
+            event = event.iloc[:, 0]
+        if isinstance(price, pd.DataFrame) and price.columns.size == 1:
+            price = price.iloc[:, 0]
+
+        if not isinstance(event.index, pd.MultiIndex) and isinstance(event, pd.DataFrame):
+            event = event.stack().swaplevel()
+        elif not isinstance(event.index, pd.MultiIndex) and isinstance(event, pd.Series):
+            raise ValueError("event should either be a series with MultiIndex or a DataFrame with Index")
+        
+        if not isinstance(price.index, pd.MultiIndex) and isinstance(price, pd.DataFrame):
+            price = price.stack().swaplevel()
+        elif not isinstance(price.index, pd.MultiIndex) and isinstance(price, pd.Series):
+            raise ValueError("price should either be a series with MultiIndex or a DataFrame with Index")
         
         self.event = event
         super().fit(price)
@@ -310,8 +329,7 @@ class PeriodEvent(Return):
         if set(self.event.unique()) - set([start, stop]):
             raise ValueError("there are labels that are not start-stop labels")
 
-        res = self.event.groupby(level=self.code_level).apply(
-            self._compute, start=start, stop=stop)
+        res = self.event.groupby(level=self.code_level).apply(self._compute, start=start, stop=stop)
         return res
     
     def fit_transform(
@@ -333,8 +351,8 @@ class Weight(Return):
 
     Parameters:
     - price (pd.DataFrame | pd.Series): The pricing data.
-    - buy_column (str): The column name to be used for the buy price.
-    - sell_column (str): The column name to be used for the sell price.
+    - buy (str): The column name to be used for the buy price.
+    - sell (str): The column name to be used for the sell price.
     - code_level (str | int): The level in the MultiIndex that represents the unique identifier for each financial instrument.
     - date_level (str | int): The level in the MultiIndex that represents the date.
     - delay (int): The delay in days for the transaction.
@@ -342,8 +360,8 @@ class Weight(Return):
 
     def __init__(
         self,
-        buy_column: str = "open",
-        sell_column: str = "close",
+        buy: str = "open",
+        sell: str = "close",
         delay: int = 1,
         code_level: str | int = 0,
         date_level: str | int = 1,
@@ -353,7 +371,7 @@ class Weight(Return):
 
         The constructor calls the superclass initialization with the provided data and configuration.
         """
-        super().__init__(buy_column, sell_column, delay, code_level, date_level)
+        super().__init__(buy, sell, delay, code_level, date_level)
     
     def fit(self, price: pd.DataFrame | pd.Series, weight: pd.DataFrame | pd.Series):
         """
@@ -371,6 +389,10 @@ class Weight(Return):
         if isinstance(weight, pd.Series) and isinstance(weight.index, pd.MultiIndex):
             weight = weight.unstack(level=self.code_level)
         elif not (isinstance(weight, pd.DataFrame) and not isinstance(weight.index, pd.MultiIndex)):
+            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
+        if isinstance(price, pd.Series) and isinstance(price.index, pd.MultiIndex):
+            price = price.unstack(level=self.code_level)
+        elif not (isinstance(price, pd.DataFrame) and not isinstance(price.index, pd.MultiIndex)):
             raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
         
         self.weight = weight
@@ -413,8 +435,6 @@ class Weight(Return):
         commission *= tvr
 
         r = super().transform(rebalance)
-        if isinstance(r, pd.Series):
-            r = r.unstack(level=self.code_level)
         r = ((r.sum(axis=1) - commission) / abs(rebalance)).shift(-min(0, rebalance)).fillna(0)
 
         if return_tvr:
@@ -442,16 +462,16 @@ class Rebalance(Return):
 
     Parameters:
     - price (pd.DataFrame | pd.Series): The pricing data.
-    - buy_column (str): The column name to be used for the buy price.
-    - sell_column (str): The column name to be used for the sell price.
+    - buy (str): The column name to be used for the buy price.
+    - sell (str): The column name to be used for the sell price.
     - code_level (str | int): The level in the MultiIndex that represents the unique identifier for each financial instrument.
     - date_level (str | int): The level in the MultiIndex that represents the date.
     """
 
     def __init__(
         self,
-        buy_column: str = "close",
-        sell_column: str = "close",
+        buy: str = "close",
+        sell: str = "close",
         code_level: str | int = 0,
         date_level: str | int = 1,
     ):
@@ -460,7 +480,7 @@ class Rebalance(Return):
 
         The constructor calls the superclass initialization with the provided data and configuration.
         """
-        super().__init__(buy_column, sell_column, 0, code_level, date_level)
+        super().__init__(buy, sell, 0, code_level, date_level)
     
     def fit(self, price: pd.DataFrame | pd.Series, weight: pd.DataFrame | pd.Series):
         """
@@ -477,7 +497,11 @@ class Rebalance(Return):
         if isinstance(weight, pd.Series) and isinstance(weight.index, pd.MultiIndex):
             weight = weight.unstack(level=self.code_level)
         elif not (isinstance(weight, pd.DataFrame) and not isinstance(weight.index, pd.MultiIndex)):
-            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")
+            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
+        if isinstance(price, pd.Series) and isinstance(price.index, pd.MultiIndex):
+            price = price.unstack(level=self.code_level)
+        elif not (isinstance(price, pd.DataFrame) and not isinstance(price.index, pd.MultiIndex)):
+            raise ValueError("the type of weight must be one-level DataFrame or multi-level Series")    
         
         self.weight = weight
         self.fit(price)
@@ -517,8 +541,6 @@ class Rebalance(Return):
         commission *= tvr
         
         r = self.transform(span=1)
-        if isinstance(r, pd.Series):
-            r = r.unstack(level=self.code_level).fillna(0)
         weight = self.weight.fillna(0).reindex(r.index).ffill()
         r *= weight
         r = r.sum(axis=1) - commission.reindex(r.index).fillna(0)

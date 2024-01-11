@@ -162,4 +162,4 @@ optimized_df = reduce_mem_usage(original_df)
 
 
 __all__ = ["backtest", "calculator", "database", "model", "request", "tool"]
-__version__ = "1.2.2"
+__version__ = "1.2.3"
