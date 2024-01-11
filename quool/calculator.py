@@ -762,6 +762,7 @@ class Corr:
         self.method = method
         self.code_level = code_level
         self.date_level = date_level
+        self.fitted = False
 
     def fit(self, left: pd.DataFrame | pd.Series, right: pd.DataFrame | pd.Series):
         left_formatter = DimFormatter(left)
@@ -791,7 +792,44 @@ class Corr:
 
         This method computes the correlation for each time period using the specified method.
         """
+        if not self.fitted:
+            raise ValueError('the model is not fitted yet')
         return self.left.corrwith(self.right, axis=1, method=self.method)
     
     def fit_transform(self, left: pd.DataFrame | pd.Series, right: pd.DataFrame | pd.Series):
         return self.fit(left, right).transform()
+
+
+class Layer:
+
+    def __init__(
+        self,
+        ngroup: int = 10,
+        code_level: int = 0,
+        date_level: int = 1,
+    ) -> None:
+        self.ngroup = ngroup
+        self.code_level = code_level
+        self.date_level = date_level
+        self.fitted = False
+    
+    def fit(self, data: pd.DataFrame | pd.Series):
+        formatter = DimFormatter(data)
+        if formatter.ndims != 2:
+            raise ValueError('data must be a two-dimensional')
+        
+        if formatter.rowdim == 2:
+            data = formatter.swapdim(self.code_level, -1)
+        
+        self.data = data
+        self.fitted = True
+        return self
+    
+    def transform(self):
+        if not self.fitted:
+            raise ValueError('the model is not fitted yet')
+        
+        return self.data.apply(lambda x: pd.qcut(x, self.ngroup, labels=False), axis=1) + 1
+    
+    def fit_transform(self, data: pd.DataFrame | pd.Series):
+        return self.fit(data).transform()
