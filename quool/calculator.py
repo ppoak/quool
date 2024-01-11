@@ -539,80 +539,7 @@ class Rebalance(Return):
         return self.transform(commission, side, return_tvr)
 
 
-class Preprocessor:
-    """
-    A utility class for preprocessing financial data stored in pandas DataFrame or Series.
-
-    This class handles the conversion between DataFrame and Series formats, particularly useful when the data needs to be in a specific format for certain analyses.
-
-    Parameters:
-    - data (pd.DataFrame | pd.Series): The financial data to be preprocessed.
-    - code_level (str | int): The level in the MultiIndex that represents the unique identifier for each financial instrument.
-    - date_level (str | int): The level in the MultiIndex that represents the date.
-    """
-
-    def __init__(
-        self, 
-        data: pd.DataFrame | pd.Series,
-        code_level: str | int = 0,
-        date_level: str | int = 1,
-    ) -> None:
-        """
-        Initializes the Preprocessor object with data and configuration.
-
-        The constructor checks the type of data and initializes the preprocessing structure accordingly. It also keeps track of whether the data was initially stacked (Series) or not (DataFrame).
-
-        Raises:
-        - ValueError: If the input data is neither a pandas DataFrame nor a Series.
-        """
-        self.code_level = code_level
-        self.date_level = date_level
-        self.data = self.__transform(data)
-
-    def __transform(self, data: pd.DataFrame | pd.Series) -> pd.DataFrame:
-        """
-        Private method to transform the input data into the desired format for preprocessing.
-
-        This method handles the conversion between DataFrame and Series, based on the structure of the input data.
-
-        Parameters:
-        - data (pd.DataFrame | pd.Series): The data to be transformed.
-
-        Raises:
-        - ValueError: If the input data is neither a pandas DataFrame nor a Series.
-        """
-        if isinstance(data, pd.DataFrame) and isinstance(data, pd.Index):
-            data = data
-            self.stacked = False
-        elif isinstance(data, pd.Series) and isinstance(data, pd.MultiIndex):
-            data = data.unstck(level=self.code_level)
-            self.stacked = True
-        elif isinstance(data, pd.DataFrame) and isinstance(data, pd.MultiIndex) and data.columns.size == 1:
-            data = data.unstck(level=self.code_level)
-            self.stacked = True
-        else:
-            raise ValueError("data must be pd.DataFrame or pd.Series")
-        return data
-    
-    def __recover(self, data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
-        """
-        Recovers the original format of the data after preprocessing.
-
-        Parameters:
-        - data (pd.DataFrame | pd.Series): The data to be recovered to its original format.
-
-        Returns:
-        - pd.DataFrame | pd.Series: The data in its original format (either DataFrame or Series).
-
-        This method reverses the preprocessing steps applied to the data, returning it to its initial structure.
-        """
-        if self.stacked and isinstance(data, pd.DataFrame) and isinstance(data, pd.Index):
-            return data.stack().reorder_levels([self.code_level, self.date_level]).sort_index()
-        elif not self.stacked and isinstance(data, pd.Series) and isinstance(data, pd.MultiIndex):
-            return data.unstack(level=self.code_level)
-
-
-class DeOutlier(Preprocessor):
+class Scaler:
     """
     A subclass of Preprocessor that focuses on detecting and handling outliers in financial data.
 
@@ -622,81 +549,64 @@ class DeOutlier(Preprocessor):
     - All attributes and methods from Preprocessor class.
     """
 
-    def _mad(self, data: pd.DataFrame, n: int = 5):
-        """
-        Detects and adjusts outliers based on Median Absolute Deviation (MAD).
+    def __init__(
+        self,
+        method: str = "mad", 
+        n: int = 5, 
+        code_level: str | int = 0,
+        date_level: str | int = 1,
+    ) -> None:
+        self.method = method
+        self.n = n
+        self.code_level = code_level
+        self.date_level = date_level
+        self.fitted = False
+    
+    def fit(self, data: pd.DataFrame | pd.Series):
+        if isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
+            self.data = data
+        elif isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
+            self.data = data.unstack(level=self.code_level)
+        elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
+            self.data = data.iloc[:, 0].unstack(level=self.code_level)
+        else:
+            raise TypeError("Invalid data format.")
+        
+        if self.method == "mad":
+            median = self.data.median(axis=1)
+            ad = data.sub(median, axis=0)
+            mad = ad.abs().median(axis=1)
+            self.thresh_up = median + self.n * mad
+            self.thresh_down = median - self.n * mad
+        elif self.method == "std":
+            mean = data.mean(axis=1)
+            std = data.std(axis=1)
+            self.thresh_up = mean + std * self.n
+            self.thresh_down = mean - std * self.n
+        elif self.method == "iqr":
+            self.thresh_down = data.quantile(self.n, axis=1)
+            self.thresh_up = data.quantile(1 - self.n, axis=1)
+        else:
+            raise ValueError("Invalid method.")
+        
+        self.fitted = True
 
-        Parameters:
-        - data (pd.DataFrame): The data in which to detect outliers.
-        - n (int): The threshold multiplier for defining what constitutes an outlier.
+    def _mad(self, data: pd.DataFrame):
+        return data.clip(self.thresh_down, self.thresh_up, axis=1).where(~data.isna())
+    
+    def _std(self, data: pd.DataFrame):
+        return data.clip(self.thresh_down, self.thresh_up, axis=1).where(~data.isna())
 
-        Returns:
-        - pd.DataFrame: The adjusted data with outliers handled according to MAD.
-
-        This method calculates the MAD and adjusts the values that are n times the MAD away from the median.
-        """
-        median = data.median(axis=1)
-        ad = data.sub(median, axis=0)
-        mad = ad.abs().median(axis=1)
-        thresh = mad * n
+    def _iqr(self, data: pd.DataFrame):
         data = data.mask(
-            ad.ge(thresh, axis=0), median + thresh, axis=0
-        ).mask(data.isna(), np.nan)
+            data.ge(self.thresh_up, axis=0), np.nan, axis=0
+        ).where(~data.isna())
         data = data.mask(
-            ad.le(-thresh, axis=0), median - thresh, axis=0
-        ).mask(data.isna(), np.nan)
+            data.le(self.thresh_down, axis=0), np.nan, axis=0
+        ).where(~data.isna())
         return data
     
-    def _std(self, data: pd.DataFrame, n: int = 3):
-        """
-        Detects and adjusts outliers based on standard deviation.
-
-        Parameters:
-        - data (pd.DataFrame): The data in which to detect outliers.
-        - n (int): The number of standard deviations to use as the threshold for defining outliers.
-
-        Returns:
-        - pd.DataFrame: The adjusted data with outliers handled according to standard deviation.
-
-        This method calculates the standard deviation and adjusts the values that are n standard deviations away from the mean.
-        """
-        mean = data.mean(axis=1)
-        std = data.std(axis=1)
-        thresh = std * n
-        threshup = mean + thresh
-        threshdown = mean - thresh
-        data = data.mask(
-            data.ge(threshup, axis=0), threshup, axis=0
-        ).mask(data.isna(), np.nan)
-        data = data.mask(
-            data.le(threshdown, axis=0), threshdown, axis=0
-        ).mask(data.isna(), np.nan)
-        return data
-
-    def _nan(self, data: pd.DataFrame, n: int = 0.1):
-        """
-        Identifies outliers and replaces them with NaN based on quantiles.
-
-        Parameters:
-        - data (pd.DataFrame): The data in which to detect outliers.
-        - n (float): The quantile to use for defining the upper and lower bounds of outliers.
-
-        Returns:
-        - pd.DataFrame: The data with outliers replaced by NaN.
-
-        This method uses quantiles to determine outlier thresholds and replaces outliers with NaN.
-        """
-        up = data.quantile(1 - n, axis=1)
-        down = data.quantile(n, axis=1)
-        data = data.mask(
-            data.ge(up, axis=0), np.nan, axis=0
-        ).mask(data.isna(), np.nan)
-        data = data.mask(
-            data.le(down, axis=0), np.nan, axis=0
-        ).mask(data.isna(), np.nan)
-        return data
-    
-    def __call__(self, method: str = 'mad', n: int = 5):
+    def transform(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Processes the data to handle outliers using the specified method.
 
@@ -712,15 +622,22 @@ class DeOutlier(Preprocessor):
 
         This method selects one of the outlier handling techniques and applies it to the data.
         """
-        if method == 'mad':
-            data = self._mad(self.data, n)
-        elif method == 'std':
-            data = self._std(self.data, n)
-        elif method == 'nan':
-            data = self._nan(self.data, n)
+        if not self.fitted:
+            raise ValueError("the model is not fitted yet")
+
+        if self.method == 'mad':
+            data = self._mad(data)
+        elif self.method == 'std':
+            data = self._std(data)
+        elif self.method == 'iqr':
+            data = self._iqr(data)
         else:
-            raise ValueError('method must be "mad", "std" or "nan"')
-        return self.__recover(data)
+            raise ValueError('method must be "mad", "std" or "iqr"')
+        return data
+
+    def fit_transform(self, data: pd.DataFrame | pd.Series) -> pd.DataFrame:
+        self.fit(data)
+        return self.transform(data)
 
 
 class Standarize(Preprocessor):
