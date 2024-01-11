@@ -1,9 +1,8 @@
 import numpy as np
 import pandas as pd
-from .tool import _Estimator, NotFittedError
 
 
-class Return(_Estimator):
+class Return:
     """
     A class to calculate the returns of financial instruments based on provided pricing data.
 
@@ -22,9 +21,9 @@ class Return(_Estimator):
         self,
         buy_column: str = "open",
         sell_column: str = "close",
+        delay: int = 1,
         code_level: str | int = 0,
         date_level: str | int = 1,
-        delay: int = 1,
     ):
         """
         Initializes the Return object with price data and configuration.
@@ -34,10 +33,19 @@ class Return(_Estimator):
         - For a MultiIndexed DataFrame, groups by the code level and shifts the price data by the delay, and sets the buy and sell prices based on the specified columns.
         - For a MultiIndexed Series, groups by the code level and shifts the price data by the delay.
         """
-        super().__init__(buy_column=buy_column, sell_column=sell_column,
-            code_level=code_level, date_level=date_level, delay=delay)
+        self.buy_column = buy_column
+        self.sell_column = sell_column
+        self.delay = delay
+        self.code_level = code_level
+        self.date_level = date_level
+        self.fitted = False
     
     def fit(self, price: pd.DataFrame | pd.Series):
+        if isinstance(price, pd.DataFrame) and \
+           isinstance(price.index, pd.MultiIndex) and \
+           price.columns.size == 1:
+            price = price.iloc[:, 0]
+            
         if isinstance(price, pd.DataFrame) and not \
             isinstance(price.index, pd.MultiIndex):
             self.code_level = price.columns.name or self.code_level
@@ -77,7 +85,7 @@ class Return(_Estimator):
         This method handles both regular and MultiIndexed data, calculating returns based on the specified span and whether to use logarithmic or simple returns.
         """
         if not self.fitted:
-            raise NotFittedError
+            raise ValueError("Return unfitted")
         
         if not isinstance(self.price.index, pd.MultiIndex):
             if span < 0:
@@ -128,7 +136,6 @@ class Event(Return):
     
     def __init__(
         self,
-        price: pd.Series,
         buy_column: str = "close",
         sell_column: str = "close",
         code_level: str | int = 0,
@@ -139,16 +146,9 @@ class Event(Return):
 
         The constructor ensures that the price data is a pandas Series with a MultiIndex. It then initializes the superclass with the provided data and configuration.
         """
-        if not isinstance(price.index, pd.MultiIndex):
-            raise ValueError("price must be a Series or DataFrame with MultiIndex")
-        super().__init__(price, buy_column, sell_column,
-            code_level, date_level, 0)
+        super().__init__(buy_column, sell_column, 0, code_level, date_level)
 
-    def fit(
-        self,
-        event: pd.Series,
-        span: tuple = (-5, 6, 1),
-    ):
+    def fit(self, price: pd.Series, event: pd.Series):
         """
         Analyzes the price data around the given events.
 
@@ -161,21 +161,16 @@ class Event(Return):
 
         This method calculates returns for each day within the specified span around the events and aligns them with the event dates.
         """
+        if not isinstance(price.index, pd.MultiIndex):
+            raise ValueError("price must be a Series or DataFrame with MultiIndex")
+        
         if not isinstance(self.price.index, type(event.index)):
             raise ValueError("the type of price and event must be the same")
         
-        res = []
-        r = super().transform(span=1)
-        for i in np.arange(*span):
-            res.append(r.groupby(level=self.code_level).shift(-i).loc[event.index])
-        res = pd.concat(res, axis=1, keys=np.arange(*span)).add_prefix('day').fillna(0)
-        return res
+        self.event = event
+        super().fit(price)
         
-    def fit_transform(
-        self,
-        event: pd.Series,
-        span: tuple = (-5, 6, 1),
-    ) -> tuple[pd.Series, pd.Series]:
+    def transform(self, span: tuple) -> pd.Series:
         """
         Provides a convenient way to call the 'call' method.
 
@@ -188,11 +183,26 @@ class Event(Return):
 
         This method is a wrapper around the 'call' method that additionally calculates the mean and cumulative mean returns for the specified span.
         """
-        res = self.fit(event, span)
-        dayres = res.mean(axis=0)
+        if not self.fitted:
+            raise ValueError("The model has not been fitted yet.")
+
+        res = []
+        r = super().transform(1)
+        for i in np.arange(*span):
+            res.append(r.groupby(level=self.code_level).shift(-i).loc[self.event.index])
+        res = pd.concat(res, axis=1, keys=np.arange(*span)).add_prefix('day').fillna(0)
         cumres = (1 + res).cumprod(axis=1)
         cumres = cumres.div(cumres["day0"], axis=0).mean(axis=0)
-        return dayres, cumres
+        return cumres
+    
+    def fit_transform(
+        self, 
+        price: pd.DataFrame | pd.Series, 
+        event: pd.DataFrame | pd.Series, 
+        span: tuple = (-5, 6, 1)
+    ) -> pd.Series | pd.DataFrame:
+        self.fit(price, event)
+        return self.transform(span)
 
 
 class PeriodEvent(Return):
