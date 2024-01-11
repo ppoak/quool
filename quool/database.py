@@ -54,10 +54,6 @@ class Table:
         self.name = self.path.stem
         self.spliter = spliter or (lambda x: 1)
         self.namer = namer or (lambda x: self.name)
-        frag = pd.DataFrame()
-        if len(self.fragments):
-            frag = self._read_fragment(self.fragments[0])
-        self.formatter = DimFormatter(frag)
         if create:
             self.path.mkdir(parents=True, exist_ok=True)
     
@@ -104,6 +100,10 @@ class Table:
     @property
     def dimshape(self):
         return DimFormatter(self._read_fragment(self.fragments[0])).dimshape
+    
+    @property
+    def rowname(self):
+        return DimFormatter(self._read_fragment(self.fragments[0])).rowname
 
     def __fragment_path(self, fragment: str):
         return (self.path / fragment).with_suffix('.parquet')
@@ -166,7 +166,7 @@ class Table:
         """
         fragment = fragment or self.fragments
         fragment = [fragment] if not isinstance(fragment, list) else fragment
-        fragment = [(self.path / frag).with_suffix('.parquet') for frag in fragment]
+        fragment = [self.__fragment_path(frag) for frag in fragment]
         return pd.read_parquet(fragment, engine='pyarrow')
     
     def read(
@@ -300,7 +300,7 @@ class Table:
         for frag in self.fragments:
             df = self._read_fragment(frag)
             df = df.rename(columns=column)
-            self._write_fragment(df, frag)
+            df.to_parquet(self.__fragment_path(frag))
     
     def __str__(self) -> str:
         return (f'Table at <{self.path.absolute()}>\n' + 
@@ -336,7 +336,7 @@ class FrameTable(Table):
         uri: str | Path, 
         spliter: pd.Grouper | Callable | None = None, 
         namer: pd.Grouper | Callable | None = None,
-        index_name: str = None, 
+        level: str  = None, 
         create: bool = True
     ):
         """
@@ -352,7 +352,7 @@ class FrameTable(Table):
         self.spliter = spliter or (lambda x: 1)
         self.namer = namer or (lambda x: self.name)
         super().__init__(uri, spliter, namer, create)
-        self.index_name = index_name or self.formatter.rowname[0] or "__index_level_0__"
+        self.level = level or "__index_level_0__"
 
     def read(
         self,
@@ -371,7 +371,7 @@ class FrameTable(Table):
         """
         filters = None
         if index is not None:
-            filters = [(self.index_name, "in", parse_commastr(index))]
+            filters = [(self.level, "in", parse_commastr(index))]
         return super().read(parse_commastr(column), filters)
 
 
@@ -410,17 +410,11 @@ class PanelTable(Table):
             date_level (str, optional): Name of the index column for dates.
             code_level (str, optional): Name of the index column for categorical dimensions.
         """
+        self.code_level = code_level
+        self.date_level = date_level
         spliter = spliter or pd.Grouper(level=date_level, freq='M', sort=True)
         namer = namer or (lambda x: x.index.get_level_values(date_level)[0].strftime(r'%Y%m'))
         super().__init__(uri, spliter, namer)
-        if isinstance(code_level, int):
-            self.code_level = self.formatter.rowname[code_level] or f'__index_level_{code_level}__'
-        else:
-            self.code_level = code_level
-        if isinstance(date_level, int):
-            self.date_level = self.formatter.rowname[date_level] or f'__index_level_{date_level}__'
-        else:
-            self.date_level = date_level
     
     def read(
         self, 
@@ -443,6 +437,15 @@ class PanelTable(Table):
         Returns:
             pd.Series | pd.DataFrame: The filtered data.
         """
+        date_level = self.date_level
+        if isinstance(self.date_level, int):
+            date_level = self._read_fragment(self.fragments[0]
+                ).index.names[self.date_level] or f'__index_level_{self.date_level}__'
+        code_level = self.code_level
+        if isinstance(self.code_level, int):
+            code_level = self._read_fragment(self.fragments[0]
+                ).index.names[self.code_level] or f'__index_level_{self.code_level}__'
+
         code = parse_commastr(code)
         field = parse_commastr(field)
         filters = filters or []
@@ -451,17 +454,17 @@ class PanelTable(Table):
 
         if not isinstance(start, pd.DatetimeIndex):
             filters += [
-                (self.date_level, ">=", start),
-                (self.date_level, "<=", stop), 
+                (date_level, ">=", start),
+                (date_level, "<=", stop), 
             ]
             if code is not None:
-                filters.append((self.code_level, "in", code))
+                filters.append((code_level, "in", code))
             return super().read(field, filters)
         
         else:
-            filters += [(self.date_level, "in", start)]
+            filters += [(date_level, "in", start)]
             if code is not None:
-                filters.append((self.code_level, "in", code))
+                filters.append((code_level, "in", code))
             return super().read(field, filters)
         
     def __str__(self) -> str:
