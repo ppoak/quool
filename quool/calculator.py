@@ -539,7 +539,7 @@ class Rebalance(Return):
         return self.transform(commission, side, return_tvr)
 
 
-class Scaler:
+class RobustScaler:
     """
     A subclass of Preprocessor that focuses on detecting and handling outliers in financial data.
 
@@ -564,16 +564,16 @@ class Scaler:
     
     def fit(self, data: pd.DataFrame | pd.Series):
         if isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
-            self.data = data
+            pass
         elif isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
-            self.data = data.unstack(level=self.code_level)
+            data = data.unstack(level=self.code_level)
         elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
-            self.data = data.iloc[:, 0].unstack(level=self.code_level)
+            data = data.iloc[:, 0].unstack(level=self.code_level)
         else:
             raise TypeError("Invalid data format.")
         
         if self.method == "mad":
-            median = self.data.median(axis=1)
+            median = data.median(axis=1)
             ad = data.sub(median, axis=0)
             mad = ad.abs().median(axis=1)
             self.thresh_up = median + self.n * mad
@@ -626,85 +626,72 @@ class Scaler:
             raise ValueError("the model is not fitted yet")
 
         if self.method == 'mad':
-            data = self._mad(data)
+            return self._mad(data)
         elif self.method == 'std':
-            data = self._std(data)
+            return self._std(data)
         elif self.method == 'iqr':
-            data = self._iqr(data)
+            return self._iqr(data)
         else:
             raise ValueError('method must be "mad", "std" or "iqr"')
-        return data
 
     def fit_transform(self, data: pd.DataFrame | pd.Series) -> pd.DataFrame:
         self.fit(data)
         return self.transform(data)
 
 
-class Standarize(Preprocessor):
-    """
-    A subclass of Preprocessor that focuses on standardizing financial data.
+class StandardScaler:
 
-    This class provides methods for standardizing data using Z-score normalization or Min-Max scaling.
-
-    Inherits:
-    - All attributes and methods from Preprocessor class.
-    """
+    def __init__(
+        self,
+        method: str = "zscore", 
+        code_level: str | int = 0,
+        date_level: str | int = 1,
+    ) -> None:
+        self.method = method
+        self.code_level = code_level
+        self.date_level = date_level
+        self.fitted = False
+    
+    def fit(self, data: pd.DataFrame | pd.Series):
+        if isinstance(data, pd.DataFrame) and not isinstance(data.index, pd.MultiIndex):
+            pass
+        elif isinstance(data, pd.Series) and isinstance(data.index, pd.MultiIndex):
+            data = data.unstack(level=self.code_level)
+        elif isinstance(data, pd.DataFrame) and isinstance(data.index, pd.MultiIndex) and data.columns.size == 1:
+            data = data.iloc[:, 0].unstack(level=self.code_level)
+        else:
+            raise TypeError("Invalid data format.")
+        
+        if self.method == "zscore":
+            self.mean = data.mean(axis=1)
+            self.std = data.std(axis=1)
+        elif self.method == "mad":
+            self.max = data.max(axis=1)
+            self.min = data.min(axis=1)
+        else:
+            raise ValueError("Invalid method.")
+        self.fitted = True
 
     def _zscore(self, data: pd.DataFrame):
-        """
-        Standardizes the data using Z-score normalization.
-
-        Parameters:
-        - data (pd.DataFrame): The data to be standardized.
-
-        Returns:
-        - pd.DataFrame: The standardized data using Z-score normalization.
-
-        This method standardizes the data by subtracting the mean and dividing by the standard deviation for each time period.
-        """
-        mean = data.mean(axis=1)
-        std = data.std(axis=1)
-        return data.sub(mean, axis=0).div(std, axis=0)
+        return data.sub(self.mean, axis=0).div(self.std, axis=0)
 
     def _minmax(self, data: pd.DataFrame):
-        """
-        Standardizes the data using Min-Max scaling.
+        return data.sub(self.min, axis=0).div((self.max - self.min), axis=0)
 
-        Parameters:
-        - data (pd.DataFrame): The data to be standardized.
+    def transform(self, data: pd.DataFrame):
+        if not self.fitted:
+            raise ValueError("the model is not fitted yet")
 
-        Returns:
-        - pd.DataFrame: The standardized data using Min-Max scaling.
-
-        This method standardizes the data by subtracting the minimum and dividing by the range (max - min) for each time period.
-        """
-        min = data.min(axis=1)
-        max = data.max(axis=1)
-        return data.sub(min, axis=0).div((max - min), axis=0)
-
-    def __call__(self, method: str = 'zscore'):
-        """
-        Processes the data to standardize it using the specified method.
-
-        Parameters:
-        - method (str): The method to use for standardizing ('zscore' or 'minmax').
-
-        Returns:
-        - pd.DataFrame: The processed data, standardized according to the specified method.
-
-        Raises:
-        - ValueError: If the method is not one of the specified options ('zscore' or 'minmax').
-
-        This method selects one of the standardization techniques (Z-score or Min-Max) and applies it to the data.
-        """
-        if method == 'zscore':
-            data = self._zscore(self.data)
-        elif method == 'minmax':
-            data = self._minmax(self.data)
+        if self.method == 'zscore':
+            return self._zscore(data)
+        elif self.method == 'minmax':
+            return self._minmax(data)
         else:
             raise ValueError('method must be "zscore" or "minmax"')
-        return self.__recover(data)
 
+    def fit_transform(self, data: pd.DataFrame):
+        self.fit(data)
+        return self.transform(data)
 
 class FillNA(Preprocessor):
     """
