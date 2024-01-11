@@ -431,24 +431,18 @@ class PanelTable(Table):
         start = parse_date(start or "20000104")
         stop = parse_date(stop or datetime.datetime.today().strftime(r'%Y%m%d'))
 
-        if isinstance(start, list) and stop is not None:
-            raise ValueError("If start is list, stop should be None")
-                
-        elif not isinstance(start, list):
+        if not isinstance(start, pd.DatetimeIndex):
             filters += [
-                (self.date_level, ">=", parse_date(start)), 
-                (self.date_level, "<=", parse_date(stop)), 
+                (self.date_level, ">=", start),
+                (self.date_level, "<=", stop), 
             ]
             if code is not None:
                 filters.append((self.code_level, "in", code))
             return super().read(field, filters)
         
-        elif isinstance(start, list) and stop is None:
-            filters += [(self.date_level, "in", parse_date(start))]
+        else:
+            filters += [(self.date_level, "in", start)]
             if code is not None:
                 filters.append((self.code_level, "in", code))
             return super().read(field, filters)
         
-        else:
-            raise ValueError("Invalid start, stop or field values")
-
