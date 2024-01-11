@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Callable
-from .tool import parse_commastr, parse_date
+from .tool import parse_commastr, parse_date, DimFormatter
 
 
 class Table:
@@ -54,6 +54,10 @@ class Table:
         self.name = self.path.stem
         self.spliter = spliter or (lambda x: 1)
         self.namer = namer or (lambda x: self.name)
+        frag = pd.DataFrame()
+        if len(self.fragments):
+            frag = self._read_fragment(self.fragments[0])
+        self.formatter = DimFormatter(frag)
         if create:
             self.path.mkdir(parents=True, exist_ok=True)
     
@@ -76,7 +80,7 @@ class Table:
             pd.Index: Column names.
         """
         if self.fragments:
-            return self._read_fragment(self.fragments[-1]).columns
+            return self._read_fragment(self.fragments[0]).columns
         else:
             return pd.Index([])
     
@@ -89,9 +93,17 @@ class Table:
             pd.Series: Column dtypes.
         """
         if self.fragments:
-            return self._read_fragment(self.fragments[-1]).dtypes
+            return self._read_fragment(self.fragments[0]).dtypes
         else:
             return pd.Series([])
+    
+    @property
+    def ndims(self):
+        return DimFormatter(self._read_fragment(self.fragments[0])).ndims
+    
+    @property
+    def dimshape(self):
+        return DimFormatter(self._read_fragment(self.fragments[0])).dimshape
 
     def __fragment_path(self, fragment: str):
         return (self.path / fragment).with_suffix('.parquet')
@@ -294,7 +306,7 @@ class Table:
         return (f'Table at <{self.path.absolute()}>\n' + 
                 (f'\tfragments: <{self.fragments[0]}> - <{self.fragments[-1]}>\n' 
                  if self.fragments else '\tfragments: EMPTY\n') + 
-                (f'\tcolumns: <{self.columns.to_list()}>' 
+                (f'\tcolumns: <{self.columns.to_list()}>\n' 
                  if self.fragments else '\tcolumns: EMPTY\n'))
     
     def __repr__(self) -> str:
@@ -324,7 +336,7 @@ class FrameTable(Table):
         uri: str | Path, 
         spliter: pd.Grouper | Callable | None = None, 
         namer: pd.Grouper | Callable | None = None,
-        index_name: str = '__index_level_0__', 
+        index_name: str = None, 
         create: bool = True
     ):
         """
@@ -339,8 +351,8 @@ class FrameTable(Table):
         """
         self.spliter = spliter or (lambda x: 1)
         self.namer = namer or (lambda x: self.name)
-        self.index_name = index_name
         super().__init__(uri, spliter, namer, create)
+        self.index_name = index_name or self.formatter.rowname[0] or "__index_level_0__"
 
     def read(
         self,
@@ -385,8 +397,8 @@ class PanelTable(Table):
         uri: str | Path,
         spliter: str | list | dict | pd.Series | Callable | None = None,
         namer: str | list | dict | pd.Series | Callable | None = None,
-        date_level: str = '__index_level_0__',
-        code_level: str = '__index_level_1__',
+        code_level: str | int = 0,
+        date_level: str | int = 1,
     ):
         """
         Initializes the PanelTable object.
@@ -401,8 +413,14 @@ class PanelTable(Table):
         spliter = spliter or pd.Grouper(level=date_level, freq='M', sort=True)
         namer = namer or (lambda x: x.index.get_level_values(date_level)[0].strftime(r'%Y%m'))
         super().__init__(uri, spliter, namer)
-        self.date_level = date_level
-        self.code_level = code_level
+        if isinstance(code_level, int):
+            self.code_level = self.formatter.rowname[code_level] or f'__index_level_{code_level}__'
+        else:
+            self.code_level = code_level
+        if isinstance(date_level, int):
+            self.date_level = self.formatter.rowname[date_level] or f'__index_level_{date_level}__'
+        else:
+            self.date_level = date_level
     
     def read(
         self, 
@@ -446,3 +464,6 @@ class PanelTable(Table):
                 filters.append((self.code_level, "in", code))
             return super().read(field, filters)
         
+    def __str__(self) -> str:
+        return super().__str__() + (f'\tindex: '
+            f'<code {self.code_level}> <date {self.date_level}>')
