@@ -16,7 +16,6 @@ class Algorithm(abc.ABC):
     def fit(self, *args, **kwargs):
         raise NotImplementedError
     
-    @abc.abstractmethod
     def transform(self, *args, **kwargs):
         raise NotImplementedError
     

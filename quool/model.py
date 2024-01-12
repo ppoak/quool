@@ -15,7 +15,6 @@ class Model(abc.ABC):
     def rolling_fit(self, *args, **kwargs):
         raise NotImplementedError
     
-    @abc.abstractmethod
     def predict(self, *args, **kwargs):
         raise NotImplementedError
     
