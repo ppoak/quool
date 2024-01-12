@@ -166,7 +166,7 @@ class DimFormatter:
         if isinstance(self.data, pd.Series):
             return None
         return self.data.columns.names
-    
+
     def swapdim(self, fromdim: int | str, todim: int | str):
         rowdim = self.rowdim
         if self.naxes > 1:
@@ -198,8 +198,22 @@ class DimFormatter:
             else:
                 # when todim > 0 or todim is string type (changed to int), naively reorder
                 self.data = self.data.swaplevel(i=fromdim, j=todim)
-        return self.data
 
+        return self
+
+    def panelize(self):
+        if self.rowdim > 1:
+            levels = [self.data.index.get_level_values(i).unique() for i in range(self.rowdim)]
+            if self.data.shape[0] < np.prod([level.size for level in levels]):
+                self.data = self.data.reindex(pd.MultiIndex.from_product(levels), axis=0)
+        if self.coldim > 1:
+            levels = [self.data.columns.get_level_values(i).unique() for i in range(self.coldim)]
+            if self.data.shape[1] < np.prod([level.size for level in levels]):
+                self.data = self.data.reindex(pd.MultiIndex.from_product(levels), axis=1)
+        else:
+            raise ValueError("only series and dataframe with multiindex is available")
+        
+        return self
 
 def parse_date(
     date: str | list = None,
@@ -266,39 +280,6 @@ def parse_commastr(
         return None
     else:
         return commastr
-
-def panelize(data: pd.DataFrame | pd.Series) -> pd.Series | pd.DataFrame:
-    """
-    Ensures that a DataFrame or Series with a MultiIndex covers all combinations of index levels.
-
-    If the data's MultiIndex does not cover all combinations of its levels, the data is reindexed 
-    to include all possible combinations, filling missing combinations with NaN.
-
-    Args:
-        data (pd.DataFrame | pd.Series): The DataFrame or Series to be reindexed.
-
-    Returns:
-        pd.DataFrame | pd.Series: The reindexed DataFrame or Series with a complete MultiIndex.
-
-    Example:
-        df = pd.DataFrame({
-            'value': [1, 2, 3]
-        }, index=pd.MultiIndex.from_tuples([
-            ('A', 'x'), ('B', 'y'), ('C', 'z')
-        ], names=['first', 'second']))
-        panelized_df = panelize(df)
-        # panelized_df will have a complete MultiIndex with all combinations of 'first' and 'second' levels.
-    """
-    if isinstance(data, (pd.DataFrame, pd.Series))\
-        and isinstance(data.index, pd.MultiIndex):
-        levels = [data.index.get_level_values(i).unique() 
-            for i in range(data.index.nlevels)]
-        if data.shape[0] < np.prod([level.size for level in levels]):
-            data = data.reindex(pd.MultiIndex.from_product(levels))
-        return data
-    
-    else:
-        raise ValueError("only series and dataframe with multiindex is available")
 
 def reduce_mem_usage(df: pd.DataFrame):
     """

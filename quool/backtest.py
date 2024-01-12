@@ -4,7 +4,7 @@ import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .tool import parse_date, Logger, panelize
+from .tool import parse_date, Logger, DimFormatter
 
 
 class Strategy(bt.Strategy):
@@ -359,20 +359,16 @@ class Cerebro:
     def __init__(
         self, 
         data: pd.DataFrame, 
-        code_level: str = 'code',
-        date_level: str = 'date',
+        code_level: str | int = 0,
+        date_level: str | int = 1,
     ):
         self.logger = Logger("QuoolCerebro", display_time=False)
-        self.data = data
-        self.data = self._valid(data)
-        self.data = panelize(self.data).sort_index()
-        self.data.loc[:, ["open", "high", "low", "close", "volume"]] = \
-            self.data.loc[:, ["open", "high", "low", "close", "volume"]].groupby(
-                level=code_level).ffill().fillna(0)
         self.code_level = code_level
         self.date_level = date_level
+        self.formatter = self._checkstat(DimFormatter(data))
+        self.data = self.formatter.data
     
-    def _valid(self, data: pd.DataFrame) -> pd.DataFrame:
+    def _checkstat(self, formatter: DimFormatter) -> DimFormatter:
         """
         Validates and preprocesses the provided data for backtesting.
 
@@ -389,25 +385,32 @@ class Cerebro:
             ValueError: If 'data' does not contain a 'close' column.
         """
 
-        if isinstance(data, pd.DataFrame) and not 'close' in data.columns:
+        if formatter.axes > 1 and not 'close' in formatter.data.columns.str.lower():
             raise ValueError('Your data should at least have a column named close')
         
         required_col = ['open', 'high', 'low']
-        if isinstance(data, pd.DataFrame):
+        base_col = required_col + ['close', 'volume']
+        if formatter.axes > 1:
             # you should at least have a column named close
             for col in required_col:
-                if not col in data.columns and col != 'volume':
-                    data[col] = data['close']
-            if not 'volume' in data.columns:
-                data['volume'] = 0
+                if col != 'volume' and not col in formatter.data.columns.str.lower():
+                    # if open, high, low doesn't exist, default setting to close
+                    formatter.data[col] = formatter.data['close']
+            if not 'volume' in formatter.data.columns.str.lower():
+                # volume default is 0
+                formatter['volume'] = 0
         else:
             # just a series, all ohlc data will be the same, volume set to 0
-            data = data.to_frame(name='close')
+            formatter.data = formatter.data.to_frame(name='close')
             for col in required_col:
-                data[col] = col
-            data['volume'] = 0
-
-        return data
+                formatter[col] = col
+            formatter['volume'] = 0
+        
+        formatter = formatter.panelize()
+        formatter.data.loc[:, base_col] = formatter.data.groupby(
+            level=self.code_level)[base_col].ffill().fillna(0)
+        
+        return formatter
 
     def run(
         self, 
