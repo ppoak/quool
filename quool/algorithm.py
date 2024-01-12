@@ -2,9 +2,10 @@ import abc
 import numpy as np
 import pandas as pd
 from .tool import DimFormatter
+from .exception import NotRequiredDimError, UnfittedError
 
 
-class Calculator(abc.ABC):
+class Algorithm(abc.ABC):
 
     def __init__(self, **params) -> None:
         for key, value in params.items():
@@ -23,7 +24,7 @@ class Calculator(abc.ABC):
         raise NotImplementedError
 
 
-class Return(Calculator):
+class Return(Algorithm):
     """
     A class to calculate the returns of financial instruments based on provided pricing data.
 
@@ -64,7 +65,7 @@ class Return(Calculator):
     def fit(self, price: pd.DataFrame | pd.Series):
         formatter = DimFormatter(price)
         if formatter.ndims > 3:
-            raise ValueError("Return only supports 3-dimension data at most")
+            raise NotRequiredDimError(3)
         
         if formatter.naxes > 1 and price.shape[1] == 1 and formatter.rowdim > 1:
             # allow single-column dataframe with MultiIndex to be treated as series
@@ -96,9 +97,6 @@ class Return(Calculator):
             self.buy_price = price
             self.sell_price = price
         
-        else:
-            raise TypeError("invalid data format")
-        
         self.fitted = True
         return self
     
@@ -116,7 +114,7 @@ class Return(Calculator):
         This method handles both regular and MultiIndexed data, calculating returns based on the specified span and whether to use logarithmic or simple returns.
         """
         if not self.fitted:
-            raise ValueError("Return unfitted")
+            raise UnfittedError("Return")
         
         formatter = DimFormatter(self.buy_price)
         if formatter.naxes > 1:
@@ -196,7 +194,7 @@ class Event(Return):
         price_formatter = DimFormatter(price)
         event_formatter = DimFormatter(event)
         if price_formatter.ndims != 2 or event_formatter.ndims != 2:
-            raise ValueError("price and event data must be two-dimensional")
+            raise NotRequiredDimError(2)
         
         if event_formatter.rowdim == 1:
             event = event_formatter.swapdim(-1, 0)
@@ -221,7 +219,7 @@ class Event(Return):
         This method is a wrapper around the 'call' method that additionally calculates the mean and cumulative mean returns for the specified span.
         """
         if not self.fitted:
-            raise ValueError("The model has not been fitted yet.")
+            raise UnfittedError("Event")
 
         res = []
         r = super().transform(1)
@@ -323,7 +321,7 @@ class PeriodEvent(Return):
         event_formatter = DimFormatter(event)
 
         if price_formatter.ndims != 2 or event_formatter.ndims != 2:
-            raise ValueError("price and event data must be two-dimensional")
+            raise NotRequiredDimError(2)
         
         if event_formatter.rowdim == 1:
             event = event_formatter.swapdim(-1, 0)
@@ -349,7 +347,7 @@ class PeriodEvent(Return):
         This method processes multiple periods in the event series and applies the return calculation to each.
         """
         if not self.fitted:
-            raise ValueError("The model has not been fitted yet.")
+            raise UnfittedError("PeriodEvent")
         if set(self.event.unique()) - set([start, stop]):
             raise ValueError("there are labels that are not start-stop labels")
 
@@ -412,7 +410,7 @@ class Weight(Return):
         price_formatter = DimFormatter(price)
         weight_formatter = DimFormatter(weight)
         if price_formatter.ndims != 2 or weight_formatter.ndims != 2:
-            raise ValueError("price and event data must be two-dimensional")
+            raise NotRequiredDimError(2)
         
         if weight_formatter.naxes == 1:
             weight = weight_formatter.swapdim(self.code_level, -1)
@@ -446,7 +444,7 @@ class Weight(Return):
         This method provides an extended functionality to calculate returns with the option to include the cost of turnover and commission.
         """        
         if not self.fitted:
-            raise ValueError("the model is not fitted yet")
+            raise UnfittedError("Weight")
 
         delta = self.weight.fillna(0) - self.weight.shift(abs(rebalance)).fillna(0)
         if side == 'both':
@@ -521,7 +519,7 @@ class Rebalance(Return):
         price_formatter = DimFormatter(price)
         weight_formatter = DimFormatter(weight)
         if price_formatter.ndims != 2 or weight_formatter.ndims != 2:
-            raise ValueError("price and event data must be two-dimensional")
+            raise NotRequiredDimError(2)
         
         if weight_formatter.naxes == 1:
             weight = weight_formatter.swapdim(self.code_level, -1)
@@ -553,7 +551,7 @@ class Rebalance(Return):
         This method provides functionality to calculate returns for a rebalanced portfolio, including the option to account for the cost of turnover and commission.
         """
         if not self.fitted:
-            raise ValueError("the model is not fitted yet")
+            raise UnfittedError("Rebalance")
         
         delta = self.weight.fillna(0) - self.weight.shift(1).fillna(0)
         if side == 'both':
@@ -587,7 +585,7 @@ class Rebalance(Return):
         return self.transform(commission, side, return_tvr)
 
 
-class RobustScaler(Calculator):
+class RobustScaler(Algorithm):
     """
     A subclass of Preprocessor that focuses on detecting and handling outliers in financial data.
 
@@ -610,7 +608,7 @@ class RobustScaler(Calculator):
     def fit(self, data: pd.DataFrame | pd.Series):
         formatter = DimFormatter(data)
         if formatter.ndims != 2:
-            raise ValueError("data must be two-dimensional")
+            raise NotRequiredDimError(2)
         
         if formatter.rowdim == 2:
             data = formatter.swapdim(self.code_level, -1)
@@ -653,7 +651,7 @@ class RobustScaler(Calculator):
         This method selects one of the outlier handling techniques and applies it to the data.
         """
         if not self.fitted:
-            raise ValueError("the model is not fitted yet")
+            raise UnfittedError("RobutScaler")
 
         if self.method == 'mad' or self.method == "std":
             return self.data.clip(self.thresh_down, self.thresh_up, axis=1).where(~self.data.isna())
@@ -668,7 +666,7 @@ class RobustScaler(Calculator):
         return self.fit(data).transform()
 
 
-class StandardScaler(Calculator):
+class StandardScaler(Algorithm):
 
     def __init__(
         self,
@@ -682,7 +680,7 @@ class StandardScaler(Calculator):
     def fit(self, data: pd.DataFrame | pd.Series):
         formatter = DimFormatter(data)
         if formatter.ndims != 2:
-            raise ValueError("data must be two-dimensional")
+            raise NotRequiredDimError(2)
         
         if formatter.rowdim == 2:
             data = formatter.swapdim(self.code_level, -1)
@@ -702,7 +700,7 @@ class StandardScaler(Calculator):
 
     def transform(self):
         if not self.fitted:
-            raise ValueError("the model is not fitted yet")
+            raise UnfittedError("StandardScaler")
 
         if self.method == 'zscore':
             return self.data.sub(self.mean, axis=0).div(self.std, axis=0)
@@ -715,7 +713,7 @@ class StandardScaler(Calculator):
         return self.fit(data).transform()
 
 
-class Imputer(Calculator):
+class Imputer(Algorithm):
 
     def __init__(
         self,
@@ -729,7 +727,7 @@ class Imputer(Calculator):
     def fit(self, data: pd.DataFrame):
         formatter = DimFormatter(data)
         if formatter.ndims != 2:
-            raise ValueError("data must be two-dimensional")
+            raise NotRequiredDimError(2)
         
         if formatter.rowdim == 2:
             data = formatter.swapdim(self.code_level, -1)
@@ -749,7 +747,7 @@ class Imputer(Calculator):
 
     def transform(self):
         if not self.fitted:
-            raise ValueError("the model is not fitted yet")
+            raise UnfittedError("Imputer")
 
         if self.method == 'mean':
             return self.data.T.fillna(self.filler).T
@@ -764,7 +762,7 @@ class Imputer(Calculator):
         return self.fit(data).transform()
 
 
-class Corr(Calculator):
+class Corr(Algorithm):
 
     def __init__(
         self,
@@ -811,7 +809,7 @@ class Corr(Calculator):
         return self.fit(left, right).transform()
 
 
-class Layer(Calculator):
+class Layer(Algorithm):
 
     def __init__(
         self,
