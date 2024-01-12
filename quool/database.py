@@ -424,6 +424,8 @@ class Dim3Table(Table):
         uri: str | Path,
         code_level: str | int = 0,
         date_level: str | int = 1,
+        freq: str = "M",
+        format: str = r"%Y%m",
         create: bool = False,
     ):
         """
@@ -438,15 +440,17 @@ class Dim3Table(Table):
         """
         self._code_level = code_level
         self._date_level = date_level
+        self._freq = freq
+        self._format = format
         super().__init__(uri, create)
     
     @property
     def spliter(self):
-        return pd.Grouper(level=self.get_levelname(self._date_level), freq='M', sort=True)
+        return pd.Grouper(level=self.get_levelname(self._date_level), freq=self._freq, sort=True)
     
     @property
     def namer(self):
-        return lambda x: x.index.get_level_values(self.get_levelname(self._date_level))[0].strftime(r'%Y%m')
+        return lambda x: x.index.get_level_values(self.get_levelname(self._date_level))[0].strftime(self._format)
         
     def read(
         self, 
