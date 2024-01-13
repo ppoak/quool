@@ -466,7 +466,8 @@ class Weight(Return):
         commission *= tvr
 
         r = super().transform(rebalance)
-        r = ((r.sum(axis=1) - commission) / abs(rebalance)).shift(-min(0, rebalance)).fillna(0)
+        r = (((r * self.weight).sum(axis=1) - commission) 
+              / abs(rebalance)).shift(-min(0, rebalance)).fillna(0)
 
         if return_tvr:
             return r, tvr
@@ -665,7 +666,7 @@ class RobustScaler(Algorithm):
             raise UnfittedError("RobutScaler")
 
         if self.method == 'mad' or self.method == "std":
-            return self.data.clip(self.thresh_down, self.thresh_up, axis=1).where(~self.data.isna())
+            return self.data.clip(self.thresh_down, self.thresh_up, axis=0).where(~self.data.isna())
         elif self.method == 'iqr':
             return self.data.mask(
                 self.data.ge(self.thresh_up, axis=0) & self.data.le(self.thresh_down, axis=0), 
