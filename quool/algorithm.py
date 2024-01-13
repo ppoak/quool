@@ -412,18 +412,21 @@ class Weight(Return):
 
         This method calculates returns based on the weight of each instrument at each time point, taking into account rebalancing frequency.
         """
-        price_formatter = DimFormatter(price)
         weight_formatter = DimFormatter(weight)
-        if price_formatter.ndims != 2 or weight_formatter.ndims != 2:
+        if weight_formatter.ndims != 2:
             raise NotRequiredDimError(2)
-        
         if weight_formatter.naxes == 1:
             weight = weight_formatter.swapdim(self.code_level, -1)
-        if price_formatter.naxes == 1:
-            price = price.unstack(self.code_level, -1)
-        
         self.weight = weight
+        
         super().fit(price)
+        buy_formatter = DimFormatter(self.buy_price)
+        sell_formatter = DimFormatter(self.sell_price)
+        if buy_formatter.rowdim == 2:
+            self.buy_price = buy_formatter.swapdim(self.code_level, -1).data
+        if sell_formatter.rowdim == 2:
+            self.sell_price = sell_formatter.swapdim(self.code_level, -1).data
+        
         return self
         
     def transform(
@@ -521,19 +524,22 @@ class Rebalance(Return):
 
         This method calculates returns for each time period, taking into account the weights of each instrument in the portfolio.
         """
-        price_formatter = DimFormatter(price)
         weight_formatter = DimFormatter(weight)
-        if price_formatter.ndims != 2 or weight_formatter.ndims != 2:
+        if weight_formatter.ndims != 2:
             raise NotRequiredDimError(2)
-        
         if weight_formatter.naxes == 1:
             weight = weight_formatter.swapdim(self.code_level, -1)
-        if price_formatter.naxes == 1:
-            price = price.unstack(self.code_level, -1)
-        
         self.weight = weight
+        
         super().fit(price)
-        return self    
+        buy_formatter = DimFormatter(self.buy_price)
+        sell_formatter = DimFormatter(self.sell_price)
+        if buy_formatter.rowdim == 2:
+            self.buy_price = buy_formatter.swapdim(self.code_level, -1).data
+        if sell_formatter.rowdim == 2:
+            self.sell_price = sell_formatter.swapdim(self.code_level, -1).data
+        
+        return self 
     
     def transform(
         self, 

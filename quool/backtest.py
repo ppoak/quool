@@ -5,6 +5,7 @@ import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
 from .tool import parse_date, Logger, DimFormatter
+from .exception import NotRequiredDimError
 
 
 class Strategy(bt.Strategy):
@@ -358,33 +359,27 @@ class Cerebro:
 
     def __init__(
         self, 
-        data: pd.DataFrame, 
+        cash: float = 1e6,
+        coc: bool = False,
+        commission: float = 0.005,
+        riskfreerate: float = 0.02,
+        verbose: bool = True,
         code_level: str | int = 0,
         date_level: str | int = 1,
     ):
-        self.logger = Logger("QuoolCerebro", display_time=False)
+        self.logger = Logger("Cerebro", display_time=False)
+        self.cerebro = bt.Cerebro(stdstats=False)
+        self.cerebro.broker.setcash(cash)
+        if coc:
+            self.cerebro.broker.set_coc(True)
+        self.cerebro.broker.setcommission(commission=commission)
+        self.cash = cash
+        self.riskfreerate = riskfreerate
+        self.verbose = verbose
         self.code_level = code_level
         self.date_level = date_level
-        self.formatter = self._checkstat(DimFormatter(data))
-        self.data = self.formatter.data
-    
-    def _checkstat(self, formatter: DimFormatter) -> DimFormatter:
-        """
-        Validates and preprocesses the provided data for backtesting.
 
-        Ensures the data is a DataFrame and contains necessary columns ('close', 'open', 'high', 'low').
-        Missing columns are generated based on available data.
-
-        Args:
-            data (pd.DataFrame): The trading data to be validated.
-
-        Returns:
-            pd.DataFrame: The validated and potentially modified data.
-
-        Raises:
-            ValueError: If 'data' does not contain a 'close' column.
-        """
-
+    def _format_data(self, formatter: DimFormatter) -> DimFormatter:
         if formatter.naxes > 1 and not 'close' in formatter.data.columns.str.lower():
             raise ValueError('Your data should at least have a column named close')
         
@@ -415,125 +410,91 @@ class Cerebro:
     def run(
         self, 
         strategy: bt.Strategy | list[bt.Strategy], 
+        data: pd.DataFrame,
         *,
-        start: str = None,
-        stop: str = None,
-        cash: float = 1e6,
         benchmark: pd.Series = None,
         indicators: 'bt.Indicator | list' = None,
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
-        coc: bool = False,
-        commission: float = 0.005,
-        riskfreerate: float = 0.02,
-        maxcpus: int = None,
+        n_jobs: int = None,
+        param_format: str = None,
+        oldimg: str | Path = None,
+        image: str | Path = None,
+        result: str | Path = None,
         preload: bool = True,
         runonce: bool = True,
         exactbars: bool = False,
         optdatas: bool = True,
         optreturn: bool = True,
-        param_format: str = None,
-        verbose: bool = True,
-        oldimg: str | Path = None,
-        image: str | Path = None,
-        result: str | Path = None,
         **kwargs
     ):
-        """
-        Runs a trading strategy using the Backtrader framework.
-
-        Args:
-            strategy (bt.Strategy): The trading strategy to be tested.
-            start (str): Start date for the backtesting period.
-            stop (str): End date for the backtesting period.
-            cash (float): Initial cash in the brokerage account.
-            benchmark (pd.Series): Benchmark data for comparison.
-            indicators, analyzers, observers (list): Backtrader elements to be added.
-            coc (bool): Cheat-on-close flag.
-            minstake (int): Minimum stake size.
-            commission (float): Commission per trade.
-            maxcpus (int): Number of CPUs for parallel processing.
-            preload, runonce, exactbars (bool): Data preloading and execution flags.
-            optstrats, optdatas, optreturn (bool): Optimization flags.
-            param_format (str): Format string for parameter names.
-            verbose (bool): Verbosity flag.
-            oldimg, image, result (str | Path): File paths for saving outputs.
-            **kwargs: Additional parameters for the strategy.
-
-        Returns:
-            list: A list of strategy instances after backtesting.
-
-        Example:
-            cerebro.run(strategy=MyStrategy, cash=10000, start='2020-01-01', stop='2020-12-31')
-        """
-        start = parse_date(start) if start is not None else\
-            self.data.index.get_level_values(self.date_level).min()
-        stop = parse_date(stop) if stop is not None else\
-            self.data.index.get_level_values(self.date_level).max()
-        cerebro = bt.Cerebro(stdstats=False)
-        cerebro.broker.setcash(cash)
-        if coc:
-            cerebro.broker.set_coc(True)
-        cerebro.broker.setcommission(commission=commission)
+        formatter = DimFormatter(data)
+        if formatter.ndims > 3 or formatter.ndims < 2:
+            raise NotRequiredDimError(2)
+        
+        data = self._format_data(formatter).data
+        start = data.index.get_level_values(self.date_level).min()
+        stop = data.index.get_level_values(self.date_level).max()
         
         # add data
-        more = set(self.data.columns.to_list()) - set(['open', 'high', 'low', 'close', 'volume'])
+        more = set(data.columns.to_list()) - set(['open', 'high', 'low', 'close', 'volume'])
         PandasData = type("_PandasData", (bt.feeds.PandasData,), {"lines": tuple(more), "params": tuple(zip(more, [-1] * len(more)))})
         # without setting bt.metabase._PandasData, PandasData cannot be pickled
         bt.metabase._PandasData = PandasData
-        if isinstance(self.data.index, pd.MultiIndex):
-            datanames = self.data.index.get_level_values(self.code_level).unique().to_list()
+
+        if formatter.rowdim == 2:
+            datanames = data.index.get_level_values(self.code_level).unique().to_list()
         else:
             datanames = ['data']
+        
         for dn in datanames:
-            d = self.data.xs(dn, level=self.code_level) if \
-                isinstance(self.data.index, pd.MultiIndex) else self.data
+            d = data.xs(dn, level=self.code_level) if formatter.rowdim == 2 else data
             feed = PandasData(dataname=d, fromdate=start, todate=stop)
-            cerebro.adddata(feed, name=dn)
+            self.cerebro.adddata(feed, name=dn)
 
         # add indicators
         indicators = indicators if isinstance(indicators, list) else [indicators]
         for indicator in indicators:
             if indicator is not None:
-                cerebro.addindicator(indicator)
+                self.cerebro.addindicator(indicator)
         
         # add analyzers
         analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
-        cerebro.addanalyzer(bt.analyzers.SharpeRatio, riskfreerate=riskfreerate)
-        cerebro.addanalyzer(bt.analyzers.TimeDrawDown)
-        cerebro.addanalyzer(TradeOrderRecorder, date_level=self.date_level, code_level=self.code_level)
-        cerebro.addanalyzer(CashValueRecorder, date_level=self.date_level)
+        self.cerebro.addanalyzer(bt.analyzers.SharpeRatio, riskfreerate=self.riskfreerate)
+        self.cerebro.addanalyzer(bt.analyzers.TimeDrawDown)
+        self.cerebro.addanalyzer(TradeOrderRecorder, date_level=self.date_level, code_level=self.code_level)
+        self.cerebro.addanalyzer(CashValueRecorder, date_level=self.date_level)
         for analyzer in analyzers:
             if analyzer is not None:
-                cerebro.addanalyzer(analyzer)
+                self.cerebro.addanalyzer(analyzer)
 
         # add observers
         observers = observers if isinstance(observers, list) else [observers]
-        cerebro.addobserver(bt.observers.DrawDown)
+        self.cerebro.addobserver(bt.observers.DrawDown)
         for observer in observers:
             if observer is not None:
-                cerebro.addobserver(observer)
+                self.cerebro.addobserver(observer)
 
         # add strategies
         strategy = [strategy] if not isinstance(strategy, list) else strategy
-        if maxcpus is None:
+        if n_jobs is None:
             for strat in strategy:
-                cerebro.addstrategy(strat, **kwargs)
+                self.cerebro.addstrategy(strat, **kwargs)
         else:
             if len(strategy) > 1:
                 raise ValueError("multiple strategies are not supported in optstrats mode")
-            cerebro.optstrategy(strategy[0], **kwargs)
+            self.cerebro.optstrategy(strategy[0], **kwargs)
         
         # run strategies
-        strats = cerebro.run(
-            maxcpus = maxcpus,
+        strats = self.cerebro.run(
+            maxcpus = n_jobs,
             preload = preload,
             runonce = runonce,
             exactbars = exactbars,
             optdatas = optdatas,
             optreturn = optreturn,
         )
-        if maxcpus is not None:
+        if n_jobs is not None:
             # here we only get first element because backtrader doesn't
             # support multiple strategies in optstrategy mode
             strats = [strat[0] for strat in strats]
@@ -551,13 +512,13 @@ class Cerebro:
             
             benchmark = benchmark.copy().ffill()
             benchmark.name = benchmark.name or 'benchmark'
-            benchmark = benchmark / benchmark.dropna().iloc[0] * cash
+            benchmark = benchmark / benchmark.dropna().iloc[0] * self.cash
             cashvalue_ = []
             for cv in cashvalue:
                 cvb = pd.concat([cv, benchmark, (
                     (cv["value"].pct_change() - benchmark.pct_change())
                     .fillna(0) + 1).cumprod().to_frame(benchmark.name)
-                    .add_prefix("ex(").add_suffix(')') * cash
+                    .add_prefix("ex(").add_suffix(')') * self.cash
                 ], axis=1).ffill()
                 cvb.index.name = 'datetime'
                 cashvalue_.append(cvb)
@@ -592,8 +553,8 @@ class Cerebro:
                 sc = cashvalue[i].iloc[:, 1].pct_change().dropna()
                 bc = cashvalue[i].iloc[:, 2].pct_change().dropna()
                 beta = sc.corr(bc) * sc.std() / bc.std()
-                alpha = ab["return(value)(%)"] - (riskfreerate * 100 + beta * 
-                    (ab[f"return({benchmark.name})(%)"] - riskfreerate * 100))
+                alpha = ab["return(value)(%)"] - (self.riskfreerate * 100 + beta * 
+                    (ab[f"return({benchmark.name})(%)"] - self.riskfreerate * 100))
                 ab.update({"alpha(%)": alpha, "beta": beta})
             # other analyzers information
             for analyzer in strat.analyzers:
@@ -605,14 +566,14 @@ class Cerebro:
         abstract = pd.DataFrame(abstract)
         abstract = abstract.set_index(keys=list(kwargs.keys()))
         
-        if verbose:
+        if self.verbose:
             self.logger.info(abstract)
         
-        if oldimg is not None and maxcpus is None:
+        if oldimg is not None and n_jobs is None:
             if len(datanames) > 3:
                 self.logger.warning(f"There are {len(datanames)} stocks, the image "
                       "may be nested and takes a long time to draw")
-            figs = cerebro.plot(style='candel')
+            figs = self.cerebro.plot(style='candel')
             fig = figs[0][0]
             fig.set_size_inches(18, 3 + 6 * len(datanames))
             if not isinstance(oldimg, bool):
