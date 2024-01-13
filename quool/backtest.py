@@ -385,12 +385,12 @@ class Cerebro:
             ValueError: If 'data' does not contain a 'close' column.
         """
 
-        if formatter.axes > 1 and not 'close' in formatter.data.columns.str.lower():
+        if formatter.naxes > 1 and not 'close' in formatter.data.columns.str.lower():
             raise ValueError('Your data should at least have a column named close')
         
         required_col = ['open', 'high', 'low']
         base_col = required_col + ['close', 'volume']
-        if formatter.axes > 1:
+        if formatter.naxes > 1:
             # you should at least have a column named close
             for col in required_col:
                 if col != 'volume' and not col in formatter.data.columns.str.lower():

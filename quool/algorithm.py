@@ -74,26 +74,26 @@ class Return(Algorithm):
             # DataFrame with Index
             self.code_level = price.columns.name or self.code_level
             self.date_level = price.index.name or self.date_level
-            price = price.shift(-self.delay)
-            self.buy_price = price
+            price_shift = price.shift(-self.delay)
+            self.buy_price = price_shift
             self.sell_price = price
         
         elif formatter.naxes > 1 and formatter.rowdim > 1:
             # DataFrame with MultiIndex
-            price = price.groupby(level=self.code_level).shift(-self.delay)
-            self.buy_price = price[self.buy]
+            price_shift = price.groupby(level=self.code_level).shift(-self.delay)
+            self.buy_price = price_shift[self.buy]
             self.sell_price = price[self.sell]
         
         elif formatter.naxes == 1 and formatter.rowdim > 1:
             # Series with MultiIndex
-            price = price.groupby(level=self.code_level).shift(-self.delay)
-            self.buy_price = price
+            price_shift = price.groupby(level=self.code_level).shift(-self.delay)
+            self.buy_price = price_shift
             self.sell_price = price
         
         elif formatter.naxes == 1 and formatter.rowdim == 1:
             # Series with Index
-            price = price.shift(-self.delay)
-            self.buy_price = price
+            price_shift = price.shift(-self.delay)
+            self.buy_price = price_shift
             self.sell_price = price
         
         self.fitted = True
@@ -167,6 +167,7 @@ class Event(Return):
         self,
         buy: str = "close",
         sell: str = "close",
+        delay: int = 0,
         code_level: str | int = 0,
         date_level: str | int = 1,
     ):
@@ -175,7 +176,7 @@ class Event(Return):
 
         The constructor ensures that the price data is a pandas Series with a MultiIndex. It then initializes the superclass with the provided data and configuration.
         """
-        super().__init__(buy, sell, 0, code_level, date_level)
+        super().__init__(buy, sell, delay, code_level, date_level)
 
     def fit(self, price: pd.Series | pd.DataFrame, event: pd.Series | pd.DataFrame):
         """
@@ -190,18 +191,20 @@ class Event(Return):
 
         This method calculates returns for each day within the specified span around the events and aligns them with the event dates.
         """
-        price_formatter = DimFormatter(price)
         event_formatter = DimFormatter(event)
-        if price_formatter.ndims != 2 or event_formatter.ndims != 2:
+        if event_formatter.ndims != 2:
             raise NotRequiredDimError(2)
-        
         if event_formatter.rowdim == 1:
             event = event_formatter.swapdim(-1, 0)
-        if price_formatter.rowdim == 1:
-            price = price_formatter.swapdim(-1, 0)
-        
         self.event = event
+
         super().fit(price)
+        buy_formatter, sell_formatter = DimFormatter(self.buy_price), DimFormatter(self.sell_price)
+        if buy_formatter.rowdim == 1:
+            self.buy_price = buy_formatter.swapdim(-1, 0).data
+        if sell_formatter.rowdim == 1:
+            self.sell_price = sell_formatter.swapdim(-1, 0).data
+            
         return self
         
     def transform(self, span: tuple) -> pd.Series:
@@ -316,19 +319,20 @@ class PeriodEvent(Return):
         return sell_price / buy_price - 1
         
     def fit(self, price: pd.Series | pd.DataFrame, event: pd.Series | pd.DataFrame):
-        price_formatter = DimFormatter(price)
         event_formatter = DimFormatter(event)
-
-        if price_formatter.ndims != 2 or event_formatter.ndims != 2:
+        if event_formatter.ndims != 2:
             raise NotRequiredDimError(2)
-        
         if event_formatter.rowdim == 1:
             event = event_formatter.swapdim(-1, 0)
-        if price_formatter.rowdim == 1:
-            price = price_formatter.swapdim(-1, 0)
-        
         self.event = event
+
         super().fit(price)
+        buy_formatter, sell_formatter = DimFormatter(self.buy_price), DimFormatter(self.sell_price)
+        if buy_formatter.rowdim == 1:
+            self.buy_price = buy_formatter.swapdim(-1, 0).data
+        if sell_formatter.rowdim == 1:
+            self.sell_price = sell_formatter.swapdim(-1, 0).data
+            
         return self
         
     def transform(self, start: int | float | str, stop: int | float | str) -> pd.Series:
@@ -349,6 +353,8 @@ class PeriodEvent(Return):
             raise UnfittedError("PeriodEvent")
         if set(self.event.unique()) - set([start, stop]):
             raise ValueError("there are labels that are not start-stop labels")
+        if isinstance(start, str) or isinstance(stop, str):
+            raise ValueError("start and stop should be int")
 
         res = self.event.groupby(level=self.code_level).apply(self._compute, start=start, stop=stop)
         return res

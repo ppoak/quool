@@ -210,9 +210,6 @@ class DimFormatter:
             levels = [self.data.columns.get_level_values(i).unique() for i in range(self.coldim)]
             if self.data.shape[1] < np.prod([level.size for level in levels]):
                 self.data = self.data.reindex(pd.MultiIndex.from_product(levels), axis=1)
-        else:
-            raise ValueError("only series and dataframe with multiindex is available")
-        
         return self
 
 def parse_date(
