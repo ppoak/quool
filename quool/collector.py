@@ -1,4 +1,5 @@
 import re
+import abc
 import time
 import base64
 import random
@@ -14,35 +15,11 @@ from tqdm.auto import tqdm
 from bs4 import BeautifulSoup
 from urllib.parse import quote
 from joblib import Parallel, delayed
+from .exception import RequestFailedError
 from .tool import Logger, strip_stock_code, format_code
 
 
-class Request:
-    """
-    A custom class for handling HTTP requests with advanced features like retries, delays, and parallel processing.
-
-    Attributes:
-        ua (list): A list of user-agent strings for simulating different browsers.
-        basic_headers (dict): Basic headers for HTTP requests.
-
-    Methods:
-        __init__: Initializes the Request object with URL(s), HTTP method, headers, etc.
-        _req: Internal method to make a single HTTP request.
-        request: Makes HTTP requests sequentially.
-        para_request: Makes HTTP requests in parallel.
-        callback: Callback method for handling the response.
-        json: Property to get the JSON response from the requests.
-        etree: Property to parse the response as lxml etree.
-        html: Property to get the HTML response.
-        soup: Property to parse the response using BeautifulSoup.
-        __call__: Makes requests (parallel or sequential) when the instance is called.
-        __str__: String representation of the Request instance.
-        __repr__: Representation method for debugging purposes.
-
-    Example:
-        req = Request(url="https://example.com", method="get")
-        response = req(para=True)  # Makes parallel requests
-    """
+class RequestBase(abc.ABC):
 
     ua = [
         'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/30.0.1599.101',
@@ -62,19 +39,13 @@ class Request:
 
     def __init__(
         self,
-        url: str | list,
-        method: str = 'get',
         headers: dict = None,
         proxies: list[dict] = None,
         timeout: float = None,
         retry: int = 1,
         delay: float = 0,
         verbose: bool = False,
-        **kwargs
     ) -> None:
-        self.url = url if isinstance(url, list) else [url]
-        self.method = method
-
         self.headers = headers or {}
         if not (self.headers.get('user-agent') or self.headers.get('User-Agent')):
             self.headers['User-Agent'] = random.choice(self.ua)
@@ -86,96 +57,64 @@ class Request:
         self.retry = retry
         self.delay = delay
         self.verbose = verbose
-        self.kwargs = kwargs
-        self.run = False
     
-    def _req(
+    def __request(
         self, 
         url: str, 
         method: str = None,
-        proxies: dict | None = None, 
-        headers: dict | None = None,
-        timeout: float | None = None,
-        retry: int | None = None,
-        delay: float | None = None,
-        verbose: bool | None = None,
+        **kwargs
     ) -> requests.Response:
-        """
-        Internal method to make a single HTTP request with retries and delays.
-
-        Args:
-            url (str): URL for the HTTP request.
-            method, proxies, headers, timeout, retry, delay, verbose: 
-            Additional parameters for the request.
-
-        Returns:
-            requests.Response: The response object from the request, or None if failed.
-        """
-        logger = Logger("QuoolRequest")
-        retry = retry or self.retry
-        headers = headers or self.headers
-        proxies = proxies or self.proxies
-        timeout = timeout or self.timeout
-        delay = delay or self.delay
-        verbose = verbose or self.verbose
-        method = method or self.method
+        method = method
         method = getattr(requests, method)
 
-        for t in range(1, retry + 1):
+        for t in range(1, self.retry + 1):
             try:
                 resp = method(
-                    url, headers=headers, proxies=random.choice(proxies),
-                    timeout=timeout, **self.kwargs
+                    url, headers=self.headers, proxies=random.choice(self.proxies),
+                    timeout=self.timeout, **kwargs
                 )
                 resp.raise_for_status()
-                if verbose:
+                if self.verbose:
+                    logger = Logger("QuoolRequest")
                     logger.info(f'[+] {url} try {t}')
                 return resp
             except Exception as e:
-                if verbose:
+                if self.verbose:
+                    logger = Logger("QuoolRequest")
                     logger.warning(f'[-] {e} {url} try {t}')
-                time.sleep(delay)
+                time.sleep(self.delay)
 
-        return None
-    
-    def request(self) -> list[requests.Response]:
-        """
-        Makes HTTP requests sequentially for each URL in the instance.
-
-        Returns:
-            list[requests.Response]: A list of response objects from the requests.
-        """
-        responses = []
-        for url in tqdm(self.url):
-            resp = self._req(url)
-            responses.append(resp)
-        self.responses = responses
-        return self
-    
-    def para_request(self) -> list[requests.Response]:
-        """
-        Makes HTTP requests in parallel for each URL in the instance.
-
-        Uses joblib's Parallel and delayed functions for parallel processing.
-
-        Returns:
-            list[requests.Response]: A list of response objects from the requests.
-        """
-        self.responses = Parallel(n_jobs=-1, backend='loky')(
-            delayed(self._req)(url) for url in tqdm(self.url)
+    def request(
+        self, url: str | list, 
+        method: str = 'get',
+        n_jobs: int = 1,
+        backend: str = 'threading',
+        **kwargs
+    ):
+        self.urls = [url] if not isinstance(url, list) else url
+        self.responses = Parallel(n_jobs=n_jobs, backend=backend)(
+            delayed(self.__request)(url, method, **kwargs) for url in self.urls
         )
         return self
+    
+    def get(
+        self, url: str | list,
+        n_jobs: int = 1,
+        backend: str = 'threading',
+        **kwargs
+    ):
+        return self.request(url, 'get', n_jobs, backend, **kwargs)
 
-    def callback(self, *args, **kwargs):
-        """
-        Callback method for handling the response.
-
-        Can be overridden in subclasses to provide custom behavior.
-
-        Returns:
-            Any: Default implementation returns the list of responses.
-        """
-        return self.responses
+    def post(
+        self, url: str | list,
+        n_jobs: int = 1,
+        backend: str = 'threading',
+        **kwargs
+    ):
+        return self.request(url, 'post', n_jobs, backend, **kwargs)
+    
+    def callback(self):
+        return
 
     @property
     def json(self):
@@ -187,13 +126,25 @@ class Request:
     
     @property
     def html(self):
-        return [res.text  if res is not None else None for res in self.responses]
+        return [res.text if res is not None else None for res in self.responses]
     
     @property
     def soup(self):
         return [BeautifulSoup(res.text, 'html.parser')  if res is not None else None for res in self.responses]
+    
+    @property
+    def content(self):
+        return [res.content if res is not None else None for res in self.responses]
 
-    def request_callback(self, para: bool = True, *args, **kwargs):
+    def request_callback(
+        self, 
+        url: str | list, 
+        method: str = 'get', 
+        n_jobs: int = 1,
+        backend: str = 'threading',
+        *args, 
+        **kwargs
+    ):
         """
         Makes requests (parallel or sequential) when the instance is called.
 
@@ -203,20 +154,14 @@ class Request:
         Returns:
             Any: The result from the callback method.
         """
-        if para:
-            self.para_request()
-        else:
-            self.request()
-        self.run = True
-        return self.callback(*args, **kwargs)
+        return self.request(url, method=method, 
+            n_jobs=n_jobs, backend=backend).callback(*args, **kwargs)
 
     def __str__(self):
         return (
             f"{self.__class__.__name__}\n"
-            f"\turl: {self.url}\n"
             f"\ttimeout: {self.timeout}; delay: {self.delay}; "
-            f"verbose: {self.verbose}; retry: {self.retry}; run: {self.run}\n"
-            f"\tmethod: {self.method}\n"
+            f"verbose: {self.verbose}; retry: {self.retry}\n"
             f"\tproxy: {self.proxies[:3]}\n"
             f"\theaders: {self.headers['User-Agent']}\n"
         )
@@ -225,12 +170,22 @@ class Request:
         return self.__str__()
 
 
-class KaiXin(Request):
+class KaiXin(RequestBase):
 
-    def __init__(self, page_count: int = 10):
-        url = [f"http://www.kxdaili.com/dailiip/2/{i}.html" for i in range(1, page_count + 1)]
-        super().__init__(url = url)
+    __url_base = "http://www.kxdaili.com/dailiip/2/{i}.html"
+
+    def __init__(self):
+        super().__init__()
     
+    def request(
+        self, 
+        page_count: int = 10,
+        n_jobs: int = 1, 
+        backend: str = 'threading'
+    ):
+        url = [self.__url_base.format(i) for i in range(1, page_count + 1)]
+        return super().request(url, 'get', n_jobs, backend)
+
     def callback(self):
         results = []
         etrees = self.etree
@@ -247,18 +202,25 @@ class KaiXin(Request):
         return pd.DataFrame(results)
 
 
-class KuaiDaili(Request):
+class KuaiDaili(RequestBase):
 
-    def __init__(self, page_count: int = 20):
-        url_pattern = [
-            'https://www.kuaidaili.com/free/inha/{}/',
-            'https://www.kuaidaili.com/free/intr/{}/'
-        ]
+    __inha_base = 'https://www.kuaidaili.com/free/inha/{page_index}/'
+    __intr_base = 'https://www.kuaidaili.com/free/intr/{page_index}/'
+
+    def __init__(self):
+        super().__init__(delay=4)
+    
+    def request(
+        self,
+        page_count: int = 20,
+        n_jobs: int = 1,
+        backend: str = 'threading',
+    ):
         url = []
         for page_index in range(1, page_count + 1):
-            for pattern in url_pattern:
+            for pattern in [self.__inha_base, self.__intr_base]:
                 url.append(pattern.format(page_index))
-        super().__init__(url=url, delay=4)
+        super().request(url, 'get', n_jobs, backend)
 
     def callback(self):
         results = []
@@ -274,17 +236,27 @@ class KuaiDaili(Request):
         return pd.DataFrame(results)
 
 
-class Ip3366(Request):
+class Ip3366(RequestBase):
 
-    def __init__(self, page_count: int = 3):
+    __type1_base = 'http://www.ip3366.net/free/?stype=1&page={page}' 
+    __type2_base = "http://www.ip3366.net/free/?stype=2&page={page}"
+
+    def __init__(self):
+        super().__init__()
+
+    def request(
+        self,
+        page_count: int = 3,
+        n_jobs: int = 1,
+        backend: str = 'threading',
+    ):
         url = []
-        url_pattern = ['http://www.ip3366.net/free/?stype=1&page={}', "http://www.ip3366.net/free/?stype=2&page={}"]
         for page in range(1, page_count + 1):
-            for pat in url_pattern:
-                url.append(pat.format(page))
-        super().__init__(url=url)
+            for pattern in [self.__type1_base, self.__type2_base]:
+                url.append(pattern.format(page))
+        super().request(url, 'get', n_jobs, backend)
 
-    def callback(self, *args, **kwargs):
+    def callback(self):
         results = []
         for text in self.html:
             if text is None:
@@ -295,12 +267,25 @@ class Ip3366(Request):
         return pd.DataFrame(results)
 
 
-class Ip98(Request):
+class Ip98(RequestBase):
 
-    def __init__(self, page_count: int = 20):
-        super().__init__(url=[f"https://www.89ip.cn/index_{i}.html" for i in range(1, page_count + 1)])
+    __base_url = "https://www.89ip.cn/index_{page}.html"
+
+    def __init__(self):
+        super().__init__()
     
-    def callback(self, *args, **kwargs):
+    def request(
+        self,
+        page_count: int = 20,
+        n_jobs: int = 1,
+        backend: str = 'threading',
+    ):
+        url = []
+        for page in range(1, page_count + 1):
+            url.append(self.__base_url.format(page))
+        super().request(url, 'get', n_jobs, backend)
+    
+    def callback(self):
         results = []
         for text in self.html:
             if text is None:
@@ -311,39 +296,6 @@ class Ip98(Request):
             )
             for proxy in proxies:
                 results.append({"http": "http://" + ":".join(proxy), "https": "http://" + ":".join(proxy)})
-        return pd.DataFrame(results)
-
-
-class Checker(Request):
-
-    def __init__(self, proxies: list[dict], url: str = "http://httpbin.org/ip"):
-        super().__init__(
-            url = [url] * len(proxies),
-            proxies = proxies,
-            timeout = 2.0,
-            retry = 1,
-        )
-
-    def request(self) -> list[requests.Response]:
-        responses = []
-        for proxy, url in tqdm(zip(self.proxies, self.url)):
-            resp = self._req(url=url, proxies=[proxy])
-            responses.append(resp)
-        self.responses = responses
-        return self
-    
-    def para_request(self) -> list[requests.Response]:
-        self.responses = Parallel(n_jobs=-1, backend='threading')(
-            delayed(self._req)(url, proxies=[proxy]) for url, proxy in tqdm(list(zip(self.url, self.proxies)))
-        )
-        return self
-    
-    def callback(self):
-        results = []
-        for i, res in enumerate(self.responses):
-            if res is None:
-                continue
-            results.append(self.proxies[i])
         return pd.DataFrame(results)
 
 
@@ -888,78 +840,34 @@ class StockUS:
         return data
 
 
-class WeiXin:
-    """
-    This class provides an interface for interacting with WeChat for functionalities like QR code-based login and sending notifications through WeChat Work.
+class WeChat(RequestBase):
 
-    Usage Example:
-    --------------
-    # Login example
-    wx = WeiXin()
-    # or you can
-    wx = WeiXin
-    app_id = 'your_app_id'
-    redirect_url = 'your_redirect_url'
-    login_code = wx.login(app_id, redirect_url)
-    
-    # Notification example
-    key = 'your_webhook_key'
-    message = 'Hello, WeChat!'
-    WeiXin.notify(key, message, message_type='text')
+    __webhook_base = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={key}"
+    __qrcode_base = "https://open.weixin.qq.com/connect/qrcode/{uuid}"
+    __service_base = "https://open.weixin.qq.com/connect/qrconnect?appid={app_id}&scope=snsapi_login&redirect_uri={redirect_url}"
+    __logincheck_base = "https://lp.open.weixin.qq.com/connect/l/qrconnect?uuid={uuid}&_={timestamp}"
+    __upload_base = "https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key={key}&type={type}"
 
-    Class Attributes:
-    -----------------
-    - webhook_base: The base URL for sending webhook notifications.
-    - qrcode_base: The base URL for generating QR codes.
-    - service_base: The base URL for the QR code login service.
-    - logincheck_base: The base URL for checking QR code login status.
-    - upload_base: The base URL for uploading media for notifications.
-
-    """
-
-    webhook_base = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={key}"
-    qrcode_base = "https://open.weixin.qq.com/connect/qrcode/{uuid}"
-    service_base = "https://open.weixin.qq.com/connect/qrconnect?appid={app_id}&scope=snsapi_login&redirect_uri={redirect_url}"
-    logincheck_base = "https://lp.open.weixin.qq.com/connect/l/qrconnect?uuid={uuid}&_={timestamp}"
-    upload_base = "https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key={key}&type={type}"
-
-    @classmethod
-    def login(cls, appid: str, redirect_url: str):
-        """
-        Initiates the login process by generating a QR code for WeChat login.
-        
-        Parameters:
-        - appid (str): The app ID for WeChat login.
-        - redirect_url (str): The URL to redirect after successful login.
-
-        Returns:
-        - str: A login code if the login is successful, otherwise None.
-
-        Usage Example:
-        --------------
-        wx = WeiXin()
-        login_code = wx.login('your_app_id', 'your_redirect_url')
-        """
-        logger = Logger("WeiXinLogin")
-        headers = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5.2 Safari/605.1.15"}
-
-        service_url = cls.service_base.format(appid=appid, redirect_url=redirect_url)
-        serv_resp = requests.get(service_url, headers=headers)
-        serv_resp.raise_for_status()
-        soup = BeautifulSoup(serv_resp.text, 'html.parser')
+    def login(self, appid: str, redirect_url: str):
+        service_url = self.__service_base.format(appid=appid, redirect_url=redirect_url)
+        soup = super().request(service_url, 'get').soup[0]
+        if soup is None:
+            raise RequestFailedError("weixin third-party login")
         qrcode_img = soup.find('img', class_='qrcode lightBorder')
         uuid = qrcode_img['src'].split('/')[-1]
 
-        qrcode_url = qrcode_url.format(uuid=uuid)
-        qrcode_resp = requests.get(qrcode_url, headers=headers)
+        qrcode_url = self.__qrcode_base.format(uuid=uuid)
+        img = super().get(qrcode_url).content[0]
+        if img is None:
+            raise RequestFailedError("weixin third-party login")
         temp_qrcode_path = Path("login.png")
         with open(temp_qrcode_path, "wb") as qrcode_file:
-            qrcode_file.write(qrcode_resp.content)
-        logger.info(f"Please scan the QRCode to Login >>> {temp_qrcode_path}")
+            qrcode_file.write(img)
 
         def _login_check(_u):
-            lp_response = requests.get(_u, headers=headers)
-            lp_response.raise_for_status()
+            lp_response = super(WeChat, self).get(_u).responses[0]
+            if lp_response is None:
+                raise RequestFailedError("weixin third-party login")
             variables = lp_response.text.split(';')[:-1]
             wx_errorcode = variables[0].split('=')[-1]
             wx_code = variables[1].split('=')[-1][1:-1]
@@ -969,26 +877,22 @@ class WeiXin:
         while True:
             timestamp = time.time()
             if wx_errorcode == '405':
-                logger.info("Login Success")
                 temp_qrcode_path.unlink()
                 return wx_code
             
             elif wx_errorcode == '408':
-                url = cls.lp_url.format(uuid=uuid, timestamp=int(timestamp))
+                url = self.__logincheck_base.format(uuid=uuid, timestamp=int(timestamp))
                 wx_errorcode, wx_code = _login_check(url)
                 
             elif wx_errorcode == '404':
-                logger.info("Scan Success, Please confirm Login on mobile phone")
-                url = f"{cls.lp_url.format(uuid=uuid, timestamp=int(timestamp))}&last=404"
+                url = f"{self.__logincheck_base.format(uuid=uuid, timestamp=int(timestamp))}&last=404"
                 wx_errorcode, wx_code = _login_check(url)
                 
             else:
-                logger.critical("Unknown error, please try again")
-                return
+                raise RequestFailedError("weixin third-party login")
             
-    @classmethod
     def notify(
-        cls, 
+        self, 
         key: str, 
         content_or_path: str,
         message_type: str = "text",
@@ -1010,20 +914,20 @@ class WeiXin:
         --------------
         WeiXin.notify('your_webhook_key', 'Hello, WeChat!', 'text')
         """
-        notify_url = cls.webhook_base.format(key=key)
+        notify_url = self.__webhook_base.format(key=key)
         
         mention_mobiles = []
         if mentions is not None:
             if not isinstance(mentions, list):
                 mentions = [mentions]
             for i, mention in enumerate(mentions):
-                if mention.isdigit():
+                if mention.lstrip('@').isdigit():
                     mention_mobiles.append(mentions.pop(i))
         mentions = mentions or []
         mention_mobiles = mention_mobiles or []
         
         if message_type in ["file", "voice"]:
-            upload_url = cls.upload_base.format(key=key, type=message_type)
+            upload_url = self.__upload_base.format(key=key, type=message_type)
             if not content_or_path:
                 raise ValueError("path is required for file and voice")
             path = Path(content_or_path)
@@ -1033,11 +937,9 @@ class WeiXin:
                     "multipart/form-data", 
                     {'Content-Length': str(path.stat().st_size)}
                 )}
-                resp = requests.post(upload_url, files=file_info)
+                resp = super().post(upload_url, files=file_info).json[0]
 
-            resp.raise_for_status()
-            resp = resp.json()
-            if resp["errcode"] != 0:
+            if resp is None or resp["errcode"] != 0:
                 raise requests.RequestException(resp["errmsg"])
             media_id = resp["media_id"]
             message = {
@@ -1048,8 +950,10 @@ class WeiXin:
                     "mentioned_mobile_list": mention_mobiles,
                 },
             }
-            resp = requests.post(notify_url, json=message)
-            return resp.json()
+            resp = super().post(notify_url, json=message).json[0]
+            if resp is None:
+                raise RequestFailedError("Failed to upload image")
+            return resp
 
         elif message_type in ["image"]:
             path = Path(content_or_path)
@@ -1067,8 +971,10 @@ class WeiXin:
                     "mentioned_mobile_list": mention_mobiles,
                 }
             }
-            resp = requests.post(notify_url, json=message)
-            return resp.json()
+            resp = super().post(notify_url, json=message).json[0]
+            if resp is None:
+                raise RequestFailedError("Failed to upload image")
+            return resp
     
         elif message_type in ["text", "markdown"]:
             message = {
@@ -1079,8 +985,10 @@ class WeiXin:
                     "mentioned_mobile_list": mention_mobiles,
                 }
             }
-            resp = requests.post(notify_url, json=message)
-            return resp.json()
+            resp = super().post(notify_url, json=message).json[0]
+            if resp is None:
+                raise RequestFailedError("Failed to upload image")
+            return resp
 
         else:
             raise ValueError(f"Unsupported message type: {message_type}")

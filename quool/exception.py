@@ -12,3 +12,11 @@ class UnfittedError(Exception):
     
     def __str__(self) -> str:
         return f"{self.name} is not fitted yet"
+
+
+class RequestFailedError(Exception):
+    def __init__(self, name: str):
+        self.name = name
+
+    def __str__(self) -> str:
+        return f"{self.name} request failed"
