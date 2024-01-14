@@ -3,51 +3,185 @@ import datetime
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from .tool import parse_commastr, parse_date, DimFormatter
+from .tool import parse_commastr, parse_date
+from .exception import NotRequiredDimError
+
+
+class DataWrapper:
+
+    def __init__(self, datatype):
+        self.datatype = datatype
+    
+    def __call__(self, func):
+        def wrapped(*args, **kwargs):
+            result = func(*args, **kwargs)
+
+            if not isinstance(result, (pd.DataFrame, pd.Series)):
+                raise ValueError("returned value is not Data type")
+            return self.datatype(result)
+
+        return wrapped
+
+
+class Data(abc.ABC):
+
+    def __init__(self, data: pd.DataFrame | pd.Series) -> None:
+        if not isinstance(data, (pd.DataFrame, pd.Series)):
+            raise TypeError('data must be a pandas DataFrame or Series')
+        else:
+            if isinstance(data, pd.DataFrame) and data.shape[1] == 1:
+                data = data.squeeze()
+            self.data = data
+    
+    def __str__(self) -> str:
+        return str(self.data)
+    
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __getitem__(self, key):
+        return self.data.__getitem__(key)
+
+    def __getattr__(self, name):
+        return getattr(self.data, name)
+
+    @property
+    def dimshape(self):
+        if isinstance(self.data, pd.Series):
+            return (self.data.index.nlevels, )
+        return (self.data.index.nlevels, self.data.columns.nlevels)
+    
+    @property
+    def naxes(self):
+        return len(self.data.shape)
+    
+    @property
+    def rowdim(self):
+        return self.dimshape[0]
+    
+    @property
+    def coldim(self):
+        if isinstance(self.data, pd.Series):
+            return None
+        return self.dimshape[1]
+    
+    @property
+    def dimnames(self):
+        if isinstance(self.data, pd.Series):
+            return self.data.index.names
+        return self.data.index.names + self.data.columns.names
+
+    @property
+    def rowname(self):
+        return self.data.index.names
+
+    @property
+    def colname(self):
+        if isinstance(self.data, pd.Series):
+            return None
+        return self.data.columns.names
+
+    def swapdim(self, fromdim: int | str, todim: int | str):
+        rowdim = self.rowdim
+        if self.naxes > 1:
+            fromdim = self.dimnames.index(fromdim) if isinstance(fromdim, str) else fromdim
+            fromdim = fromdim + self.ndim if fromdim < 0 else fromdim
+            todim = self.dimnames.index(todim) if isinstance(todim, str) else todim
+            todim = todim + self.ndim if todim < 0 else todim
+            if fromdim < rowdim and todim < rowdim:
+                # this is on axis 0
+                self.data = self.data.swaplevel(i=fromdim, j=todim, axis=0)
+            elif fromdim >= rowdim and todim >= rowdim:
+                # this is on axis 1
+                self.data = self.data.swaplevel(i=fromdim, j=todim, axis=1)
+            elif fromdim < rowdim and todim >= rowdim:
+                # this is from axis 0 to axis 1
+                self.data = self.data.unstack(level=fromdim)
+                self.data = self.data.swaplevel(i=-1, j=todim - rowdim, axis=1)
+            elif fromdim >= rowdim and todim < rowdim:
+                # this is from axis 1 to axis 0
+                self.data = self.data.stack(level=int(fromdim - rowdim))
+                if self.naxes > 1:
+                    self.data = self.data.swaplevel(i=-1, j=todim, axis=0)
+                else:
+                    self.data = self.data.swaplevel(i=-1, j=todim)
+        else:
+            if todim < 0:
+                # when todim < 0, meaning data needs to be unstacked to extend axes
+                self.data = self.data.unstack(level=fromdim)
+            else:
+                # when todim > 0 or todim is string type (changed to int), naively reorder
+                self.data = self.data.swaplevel(i=fromdim, j=todim)
+
+        return self
+
+    def panelize(self):
+        if self.rowdim > 1:
+            levels = [self.data.index.get_level_values(i).unique() for i in range(self.rowdim)]
+            if self.data.shape[0] < np.prod([level.size for level in levels]):
+                self.data = self.data.reindex(pd.MultiIndex.from_product(levels), axis=0)
+        if self.coldim > 1:
+            levels = [self.data.columns.get_level_values(i).unique() for i in range(self.coldim)]
+            if self.data.shape[1] < np.prod([level.size for level in levels]):
+                self.data = self.data.reindex(pd.MultiIndex.from_product(levels), axis=1)
+        return self
+
+
+class Dim1Data(Data):
+
+    def __init__(self, data: pd.Series | pd.DataFrame):
+        super().__init__(data)
+        if self.ndim != 1:
+            raise NotRequiredDimError(1)
+
+
+class Dim2Data(Data):
+
+    def __init__(self, data: pd.Series | pd.DataFrame):
+        super().__init__(data)
+        if self.ndim != 2:
+            raise NotRequiredDimError(2)
+
+
+class Dim2Frame(Dim2Data):
+
+    def __init__(
+        self, 
+        data: pd.Series | pd.DataFrame, 
+        level: int | str = 0
+    ):
+        super().__init__(data)
+        if self.rowdim == 2:
+            self.swapdim(level, -1)
+
+
+class Dim2Series(Dim2Data):
+
+    def __init__(
+        self, 
+        data: pd.Series | pd.DataFrame, 
+        level: int | str = 0
+    ):
+        super().__init__(data)
+        if self.rowdim == 1:
+            self.swapdim(-1, level)
+
+
+class Dim3Data(Data):
+
+    def __init__(self, data: pd.Series | pd.DataFrame):
+        super().__init__(data)
+        if self.ndim != 3:
+            raise NotRequiredDimError(3)
 
 
 class Table(abc.ABC):
-    """
-    A class for managing large datasets in a fragmented, file-based structure using Parquet files.
-
-    Attributes:
-        path (Path): The file path to the database or data storage directory.
-        name (str): The base name of the data storage directory.
-        spliter (Callable): Function to divide a DataFrame into several partitions.
-        namer (Callable): Function to name a specific DataFrame partition.
-
-    Methods:
-        __init__(self, uri, spliter, namer, create): Initializes the Table object.
-        fragments (property): Lists all data fragments in the storage directory.
-        columns (property): Lists column names in the last fragment.
-        _read_fragment(self, fragment): Reads a specified fragment from storage.
-        read(self, columns, filters): Reads data with optional filtering.
-        update(self, df): Updates the database with new data.
-        add(self, df): Adds new columns to the database.
-        delete(self, index): Deletes rows from the database.
-        remove(self, fragment): Removes specified fragments from the database.
-        sub(self, column): Deletes specified columns from the database.
-        rename(self, column): Renames columns in the database.
-
-    Example:
-        table = Table(uri="path/to/data", create=True)
-        table.add(df=my_dataframe)
-    """
 
     def __init__(
         self,
         uri: str | Path,
         create: bool = False,
     ):
-        """
-        Initializes the Table object.
-
-        Args:
-            uri (str | Path): Path to the database or data storage directory.
-            spliter (pd.Grouper | Callable, optional): Function to divide a DataFrame into partitions.
-            namer (pd.Grouper | Callable, optional): Function to name DataFrame partitions.
-            create (bool, optional): Whether to create the directory if it doesn't exist.
-        """
         self.path = Path(uri).expanduser().resolve()
         self.name = self.path.stem
         if create:
@@ -72,22 +206,10 @@ class Table(abc.ABC):
     
     @property
     def fragments(self):
-        """
-        Lists the names of all data fragments in the storage directory.
-
-        Returns:
-            List[str]: Names of the data fragments.
-        """
         return sorted([f.stem for f in list(self.path.glob('**/*.parquet'))])
     
     @property
     def columns(self):
-        """
-        Lists the column names in the last data fragment.
-
-        Returns:
-            pd.Index: Column names.
-        """
         if self.fragments:
             return self._read_fragment(self.minfrag).columns
         else:
@@ -95,39 +217,27 @@ class Table(abc.ABC):
     
     @property
     def dtypes(self):
-        """
-        Lists the dtypes of columns in the last data fragment.
-
-        Returns:
-            pd.Series: Column dtypes.
-        """
         if self.fragments:
             return self._read_fragment(self.minfrag).dtypes
         else:
             return pd.Series([])
     
     @property
-    def ndims(self):
-        if self.fragments:
-            return DimFormatter(self._read_fragment(self.minfrag)).ndims
-        return None
-    
-    @property
     def dimshape(self):
         if self.fragments:
-            return DimFormatter(self._read_fragment(self.minfrag)).dimshape
+            return Data(self._read_fragment(self.minfrag)).dimshape
         return None
     
     @property
     def rowname(self):
         if self.fragments:
-            return DimFormatter(self._read_fragment(self.minfrag)).rowname
+            return Data(self._read_fragment(self.minfrag)).rowname
         return None
     
     def get_levelname(self, level: int | str) -> int | str:
         minfrag = self.minfrag
         if isinstance(level, int) and minfrag:
-            return DimFormatter(self._read_fragment(minfrag)).rowname[level] or level
+            return Data(self._read_fragment(minfrag)).rowname[level] or level
         return level
 
     def __fragment_path(self, fragment: str):
@@ -182,35 +292,17 @@ class Table(abc.ABC):
         self,
         fragment: list | str = None,
     ):
-        """
-        Reads a specified fragment from storage.
-
-        Args:
-            fragment (list | str, optional): The name(s) of the fragment(s) to read.
-
-        Returns:
-            pd.DataFrame: The data from the specified fragment(s).
-        """
         fragment = fragment or self.fragments
         fragment = [fragment] if not isinstance(fragment, list) else fragment
         fragment = [self.__fragment_path(frag) for frag in fragment]
         return pd.read_parquet(fragment, engine='pyarrow')
     
+    @DataWrapper(Data)
     def read(
         self,
         columns: str | list[str] | None = None,
         filters: list[list[tuple]] = None,
     ):
-        """
-        Reads data from storage with optional filtering.
-
-        Args:
-            columns (str | list[str], optional): The columns to read.
-            filters (list[list[tuple]], optional): Filters for reading the data.
-
-        Returns:
-            pd.DataFrame: The read data.
-        """
         df = pd.read_parquet(
             self.path, 
             engine = 'pyarrow', 
@@ -223,12 +315,6 @@ class Table(abc.ABC):
         self,
         df: pd.DataFrame | pd.Series,
     ):
-        """
-        Updates the database with new data.
-
-        Args:
-            df (pd.DataFrame | pd.Series): The DataFrame or Series to update the database with.
-        """ 
         if isinstance(df, pd.Series):
             df = df.to_frame()
         
@@ -237,16 +323,7 @@ class Table(abc.ABC):
 
         df.groupby(self.spliter).apply(self.__update_frag)
 
-    def add(
-        self,
-        df: pd.Series | pd.DataFrame
-    ):
-        """
-        Adds new columns to the database.
-
-        Args:
-            df (pd.Series | pd.DataFrame): The data to add to the database.
-        """
+    def add(self, df: pd.Series | pd.DataFrame):
         if isinstance(df, pd.Series):
             df = df.to_frame()
         
@@ -266,63 +343,27 @@ class Table(abc.ABC):
             d = d.astype(dtypes)
             d.to_parquet(self.__fragment_path(frag))
     
-    def delete(
-        self,
-        index: pd.Index,
-    ):
-        """
-        Deletes rows from the database.
-
-        Args:
-            index (pd.Index): Index of the rows to delete.
-        """
+    def delete(self, index: pd.Index):
         related_fragment = self.__related_frag(pd.DataFrame(index=index))
         for frag in related_fragment:
             df = self._read_fragment(frag)
             df = df.drop(index=index.intersection(df.index))
             df.to_parquet(self.__fragment_path(frag))
 
-    def remove(
-        self,
-        fragment: str | list = None,
-    ):
-        """
-        Removes specified fragments from the database.
-
-        Args:
-            fragment (str | list, optional): The fragment(s) to remove.
-        """
+    def remove(self, fragment: str | list = None):
         fragment = fragment or self.fragments
         fragment = [fragment] if not isinstance(fragment, list) else fragment
         for frag in fragment:
             ((self.path / frag).with_suffix('.parquet')).unlink()
     
-    def sub(
-        self,
-        column: str | list
-    ):
-        """
-        Deletes specified columns from the database.
-
-        Args:
-            column (str | list): The column(s) to delete.
-        """
+    def sub(self, column: str | list):
         column = parse_commastr(column)
         for frag in self.fragments:
             df = self._read_fragment(frag)
             df = df.drop(column, axis=1)
             df.to_parquet(self.__fragment_path(frag))
 
-    def rename(
-        self,
-        column: dict
-    ):
-        """
-        Renames columns in the database.
-
-        Args:
-            column (dict): A mapping of old column names to new column names.
-        """
+    def rename(self, column: dict):
         column = parse_commastr(column)
         for frag in self.fragments:
             df = self._read_fragment(frag)
@@ -338,42 +379,9 @@ class Table(abc.ABC):
     
     def __repr__(self) -> str:
         return self.__str__()
-        
+
 
 class Dim2Table(Table):
-    """
-    A subclass of Table designed for handling data frames with enhanced index management.
-
-    Attributes:
-        spliter (Callable): Function to divide a DataFrame into several partitions.
-        namer (Callable): Function to name a specific DataFrame partition.
-        index_name (str): Name of the index column used in the stored data frames.
-
-    Methods:
-        __init__(self, uri, spliter, namer, index_name, create): Initializes the FrameTable object.
-        read(self, column, index): Reads data with optional column and index filtering.
-
-    Example:
-        frame_table = FrameTable(uri="path/to/data", create=True)
-        data = frame_table.read(column="my_column", index=["index1", "index2"])
-    """
-
-    def __init__(
-        self, 
-        uri: str | Path, 
-        create: bool = True
-    ):
-        """
-        Initializes the FrameTable object.
-
-        Args:
-            uri (str | Path): Path to the database or data storage directory.
-            spliter (pd.Grouper | Callable, optional): Function to divide a DataFrame into partitions.
-            namer (pd.Grouper | Callable, optional): Function to name DataFrame partitions.
-            index_name (str, optional): Name of the index column in stored data frames.
-            create (bool, optional): Whether to create the directory if it doesn't exist.
-        """
-        super().__init__(uri, create)
 
     @property
     def spliter(self):
@@ -383,21 +391,12 @@ class Dim2Table(Table):
     def namer(self):
         return super().namer
     
+    @DataWrapper(Dim2Data)
     def read(
         self,
         column: str | list = None,
         index: str | list = None,
     ):
-        """
-        Reads data from the storage with optional column and index filtering.
-
-        Args:
-            column (str | list, optional): The column(s) to read from the data.
-            index (str | list, optional): The index value(s) to filter the data.
-
-        Returns:
-            pd.DataFrame: The filtered data frame.
-        """
         filters = None
         if index is not None:
             filters = [(self.get_levelname(0), "in", parse_commastr(index))]
@@ -405,22 +404,7 @@ class Dim2Table(Table):
 
 
 class Dim3Table(Table):
-    """
-    A specialized subclass of Table for handling panel data with time and categorical indexing.
-
-    Attributes:
-        date_level (str): The name of the index column representing dates.
-        code_level (str): The name of the index column representing categorical dimensions, like stock codes.
-
-    Methods:
-        __init__(self, uri, spliter, namer, date_level, code_level): Initializes the PanelTable object.
-        read(self, field, code, start, stop, filters): Reads data with optional field, code, time, and other filters.
-
-    Example:
-        panel_table = PanelTable(uri="path/to/panel/data")
-        data = panel_table.read(field="price", code="AAPL", start="2020-01-01", stop="2020-12-31")
-    """
-
+    
     def __init__(
         self,
         uri: str | Path,
@@ -430,16 +414,6 @@ class Dim3Table(Table):
         format: str = r"%Y%m",
         create: bool = False,
     ):
-        """
-        Initializes the PanelTable object.
-
-        Args:
-            uri (str | Path): Path to the database or data storage directory.
-            spliter (str | list | dict | pd.Series | Callable, optional): Function or parameter to divide the DataFrame into partitions based on time.
-            namer (str | list | dict | pd.Series | Callable, optional): Function or parameter to name DataFrame partitions.
-            date_level (str, optional): Name of the index column for dates.
-            code_level (str, optional): Name of the index column for categorical dimensions.
-        """
         self._code_level = code_level
         self._date_level = date_level
         self._freq = freq
@@ -454,6 +428,7 @@ class Dim3Table(Table):
     def namer(self):
         return lambda x: x.index.get_level_values(self.get_levelname(self._date_level))[0].strftime(self._format)
         
+    @DataWrapper(Dim3Data)
     def read(
         self, 
         field: str | list = None,
@@ -462,19 +437,6 @@ class Dim3Table(Table):
         stop: str = None,
         filters: list[list[tuple]] = None,
     ) -> pd.Series | pd.DataFrame:
-        """
-        Reads data from the storage with optional filtering by field, code, time range, and other conditions.
-
-        Args:
-            field (str | list, optional): The field(s) to read from the data.
-            code (str | list, optional): The code(s) to filter the data.
-            start (str | list, optional): The start date(s) for the time range filter.
-            stop (str, optional): The end date for the time range filter.
-            filters (list[list[tuple]], optional): Additional filters for reading the data.
-
-        Returns:
-            pd.Series | pd.DataFrame: The filtered data.
-        """
         date_level = self.get_levelname(self._date_level)
         code_level = self.get_levelname(self._code_level)
         date_level = f'__index_level_{date_level}__' if isinstance(date_level, int) else date_level
@@ -504,3 +466,4 @@ class Dim3Table(Table):
     def __str__(self) -> str:
         return super().__str__() + (f'\tindex: '
             f'<code {self.get_levelname(self._code_level)}> <date {self.get_levelname(self._date_level)}>')
+

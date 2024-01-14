@@ -8,6 +8,7 @@ from lxml import etree
 from pathlib import Path
 from bs4 import BeautifulSoup
 from joblib import Parallel, delayed
+from .tool import Logger
 from .exception import RequestFailedError
 
 

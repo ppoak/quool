@@ -2,22 +2,18 @@ import abc
 import numpy as np
 import pandas as pd
 from numba import njit
-from .tool import DimFormatter
+from .database import Dim2Frame
 from .exception import NotRequiredDimError
 
 
-class Factor:
+class Factor(Dim2Frame):
 
     def __init__(
         self, 
         data: pd.DataFrame | pd.Series,
+        level: int | str = 0,
     ) -> None:
-        formatter = DimFormatter(data)
-        if formatter.ndims != 2:
-            raise NotRequiredDimError(2)
-        if formatter.rowdim != 1:
-            raise NotRequiredDimError(1)
-        self.data = formatter.data
+        super().__init__(data, level)
 
     def __str__(self) -> str:
         return (f'{self.__class__.__name__} '
@@ -74,7 +70,7 @@ class AxBase(OpBase):
 class AxPairBase(OpBase):
 
     def __call__(self, left: Factor, right: Factor | int | float, axis: int, func: str) -> Factor:
-        if isinstance(self.left, Factor):
+        if isinstance(right, Factor):
             return Factor(getattr(left.data, func)(axis=axis, other=right.data))
         else:
             return Factor(getattr(left.data, func)(axis=axis, other=right))
@@ -143,4 +139,16 @@ class Pow(NpPairBase):
 
     def __call__(self, left: Factor, right: Factor | int | float) -> Factor:
         return super().__call__(left, right, 'pow')
+
+
+class Corr(AxPairBase):
+
+    def __call__(self, left: Factor, right: Factor) -> Factor:
+        return super().__call__(left, right, 1, 'corrwith')
+
+
+class Layer(AxBase):
+
+    def __call__(self, factor: Factor, ngroup: int) -> Factor:
+        return factor.apply(lambda x: pd.qcut(x, ngroup, labels=False), axis=1) + 1
 

@@ -4,7 +4,7 @@ import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .tool import parse_date, Logger, DimFormatter
+from .tool import parse_date, Logger, Data
 from .exception import NotRequiredDimError
 
 
@@ -379,7 +379,7 @@ class Cerebro:
         self.code_level = code_level
         self.date_level = date_level
 
-    def _format_data(self, formatter: DimFormatter) -> DimFormatter:
+    def _format_data(self, formatter: Data) -> Data:
         if formatter.naxes > 1 and not 'close' in formatter.data.columns.str.lower():
             raise ValueError('Your data should at least have a column named close')
         
@@ -428,7 +428,7 @@ class Cerebro:
         optreturn: bool = True,
         **kwargs
     ):
-        formatter = DimFormatter(data)
+        formatter = Data(data)
         if formatter.ndims > 3 or formatter.ndims < 2:
             raise NotRequiredDimError(2)
         
