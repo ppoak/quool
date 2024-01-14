@@ -4,7 +4,8 @@ import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .tool import parse_date, Logger, Data
+from .database import Dim3Frame
+from .tool import parse_date, Logger
 from .exception import NotRequiredDimError
 
 
@@ -337,81 +338,58 @@ class CashValueRecorder(Analyzer):
         return self.rets
 
 
-class Cerebro:
-    """
-    A free-to-go trading environment class that integrates with Backtrader for strategy testing.
-
-    Attributes:
-        logger (Logger): An instance of a custom Logger class for logging.
-        data (pd.DataFrame): The input data for backtesting.
-        code_level (str): Level name in 'data' that represents the stock symbol.
-        date_level (str): Level name in 'data' that represents the dates.
-
-    Methods:
-        __init__(self, data, code_level, date_level): Initializes the Cerebro environment.
-        _valid(self, data): Validates and preprocesses the input data.
-        run(self, strategy, ...): Executes the specified trading strategy.
-
-    Example:
-        cerebro = Cerebro(data=my_dataframe)
-        cerebro.run(strategy=my_strategy)
-    """
+class Cerebro(Dim3Frame):
 
     def __init__(
         self, 
+        data: pd.DataFrame | pd.Series,
+        code_level: int | str = 0,
+        date_level : int | str = 1,
+        price_level: int | str = 2,
+    ):
+        self._code_level = code_level
+        self._date_level = date_level
+        super().__init__(data, price_level)
+        self._check()
+        self.logger = Logger("Cerebro", display_time=False)
+
+    def _check(self):
+        if self.naxes > 1 and not 'close' in self.columns.str.lower():
+            raise ValueError('Your data should at least have a column named close')
+        
+        required_col = ['open', 'high', 'low']
+        base_col = required_col + ['close', 'volume']
+        if self.naxes > 1:
+            # you should at least have a column named close
+            for col in required_col:
+                if col != 'volume' and not col in self.columns.str.lower():
+                    # if open, high, low doesn't exist, default setting to close
+                    self._data[col] = self._data['close']
+            if not 'volume' in self.columns.str.lower():
+                # volume default is 0
+                self._data['volume'] = 0
+        else:
+            # just a series, all ohlc data will be the same, volume set to 0
+            self._data = self._data.to_frame(name='close')
+            for col in required_col:
+                self._data[col] = col
+            self._data['volume'] = 0
+        
+        self.panelize()
+        self._data.loc[:, base_col] = self._data.groupby(
+            level=self._code_level)[base_col].ffill().fillna(0)
+        
+        return self
+
+    def run(
+        self, 
+        strategy: bt.Strategy | list[bt.Strategy], 
+        *,
         cash: float = 1e6,
         coc: bool = False,
         commission: float = 0.005,
         riskfreerate: float = 0.02,
         verbose: bool = True,
-        code_level: str | int = 0,
-        date_level: str | int = 1,
-    ):
-        self.logger = Logger("Cerebro", display_time=False)
-        self.cerebro = bt.Cerebro(stdstats=False)
-        self.cerebro.broker.setcash(cash)
-        if coc:
-            self.cerebro.broker.set_coc(True)
-        self.cerebro.broker.setcommission(commission=commission)
-        self.cash = cash
-        self.riskfreerate = riskfreerate
-        self.verbose = verbose
-        self.code_level = code_level
-        self.date_level = date_level
-
-    def _format_data(self, formatter: Data) -> Data:
-        if formatter.naxes > 1 and not 'close' in formatter.data.columns.str.lower():
-            raise ValueError('Your data should at least have a column named close')
-        
-        required_col = ['open', 'high', 'low']
-        base_col = required_col + ['close', 'volume']
-        if formatter.naxes > 1:
-            # you should at least have a column named close
-            for col in required_col:
-                if col != 'volume' and not col in formatter.data.columns.str.lower():
-                    # if open, high, low doesn't exist, default setting to close
-                    formatter.data[col] = formatter.data['close']
-            if not 'volume' in formatter.data.columns.str.lower():
-                # volume default is 0
-                formatter['volume'] = 0
-        else:
-            # just a series, all ohlc data will be the same, volume set to 0
-            formatter.data = formatter.data.to_frame(name='close')
-            for col in required_col:
-                formatter[col] = col
-            formatter['volume'] = 0
-        
-        formatter = formatter.panelize()
-        formatter.data.loc[:, base_col] = formatter.data.groupby(
-            level=self.code_level)[base_col].ffill().fillna(0)
-        
-        return formatter
-
-    def run(
-        self, 
-        strategy: bt.Strategy | list[bt.Strategy], 
-        data: pd.DataFrame,
-        *,
         benchmark: pd.Series = None,
         indicators: 'bt.Indicator | list' = None,
         analyzers: 'bt.Analyzer | list' = None,
@@ -428,65 +406,62 @@ class Cerebro:
         optreturn: bool = True,
         **kwargs
     ):
-        formatter = Data(data)
-        if formatter.ndims > 3 or formatter.ndims < 2:
-            raise NotRequiredDimError(2)
-        
-        data = self._format_data(formatter).data
-        start = data.index.get_level_values(self.date_level).min()
-        stop = data.index.get_level_values(self.date_level).max()
+        cerebro = bt.Cerebro(stdstats=False)
+        cerebro.broker.set_cash(cash)
+        if coc:
+            self.cerebro.broker.set_coc(True)
+        cerebro.broker.setcommission(commission=commission)
+        riskfreerate = riskfreerate
+        start = self._data.index.get_level_values(self._date_level).min()
+        stop = self._data.index.get_level_values(self._date_level).max()
         
         # add data
-        more = set(data.columns.to_list()) - set(['open', 'high', 'low', 'close', 'volume'])
+        more = set(self._data.columns.to_list()) - set(['open', 'high', 'low', 'close', 'volume'])
         PandasData = type("_PandasData", (bt.feeds.PandasData,), {"lines": tuple(more), "params": tuple(zip(more, [-1] * len(more)))})
         # without setting bt.metabase._PandasData, PandasData cannot be pickled
         bt.metabase._PandasData = PandasData
 
-        if formatter.rowdim == 2:
-            datanames = data.index.get_level_values(self.code_level).unique().to_list()
-        else:
-            datanames = ['data']
-        
+        datanames = self._data.index.get_level_values(self._code_level).unique().to_list()
         for dn in datanames:
-            d = data.xs(dn, level=self.code_level) if formatter.rowdim == 2 else data
+            d = self._data.xs(dn, level=self._code_level)
             feed = PandasData(dataname=d, fromdate=start, todate=stop)
-            self.cerebro.adddata(feed, name=dn)
+            cerebro.adddata(feed, name=dn)
 
         # add indicators
         indicators = indicators if isinstance(indicators, list) else [indicators]
         for indicator in indicators:
             if indicator is not None:
-                self.cerebro.addindicator(indicator)
+                cerebro.addindicator(indicator)
         
         # add analyzers
         analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
-        self.cerebro.addanalyzer(bt.analyzers.SharpeRatio, riskfreerate=self.riskfreerate)
-        self.cerebro.addanalyzer(bt.analyzers.TimeDrawDown)
-        self.cerebro.addanalyzer(TradeOrderRecorder, date_level=self.date_level, code_level=self.code_level)
-        self.cerebro.addanalyzer(CashValueRecorder, date_level=self.date_level)
+        cerebro.addanalyzer(bt.analyzers.SharpeRatio, riskfreerate=riskfreerate)
+        cerebro.addanalyzer(bt.analyzers.TimeDrawDown)
+        cerebro.addanalyzer(TradeOrderRecorder, date_level=self._date_level, code_level=self._code_level)
+        cerebro.addanalyzer(CashValueRecorder, date_level=self._date_level)
         for analyzer in analyzers:
             if analyzer is not None:
-                self.cerebro.addanalyzer(analyzer)
+                cerebro.addanalyzer(analyzer)
 
         # add observers
         observers = observers if isinstance(observers, list) else [observers]
-        self.cerebro.addobserver(bt.observers.DrawDown)
+        cerebro.addobserver(bt.observers.DrawDown)
         for observer in observers:
             if observer is not None:
-                self.cerebro.addobserver(observer)
+                cerebro.addobserver(observer)
 
         # add strategies
         strategy = [strategy] if not isinstance(strategy, list) else strategy
         if n_jobs is None:
             for strat in strategy:
-                self.cerebro.addstrategy(strat, **kwargs)
+                cerebro.addstrategy(strat, **kwargs)
         else:
             if len(strategy) > 1:
                 raise ValueError("multiple strategies are not supported in optstrats mode")
-            self.cerebro.optstrategy(strategy[0], **kwargs)
+            cerebro.optstrategy(strategy[0], **kwargs)
         
         # run strategies
-        strats = self.cerebro.run(
+        strats = cerebro.run(
             maxcpus = n_jobs,
             preload = preload,
             runonce = runonce,
@@ -512,13 +487,13 @@ class Cerebro:
             
             benchmark = benchmark.copy().ffill()
             benchmark.name = benchmark.name or 'benchmark'
-            benchmark = benchmark / benchmark.dropna().iloc[0] * self.cash
+            benchmark = benchmark / benchmark.dropna().iloc[0] * cash
             cashvalue_ = []
             for cv in cashvalue:
                 cvb = pd.concat([cv, benchmark, (
                     (cv["value"].pct_change() - benchmark.pct_change())
                     .fillna(0) + 1).cumprod().to_frame(benchmark.name)
-                    .add_prefix("ex(").add_suffix(')') * self.cash
+                    .add_prefix("ex(").add_suffix(')') * cash
                 ], axis=1).ffill()
                 cvb.index.name = 'datetime'
                 cashvalue_.append(cvb)
@@ -553,8 +528,8 @@ class Cerebro:
                 sc = cashvalue[i].iloc[:, 1].pct_change().dropna()
                 bc = cashvalue[i].iloc[:, 2].pct_change().dropna()
                 beta = sc.corr(bc) * sc.std() / bc.std()
-                alpha = ab["return(value)(%)"] - (self.riskfreerate * 100 + beta * 
-                    (ab[f"return({benchmark.name})(%)"] - self.riskfreerate * 100))
+                alpha = ab["return(value)(%)"] - (riskfreerate * 100 + beta * 
+                    (ab[f"return({benchmark.name})(%)"] - riskfreerate * 100))
                 ab.update({"alpha(%)": alpha, "beta": beta})
             # other analyzers information
             for analyzer in strat.analyzers:
@@ -566,7 +541,7 @@ class Cerebro:
         abstract = pd.DataFrame(abstract)
         abstract = abstract.set_index(keys=list(kwargs.keys()))
         
-        if self.verbose:
+        if verbose:
             self.logger.info(abstract)
         
         if oldimg is not None and n_jobs is None:

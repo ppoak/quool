@@ -17,7 +17,7 @@ class DataWrapper:
             result = func(*args, **kwargs)
 
             if not isinstance(result, (pd.DataFrame, pd.Series)):
-                raise ValueError("returned value is not Data type")
+                raise ValueError("returned value is not Pandas type")
             return self.datatype(result)
 
         return wrapped
@@ -31,29 +31,73 @@ class Data(abc.ABC):
         else:
             if isinstance(data, pd.DataFrame) and data.shape[1] == 1:
                 data = data.squeeze()
-            self.data = data
+            self._data = data
     
     def __str__(self) -> str:
-        return str(self.data)
+        return str(self._data)
     
     def __repr__(self) -> str:
         return self.__str__()
 
     def __getitem__(self, key):
-        return self.data.__getitem__(key)
+        return self._data.__getitem__(key)
+    
+    def __setitem__(self, key, value):
+        self._data.__setitem__(key, value)
+    
+    def __len__(self):
+        return len(self._data)
+    
+    def __iter__(self):
+        return iter(self._data)
 
     def __getattr__(self, name):
-        return getattr(self.data, name)
+        if (name.startswith('_') or name.endswith('_') or
+            name.startswith('__') or name.endswith('__')):
+            return getattr(self, name)
+        return getattr(self._data, name)
+    
+    def __setattr__(self, name, value):
+        if (name.startswith('_') or name.endswith('_') or
+            name.startswith('__') or name.endswith('__')):
+            super().__setattr__(name, value)
+        else:
+            setattr(self._data, name, value)
+
+    def __add__(self, other):
+        return Data(self._data.__add__(other))
+    
+    def __sub__(self, other):
+        return Data(self._data.__sub__(other))
+    
+    def __mul__(self, other):
+        return Data(self._data.__mul__(other))
+
+    def __truediv__(self, other):
+        return Data(self._data.__truediv__(other))
+    
+    def __floordiv__(self, other):
+        return Data(self._data.__floordiv__(other))
+    
+    def __mod__(self, other):
+        return Data(self._data.__mod__(other))
+    
+    def __pow__(self, other):
+        return Data(self._data.__pow__(other))
 
     @property
     def dimshape(self):
-        if isinstance(self.data, pd.Series):
-            return (self.data.index.nlevels, )
-        return (self.data.index.nlevels, self.data.columns.nlevels)
+        if isinstance(self._data, pd.Series):
+            return (self._data.index.nlevels, )
+        return (self._data.index.nlevels, self._data.columns.nlevels)
     
     @property
     def naxes(self):
-        return len(self.data.shape)
+        return len(self._data.shape)
+    
+    @property
+    def ndim(self):
+        return sum(self.dimshape)
     
     @property
     def rowdim(self):
@@ -61,25 +105,25 @@ class Data(abc.ABC):
     
     @property
     def coldim(self):
-        if isinstance(self.data, pd.Series):
+        if isinstance(self._data, pd.Series):
             return None
         return self.dimshape[1]
     
     @property
     def dimnames(self):
-        if isinstance(self.data, pd.Series):
-            return self.data.index.names
-        return self.data.index.names + self.data.columns.names
+        if isinstance(self._data, pd.Series):
+            return self._data.index.names
+        return self._data.index.names + self._data.columns.names
 
     @property
     def rowname(self):
-        return self.data.index.names
+        return self._data.index.names
 
     @property
     def colname(self):
-        if isinstance(self.data, pd.Series):
+        if isinstance(self._data, pd.Series):
             return None
-        return self.data.columns.names
+        return self._data.columns.names
 
     def swapdim(self, fromdim: int | str, todim: int | str):
         rowdim = self.rowdim
@@ -90,40 +134,40 @@ class Data(abc.ABC):
             todim = todim + self.ndim if todim < 0 else todim
             if fromdim < rowdim and todim < rowdim:
                 # this is on axis 0
-                self.data = self.data.swaplevel(i=fromdim, j=todim, axis=0)
+                self._data = self._data.swaplevel(i=fromdim, j=todim, axis=0)
             elif fromdim >= rowdim and todim >= rowdim:
                 # this is on axis 1
-                self.data = self.data.swaplevel(i=fromdim, j=todim, axis=1)
+                self._data = self._data.swaplevel(i=fromdim, j=todim, axis=1)
             elif fromdim < rowdim and todim >= rowdim:
                 # this is from axis 0 to axis 1
-                self.data = self.data.unstack(level=fromdim)
-                self.data = self.data.swaplevel(i=-1, j=todim - rowdim, axis=1)
+                self._data = self._data.unstack(level=fromdim)
+                self._data = self._data.swaplevel(i=-1, j=todim - rowdim, axis=1)
             elif fromdim >= rowdim and todim < rowdim:
                 # this is from axis 1 to axis 0
-                self.data = self.data.stack(level=int(fromdim - rowdim))
+                self._data = self._data.stack(level=int(fromdim - rowdim))
                 if self.naxes > 1:
-                    self.data = self.data.swaplevel(i=-1, j=todim, axis=0)
+                    self._data = self._data.swaplevel(i=-1, j=todim, axis=0)
                 else:
-                    self.data = self.data.swaplevel(i=-1, j=todim)
+                    self._data = self._data.swaplevel(i=-1, j=todim)
         else:
             if todim < 0:
                 # when todim < 0, meaning data needs to be unstacked to extend axes
-                self.data = self.data.unstack(level=fromdim)
+                self._data = self._data.unstack(level=fromdim)
             else:
                 # when todim > 0 or todim is string type (changed to int), naively reorder
-                self.data = self.data.swaplevel(i=fromdim, j=todim)
+                self._data = self._data.swaplevel(i=fromdim, j=todim)
 
         return self
 
     def panelize(self):
         if self.rowdim > 1:
-            levels = [self.data.index.get_level_values(i).unique() for i in range(self.rowdim)]
-            if self.data.shape[0] < np.prod([level.size for level in levels]):
-                self.data = self.data.reindex(pd.MultiIndex.from_product(levels), axis=0)
+            levels = [self._data.index.get_level_values(i).unique() for i in range(self.rowdim)]
+            if self._data.shape[0] < np.prod([level.size for level in levels]):
+                self._data = self._data.reindex(pd.MultiIndex.from_product(levels), axis=0)
         if self.coldim > 1:
-            levels = [self.data.columns.get_level_values(i).unique() for i in range(self.coldim)]
-            if self.data.shape[1] < np.prod([level.size for level in levels]):
-                self.data = self.data.reindex(pd.MultiIndex.from_product(levels), axis=1)
+            levels = [self._data.columns.get_level_values(i).unique() for i in range(self.coldim)]
+            if self._data.shape[1] < np.prod([level.size for level in levels]):
+                self._data = self._data.reindex(pd.MultiIndex.from_product(levels), axis=1)
         return self
 
 
@@ -173,6 +217,14 @@ class Dim3Data(Data):
         super().__init__(data)
         if self.ndim != 3:
             raise NotRequiredDimError(3)
+
+
+class Dim3Frame(Dim3Data):
+
+    def __init__(self, data: pd.Series | pd.DataFrame, level: int | str = 0):
+        super().__init__(data)
+        if self.rowdim == 3:
+            self.swapdim(level, -1)
 
 
 class Table(abc.ABC):
@@ -391,7 +443,6 @@ class Dim2Table(Table):
     def namer(self):
         return super().namer
     
-    @DataWrapper(Dim2Data)
     def read(
         self,
         column: str | list = None,
@@ -428,7 +479,6 @@ class Dim3Table(Table):
     def namer(self):
         return lambda x: x.index.get_level_values(self.get_levelname(self._date_level))[0].strftime(self._format)
         
-    @DataWrapper(Dim3Data)
     def read(
         self, 
         field: str | list = None,
