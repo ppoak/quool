@@ -2,9 +2,9 @@ bs4
 lxml
 tqdm
 numpy
+numba
 joblib
 pandas
-akshare
 requests
 matplotlib
 backtrader
