@@ -50,11 +50,13 @@ class Data(abc.ABC):
     
     def __iter__(self):
         return iter(self._data)
-
+    
     def __getattr__(self, name):
         if (name.startswith('_') or name.endswith('_') or
             name.startswith('__') or name.endswith('__')):
-            return getattr(self, name)
+            if name in self.__dict__:
+                return getattr(self, name)
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")                
         return getattr(self._data, name)
     
     def __setattr__(self, name, value):

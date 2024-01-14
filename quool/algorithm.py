@@ -37,7 +37,7 @@ class Return(Data):
         return r - 1 if not log else np.log(r)
 
 
-class Event(Return, Dim2Series):
+class Event(Return):
     
     def __init__(
         self,
@@ -46,13 +46,12 @@ class Event(Return, Dim2Series):
         sellon: str = "close",
         code_level: int | str = 0,
     ):
-        Return.__init__(self, data, buyon, sellon, code_level)
-        Dim2Series.__init__(self, data)
+        super().__init__(data, buyon, sellon, code_level)
 
     def __call__(self, event: pd.Series, span: tuple = (-5, 6, 1), delay: int = 0):
         event = Dim2Series(event, self._code_level)._data
         res = []
-        r = super(Return, self)(delay, delay + 1)
+        r = Return.__call__(self, delay, delay + 1)
         for i in np.arange(*span):
             res.append(r.groupby(level=self._code_level).shift(-i).loc[event.index])
         res = pd.concat(res, axis=1, keys=np.arange(*span)).add_prefix('day').fillna(0)
@@ -61,7 +60,7 @@ class Event(Return, Dim2Series):
         return cumres
 
 
-class PeriodEvent(Event, Dim2Series):
+class PeriodEvent(Return):
     
     def __init__(
         self,
@@ -72,8 +71,7 @@ class PeriodEvent(Event, Dim2Series):
         date_level: int | str = 1,
     ):
         self._date_level = date_level
-        Return.__init__(self, data, buyon, sellon, code_level)
-        Dim2Series.__init__(self, data)
+        super().__init__(data, buyon, sellon, code_level)
     
     def __compute(
         self, _event: pd.Series, 
@@ -109,7 +107,12 @@ class PeriodEvent(Event, Dim2Series):
         
         return psell / pbuy - 1
         
-    def __call__(self, start: int | float, stop: int | float) -> pd.Series:
+    def __call__(
+        self, 
+        event: pd.DataFrame | pd.Series, 
+        start: int | float, 
+        stop: int | float
+    ) -> pd.Series:
         event = Dim2Series(event, self._code_level)._data
         if set(event.unique()) - set([start, stop]):
             raise ValueError("there are labels that are not start-stop labels")
