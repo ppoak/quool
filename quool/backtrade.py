@@ -1,187 +1,12 @@
-import logging
 import numpy as np
 import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .database import Dim3Frame
-from .tool import parse_date, Logger
-from .exception import NotRequiredDimError
+from .core.util import Logger
+from .core.backtrade import Strategy, Analyzer
+from .data import Dim3Frame
 
-
-class Strategy(bt.Strategy):
-    """
-    A pre-defined trading strategy class for backtesting using Backtrader.
-
-    Attributes:
-        params (tuple): Parameters for the strategy, e.g., minimum stake size.
-        logger (Logger): Custom logger for logging strategy events.
-
-    Methods:
-        log(self, text, level, datetime): Logs messages with a timestamp.
-        resize(self, size): Adjusts the order size to comply with minimum stake.
-        buy(self, ...): Places a buy order with adjusted size.
-        sell(self, ...): Places a sell order with adjusted size.
-        notify_order(self, order): Handles notifications for order status.
-        notify_trade(self, trade): Handles notifications for trade executions.
-
-    Example:
-        class MyStrategy(Strategy):
-            def __init__(self):
-                # Strategy initialization code here
-    """
-
-    params = (
-        ("minstake", 1), 
-        ("minshare", 100), 
-        ("splitfactor", "splitfactor"),
-        ("divfactor", "divfactor"),
-    )
-    logger = Logger("QuoolStrategy", level=logging.DEBUG, display_time=False, display_name=False)
-
-    def log(self, text: str, level: int = logging.DEBUG, datetime: pd.Timestamp = None):
-        """
-        Logs messages for the strategy with a timestamp.
-
-        Args:
-            text (str): The message to log.
-            level (int): The logging level (e.g., logging.DEBUG).
-            datetime (pd.Timestamp, optional): The timestamp for the log message.
-        """
-        datetime = datetime or self.data.datetime.date(0)
-        self.logger.log(level=level, msg=f'[{datetime}] {text}')
-
-    def split_dividend(self):
-        """Process split and dividend information on market."""
-        if not (self.params.divfactor or self.params.splitfactor):
-            raise ValueError("at least one factor should be provided")
-        
-        for data in self.datas:
-            divfactor = getattr(data, self.params.divfactor)[0] \
-                if self.params.divfactor else np.nan
-            splitfactor = getattr(data, self.params.splitfactor)[0] \
-                if self.params.splitfactor else np.nan
-            position = self.getposition(data)
-            size = position.size
-            # hold the stock which has dividend
-            if size and not np.isnan(divfactor):
-                orig_value = self.broker.get_value()
-                orig_cash = self.broker.get_cash()
-                dividend = divfactor * size
-                self.broker.set_cash(orig_cash + dividend)
-                self.broker._value = orig_value + dividend
-            # hold the stock which has split
-            if size and not np.isnan(splitfactor):
-                splitsize = int(size * splitfactor)
-                splitvalue = splitsize * data.close[0]
-                orig_value = size * position.price
-                position.set(size=size + splitsize, 
-                    price=(orig_value + splitvalue) / (size + splitsize))
-    
-    def resize(self, size: int):
-        """
-        Adjusts the order size to comply with the strategy's minimum stake.
-
-        Args:
-            size (int): The intended size of the order.
-
-        Returns:
-            int: The adjusted size of the order.
-        """
-        minstake = self.params._getkwargs().get("minstake", 1)
-        minshare = self.params._getkwargs().get("minshare", 1)
-        if size is not None:
-            size = max(minstake, (size // minstake) * minstake)
-        if size is not None and size < minshare:
-            raise ValueError(f"order size {size} is smaller than {minshare}.")
-        return size
-
-    def buy(
-        self, data=None, size=None, price=None, plimit=None, 
-        exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, 
-        trailpercent=None, parent=None, transmit=True, **kwargs
-    ):
-        """
-        Places a buy order with adjusted size.
-
-        This method adjusts the order size using `resize` method and then
-        places a buy order using the parent class's `buy` method.
-
-        Args:
-            data, size, price, plimit, exectype, valid, tradeid, oco, 
-            trailamount, trailpercent, parent, transmit, **kwargs: 
-            Parameters for the buy order (see Backtrader documentation for details).
-
-        Returns:
-            The order object returned by the parent class's `buy` method.
-        """
-        size = self.resize(size)
-        return super().buy(data, size, price, plimit, 
-            exectype, valid, tradeid, oco, trailamount, 
-            trailpercent, parent, transmit, **kwargs)
-    
-    def sell(
-        self, data=None, size=None, price=None, plimit=None, 
-        exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, 
-        trailpercent=None, parent=None, transmit=True, **kwargs
-    ):
-        """
-        Places a sell order with adjusted size.
-
-        This method adjusts the order size using `resize` method and then
-        places a sell order using the parent class's `sell` method.
-
-        Args:
-            data, size, price, plimit, exectype, valid, tradeid, oco, 
-            trailamount, trailpercent, parent, transmit, **kwargs: 
-            Parameters for the sell order (see Backtrader documentation for details).
-
-        Returns:
-            The order object returned by the parent class's `sell` method.
-        """
-        size = self.resize(size)
-        return super().sell(data, size, price, plimit, 
-            exectype, valid, tradeid, oco, trailamount, 
-            trailpercent, parent, transmit, **kwargs)
-
-    def notify_order(self, order: bt.Order):
-        """
-        Handles notifications for order status.
-
-        This method logs the status of orders, including completed, canceled, 
-        margin calls, rejected, and expired orders.
-
-        Args:
-            order (bt.Order): The order for which the notification is received.
-        """
-        # order possible status:
-        # 'Created'、'Submitted'、'Accepted'、'Partial'、'Completed'、
-        # 'Canceled'、'Expired'、'Margin'、'Rejected'
-        # broker submitted or accepted order do nothing
-        if order.status in [order.Submitted, order.Accepted, order.Created]:
-            return
-
-        # broker completed order, just hint
-        elif order.status in [order.Completed]:
-            self.log(f'{order.data._name} ref.{order.ref} order {order.executed.size} at {order.executed.price:.2f}')
-
-        elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
-            self.log(f'{order.data._name} ref.{order.ref} canceled, margin, rejected or expired')
-
-    def notify_trade(self, trade):
-        """
-        Handles notifications for trade executions.
-
-        This method logs the details of closed trades, including profit and loss.
-
-        Args:
-            trade (bt.Trade): The trade for which the notification is received.
-        """
-        if not trade.isclosed:
-            # trade not closed, skip
-            return
-        # else, log it
-        self.log(f'{trade.data._name} gross {trade.pnl:.2f}, net {trade.pnlcomm:.2f}')
 
 class RebalanceStrategy(Strategy):
 
@@ -204,33 +29,6 @@ class RebalanceStrategy(Strategy):
             self.order_target_percent(data=i, target=target.loc[i] * (1 - self.p.ratio))
         if not dec.empty or not inc.empty:
             self.holdings = target
-
-
-class Indicator(bt.Indicator):
-    logger = Logger('QuoolIndicator', display_time=False, display_name=False)
-    
-    def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
-        """Logging function"""
-        datetime = datetime or self.data.datetime.date(0)
-        self.logger.log(level=level, msg=f'[{datetime}]: {text}')
-
-
-class Analyzer(bt.Analyzer):
-    logger = Logger('QuoolAnalyzer', display_time=False, display_name=False)
-
-    def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
-        """Logging function"""
-        datetime = datetime or self.data.datetime.date(0)
-        self.logger.log(level=level, msg=f'[{datetime}]: {text}')
-
-
-class Observer(bt.Observer):
-    logger = Logger('QuoolObserver', display_time=False, display_name=False)
-
-    def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
-        """Logging function"""
-        datetime = datetime or self.data.datetime.date(0)
-        self.logger.log(level=level, msg=f'[{datetime}]: {text}')
 
 
 class TradeOrderRecorder(Analyzer):
@@ -381,7 +179,7 @@ class Cerebro(Dim3Frame):
         
         return self
 
-    def run(
+    def __call__(
         self, 
         strategy: bt.Strategy | list[bt.Strategy], 
         *,
