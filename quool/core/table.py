@@ -1,10 +1,9 @@
 import abc
-import datetime
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from .data import Data
-from .util import parse_date, parse_commastr, DataWrapper
+from .data import PdData
+from .util import parse_commastr, DataWrapper
 
 
 class Table(abc.ABC):
@@ -55,19 +54,19 @@ class Table(abc.ABC):
     @property
     def dimshape(self):
         if self.fragments:
-            return Data(self._read_fragment(self.minfrag)).dimshape
+            return PdData(self._read_fragment(self.minfrag)).dimshape
         return None
     
     @property
     def rowname(self):
         if self.fragments:
-            return Data(self._read_fragment(self.minfrag)).rowname
+            return PdData(self._read_fragment(self.minfrag)).rowname
         return None
     
     def get_levelname(self, level: int | str) -> int | str:
         minfrag = self.minfrag
         if isinstance(level, int) and minfrag:
-            return Data(self._read_fragment(minfrag)).rowname[level] or level
+            return PdData(self._read_fragment(minfrag)).rowname[level] or level
         return level
 
     def __fragment_path(self, fragment: str):
@@ -127,7 +126,7 @@ class Table(abc.ABC):
         fragment = [self.__fragment_path(frag) for frag in fragment]
         return pd.read_parquet(fragment, engine='pyarrow')
     
-    @DataWrapper(Data)
+    @DataWrapper(PdData)
     def read(
         self,
         columns: str | list[str] | None = None,

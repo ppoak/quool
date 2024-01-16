@@ -2,12 +2,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
-from .core.data import Data
+from .core.data import PdData
 from .core.exception import NotRequiredDimError
 from .operate import Shift, LevelShift, CsCorr
 
 
-class Dim1Data(Data):
+class Dim1PdData(PdData):
 
     def __init__(self, data: pd.Series | pd.DataFrame):
         super().__init__(data)
@@ -15,7 +15,7 @@ class Dim1Data(Data):
             raise NotRequiredDimError(1)
 
 
-class Dim2Data(Data):
+class Dim2PdData(PdData):
 
     def __init__(self, data: pd.Series | pd.DataFrame):
         super().__init__(data)
@@ -23,7 +23,7 @@ class Dim2Data(Data):
             raise NotRequiredDimError(2)
 
 
-class Dim2Frame(Dim2Data):
+class Dim2Frame(Dim2PdData):
 
     def __init__(
         self, 
@@ -36,7 +36,7 @@ class Dim2Frame(Dim2Data):
             self.swapdim(level, -1)
 
 
-class Dim2Series(Dim2Data):
+class Dim2Series(Dim2PdData):
 
     def __init__(
         self, 
@@ -49,7 +49,7 @@ class Dim2Series(Dim2Data):
             self.swapdim(-1, level)
 
 
-class Dim3Data(Data):
+class Dim3PdData(PdData):
 
     def __init__(self, data: pd.Series | pd.DataFrame):
         super().__init__(data)
@@ -57,7 +57,7 @@ class Dim3Data(Data):
             raise NotRequiredDimError(3)
 
 
-class Dim3Frame(Dim3Data):
+class Dim3Frame(Dim3PdData):
 
     def __init__(self, data: pd.Series | pd.DataFrame, level: int | str = 0):
         self._level = level
@@ -66,7 +66,7 @@ class Dim3Frame(Dim3Data):
             self.swapdim(level, -1)
 
 
-class Price(Data):
+class Price(PdData):
 
     def __init__(
         self,
@@ -354,7 +354,7 @@ class Factor(Dim2Frame):
     def report_group_test(
         self,
         future_return: Dim2Frame,
-        benchmark: Dim1Data = None,
+        benchmark: Dim1PdData = None,
         ngroup: int = 10,
         commission: float = 0.005,
         side: str = 'both',

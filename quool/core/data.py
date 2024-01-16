@@ -1,18 +1,23 @@
 import abc
 import numpy as np
 import pandas as pd
-from .exception import NotRequiredDimError
 
 
 class Data(abc.ABC):
 
     def __init__(self, data: pd.DataFrame | pd.Series) -> None:
-        if isinstance(data, Data):
+        if isinstance(data, PdData):
             self._data = data._data
         else:
-            if isinstance(data, pd.DataFrame) and data.shape[1] == 1:
-                data = data.squeeze()
             self._data = data
+
+
+class PdData(Data):
+
+    def __init__(self, data: pd.DataFrame | pd.Series) -> None:
+        super().__init__(data)
+        if isinstance(data, pd.DataFrame) and data.shape[1] == 1:
+            self._data = data.squeeze()
     
     def __str__(self) -> str:
         return str(self._data)
@@ -51,34 +56,34 @@ class Data(abc.ABC):
         return self._data
     
     def __add__(self, other):
-        return Data(self._data.__add__(Data(other)._data))
+        return PdData(self._data.__add__(PdData(other)._data))
     
     def __sub__(self, other):
-        return Data(self._data.__sub__(Data(other)._data))
+        return PdData(self._data.__sub__(PdData(other)._data))
     
     def __mul__(self, other):
-        return Data(self._data.__mul__(Data(other)._data))
+        return PdData(self._data.__mul__(PdData(other)._data))
 
     def __truediv__(self, other):
-        return Data(self._data.__truediv__(Data(other)._data))
+        return PdData(self._data.__truediv__(PdData(other)._data))
     
     def __floordiv__(self, other):
-        return Data(self._data.__floordiv__(Data(other)._data))
+        return PdData(self._data.__floordiv__(PdData(other)._data))
     
     def __mod__(self, other):
-        return Data(self._data.__mod__(Data(other)._data))
+        return PdData(self._data.__mod__(PdData(other)._data))
     
     def __pow__(self, other):
-        return Data(self._data.__pow__(Data(other)._data))
+        return PdData(self._data.__pow__(PdData(other)._data))
 
     def __and__(self, other):
-        return Data(self._data.__and__(Data(other)._data))
+        return PdData(self._data.__and__(PdData(other)._data))
 
     def __xor__(self, other):
-        return Data(self._data.__xor__(Data(other)._data))
+        return PdData(self._data.__xor__(PdData(other)._data))
 
     def __or__(self, other):
-        return Data(self._data.__or__(Data(other)._data))
+        return PdData(self._data.__or__(PdData(other)._data))
 
     @property
     def dimshape(self):
@@ -178,35 +183,35 @@ class Data(abc.ABC):
     ):
         # DataFrame with Index
         if self.rowdim == 1 and self.naxes > 1 and other is not None:
-            result = self._data.corrwith(Data(other)._data, axis=axis, method=method)
+            result = self._data.corrwith(PdData(other)._data, axis=axis, method=method)
         elif self.rowdim == 1 and self.naxes > 1 and other is None:
             result = self._data.corr(method=method)
         # Series with Index
         elif self.rowdim == 1 and self.naxes == 1:
-            result = self._data.corr(Data(other)._data, method=method)
+            result = self._data.corr(PdData(other)._data, method=method)
         # DataFrame with MultiIndex
         elif self.rowdim > 1 and self.naxes > 1 and other is None and level is not None:
             result = self._data.groupby(level=level).corr(method=method)
         elif self.rowdim > 1 and self.naxes > 1 and other is None and level is None:
             result = self._data.corr(method=method)
         elif self.rowdim > 1 and self.naxes > 1 and other is not None and level is None:
-            result = self._data.corrwith(Data(other)._data, axis=axis, method=method)
+            result = self._data.corrwith(PdData(other)._data, axis=axis, method=method)
         elif self.rowdim > 1 and self.naxes > 1 and other is not None and level is not None:
             result = self._data.groupby(level=level).apply(lambda x: x.corrwith(
-                Data(other)._data.loc[x.index], axis=axis, method=method))
+                PdData(other)._data.loc[x.index], axis=axis, method=method))
         # Series with MultiIndex
         elif self.rowdim > 1 and self.naxes == 1 and other is None and level is not None:
             result = self._data.unstack(level=level).corr(method=method)
         elif self.rowdim > 1 and self.naxes == 1 and other is not None and level is None:
-            result = self._data.corr(Data(other)._data, method=method)
+            result = self._data.corr(PdData(other)._data, method=method)
         elif self.rowdim > 1 and self.naxes == 1 and other is not None and level is not None:
             result = self._data.unstack(level=level).corrwith(
-                Data(other)._data.unstack(level=level), method=method, axis=axis)
+                PdData(other)._data.unstack(level=level), method=method, axis=axis)
         
-        return Data(result)
+        return PdData(result)
 
     def shift(self, n: int = 1, level: int | str = 0):
         if self.rowdim == 1:
-            return Data(self._data.shift(n))
-        return Data(self._data.groupby(level=level).shift(n))
+            return PdData(self._data.shift(n))
+        return PdData(self._data.groupby(level=level).shift(n))
 
