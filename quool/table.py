@@ -5,7 +5,7 @@ from .core.table import Table
 from .core.util import parse_commastr
 
 
-class Dim2Table(Table):
+class FrameTable(Table):
 
     @property
     def spliter(self):
@@ -26,7 +26,7 @@ class Dim2Table(Table):
         return super().read(parse_commastr(column), filters)
 
 
-class Dim3Table(Table):
+class PanelTable(Table):
     
     def __init__(
         self,
