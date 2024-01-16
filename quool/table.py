@@ -2,7 +2,7 @@ import datetime
 import pandas as pd
 from pathlib import Path
 from .core.table import Table
-from .core.util import parse_commastr, parse_date
+from .core.util import parse_commastr
 
 
 class Dim2Table(Table):
@@ -67,8 +67,8 @@ class Dim3Table(Table):
         code = parse_commastr(code)
         field = parse_commastr(field)
         filters = filters or []
-        start = parse_date(start or "20000104")
-        stop = parse_date(stop or datetime.datetime.today().strftime(r'%Y%m%d'))
+        start = pd.to_datetime(start or "20000104")
+        stop = pd.to_datetime(stop or datetime.datetime.today().strftime(r'%Y%m%d'))
 
         if not isinstance(start, pd.DatetimeIndex):
             filters += [

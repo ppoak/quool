@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from .core.util import Logger
 from .core.backtrade import Strategy, Analyzer
-from .data import Dim3Frame
 
 
 class RebalanceStrategy(Strategy):
@@ -136,34 +135,33 @@ class CashValueRecorder(Analyzer):
         return self.rets
 
 
-class Cerebro(Dim3Frame):
+class Cerebro:
 
     def __init__(
         self, 
         data: pd.DataFrame | pd.Series,
         code_level: int | str = 0,
         date_level : int | str = 1,
-        price_level: int | str = 2,
     ):
         self._code_level = code_level
         self._date_level = date_level
-        super().__init__(data, price_level)
+        self._data = data
         self._check()
         self.logger = Logger("Cerebro", display_time=False)
 
     def _check(self):
-        if self.naxes > 1 and not 'close' in self.columns.str.lower():
+        if len(self._data.shape) > 1 and not 'close' in self._data.columns.str.lower():
             raise ValueError('Your data should at least have a column named close')
         
         required_col = ['open', 'high', 'low']
         base_col = required_col + ['close', 'volume']
-        if self.naxes > 1:
+        if len(self._data.shape) > 1:
             # you should at least have a column named close
             for col in required_col:
-                if col != 'volume' and not col in self.columns.str.lower():
+                if col != 'volume' and not col in self._data.columns.str.lower():
                     # if open, high, low doesn't exist, default setting to close
                     self._data[col] = self._data['close']
-            if not 'volume' in self.columns.str.lower():
+            if not 'volume' in self._data.columns.str.lower():
                 # volume default is 0
                 self._data['volume'] = 0
         else:
@@ -173,7 +171,17 @@ class Cerebro(Dim3Frame):
                 self._data[col] = col
             self._data['volume'] = 0
         
-        self.panelize()
+        if self._data.index.nlevels == 1:
+            self._data.index = pd.MultiIndex.from_product(
+                [['data'], self._data.index],
+                names = [self._code_level, self._date_level], 
+            )
+        
+        self._data = self._data.reindex(index=pd.MultiIndex.from_product(
+            [self._data.index.get_level_values(self._code_level).unique(), 
+             self._data.index.get_level_values(self._date_level).unique()],
+            names = [self._code_level, self._date_level],
+        ))
         self._data.loc[:, base_col] = self._data.groupby(
             level=self._code_level)[base_col].ffill().fillna(0)
         

@@ -2,8 +2,7 @@ import abc
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from .data import PdData
-from .util import parse_commastr, DataWrapper
+from .util import parse_commastr
 
 
 class Table(abc.ABC):
@@ -54,19 +53,13 @@ class Table(abc.ABC):
     @property
     def dimshape(self):
         if self.fragments:
-            return PdData(self._read_fragment(self.minfrag)).dimshape
-        return None
-    
-    @property
-    def rowname(self):
-        if self.fragments:
-            return PdData(self._read_fragment(self.minfrag)).rowname
+            return (self._read_fragment(self.minfrag)).dimshape
         return None
     
     def get_levelname(self, level: int | str) -> int | str:
         minfrag = self.minfrag
         if isinstance(level, int) and minfrag:
-            return PdData(self._read_fragment(minfrag)).rowname[level] or level
+            return self._read_fragment(minfrag).index.names[level] or level
         return level
 
     def __fragment_path(self, fragment: str):
@@ -126,7 +119,6 @@ class Table(abc.ABC):
         fragment = [self.__fragment_path(frag) for frag in fragment]
         return pd.read_parquet(fragment, engine='pyarrow')
     
-    @DataWrapper(PdData)
     def read(
         self,
         columns: str | list[str] | None = None,

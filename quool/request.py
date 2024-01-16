@@ -4,7 +4,6 @@ import hashlib
 import requests
 from pathlib import Path
 from .core.request import Request
-from .core.exception import RequestFailedError
 
 
 class WeChat(Request):
@@ -19,14 +18,14 @@ class WeChat(Request):
         service_url = self.__service_base.format(appid=appid, redirect_url=redirect_url)
         soup = super().request(service_url, 'get').soup[0]
         if soup is None:
-            raise RequestFailedError("weixin third-party login")
+            raise ValueError("weixin third-party login failed")
         qrcode_img = soup.find('img', class_='qrcode lightBorder')
         uuid = qrcode_img['src'].split('/')[-1]
 
         qrcode_url = self.__qrcode_base.format(uuid=uuid)
         img = super().get(qrcode_url).content[0]
         if img is None:
-            raise RequestFailedError("weixin third-party login")
+            raise ValueError("weixin third-party login failed")
         temp_qrcode_path = Path("login.png")
         with open(temp_qrcode_path, "wb") as qrcode_file:
             qrcode_file.write(img)
@@ -34,7 +33,7 @@ class WeChat(Request):
         def _login_check(_u):
             lp_response = super(WeChat, self).get(_u).responses[0]
             if lp_response is None:
-                raise RequestFailedError("weixin third-party login")
+                raise ValueError("weixin third-party login failed")
             variables = lp_response.text.split(';')[:-1]
             wx_errorcode = variables[0].split('=')[-1]
             wx_code = variables[1].split('=')[-1][1:-1]
@@ -56,7 +55,7 @@ class WeChat(Request):
                 wx_errorcode, wx_code = _login_check(url)
                 
             else:
-                raise RequestFailedError("weixin third-party login")
+                raise ValueError("weixin third-party login failed")
             
     def notify(
         self, 
@@ -103,7 +102,7 @@ class WeChat(Request):
             }
             resp = super().post(notify_url, json=message).json[0]
             if resp is None:
-                raise RequestFailedError("Failed to upload image")
+                raise ValueError("weixin third-party login failed")
             return resp
 
         elif message_type in ["image"]:
@@ -124,7 +123,7 @@ class WeChat(Request):
             }
             resp = super().post(notify_url, json=message).json[0]
             if resp is None:
-                raise RequestFailedError("Failed to upload image")
+                raise ValueError("weixin third-party login failed")
             return resp
     
         elif message_type in ["text", "markdown"]:
@@ -138,7 +137,7 @@ class WeChat(Request):
             }
             resp = super().post(notify_url, json=message).json[0]
             if resp is None:
-                raise RequestFailedError("Failed to upload image")
+                raise ValueError("weixin third-party login failed")
             return resp
 
         else:
