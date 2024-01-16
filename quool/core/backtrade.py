@@ -101,7 +101,6 @@ class Indicator(bt.Indicator):
     logger = Logger('QuoolIndicator', display_time=False, display_name=False)
     
     def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
-        """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
         self.logger.log(level=level, msg=f'[{datetime}]: {text}')
 
@@ -110,7 +109,6 @@ class Analyzer(bt.Analyzer):
     logger = Logger('QuoolAnalyzer', display_time=False, display_name=False)
 
     def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
-        """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
         self.logger.log(level=level, msg=f'[{datetime}]: {text}')
 
@@ -119,7 +117,6 @@ class Observer(bt.Observer):
     logger = Logger('QuoolObserver', display_time=False, display_name=False)
 
     def log(self, text: str, level: int = logging.INFO, datetime: pd.Timestamp = None):
-        """Logging function"""
         datetime = datetime or self.data.datetime.date(0)
         self.logger.log(level=level, msg=f'[{datetime}]: {text}')
 

@@ -7,8 +7,8 @@ from .exception import NotRequiredDimError
 class Data(abc.ABC):
 
     def __init__(self, data: pd.DataFrame | pd.Series) -> None:
-        if not isinstance(data, (pd.DataFrame, pd.Series)):
-            self._data = data
+        if isinstance(data, Data):
+            self._data = data._data
         else:
             if isinstance(data, pd.DataFrame) and data.shape[1] == 1:
                 data = data.squeeze()

@@ -134,15 +134,6 @@ class Request(abc.ABC):
         *args, 
         **kwargs
     ):
-        """
-        Makes requests (parallel or sequential) when the instance is called.
-
-        Args:
-            para (bool): If True, makes parallel requests. Otherwise, sequential.
-
-        Returns:
-            Any: The result from the callback method.
-        """
         return self.request(url, method=method, 
             n_jobs=n_jobs, backend=backend).callback(*args, **kwargs)
 
