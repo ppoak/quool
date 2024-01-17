@@ -32,11 +32,8 @@ class Strategy(bt.Strategy):
             size = position.size
             # hold the stock which has dividend
             if size and not np.isnan(divfactor):
-                orig_value = self.broker.get_value()
-                orig_cash = self.broker.get_cash()
                 dividend = divfactor * size
-                self.broker.set_cash(orig_cash + dividend)
-                self.broker._value = orig_value + dividend
+                self.broker.add_cash(dividend)
             # hold the stock which has split
             if size and not np.isnan(splitfactor):
                 splitsize = int(size * splitfactor)

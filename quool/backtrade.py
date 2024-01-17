@@ -187,9 +187,9 @@ class Cerebro:
         
         return self
 
-    def __call__(
+    def run(
         self, 
-        strategy: bt.Strategy | list[bt.Strategy], 
+        strategy: Strategy | list[Strategy], 
         *,
         cash: float = 1e6,
         coc: bool = False,
@@ -217,7 +217,6 @@ class Cerebro:
         if coc:
             self.cerebro.broker.set_coc(True)
         cerebro.broker.setcommission(commission=commission)
-        riskfreerate = riskfreerate
         start = self._data.index.get_level_values(self._date_level).min()
         stop = self._data.index.get_level_values(self._date_level).max()
         
