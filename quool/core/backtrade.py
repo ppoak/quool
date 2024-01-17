@@ -47,11 +47,8 @@ class Strategy(bt.Strategy):
     
     def resize(self, size: int):
         minstake = self.params._getkwargs().get("minstake", 1)
-        minshare = self.params._getkwargs().get("minshare", 1)
         if size is not None:
             size = max(minstake, (size // minstake) * minstake)
-        if size is not None and size < minshare:
-            raise ValueError(f"order size {size} is smaller than {minshare}.")
         return size
 
     def buy(
@@ -59,7 +56,11 @@ class Strategy(bt.Strategy):
         exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, 
         trailpercent=None, parent=None, transmit=True, **kwargs
     ):
+        minsize = self.params._getkwargs().get("minsize", 1)
         size = self.resize(size)
+        if size is not None and size < minsize:
+            self.logger.warning(f'{data._name} buy {size} < {minsize} failed')
+            size = 0
         return super().buy(data, size, price, plimit, 
             exectype, valid, tradeid, oco, trailamount, 
             trailpercent, parent, transmit, **kwargs)
