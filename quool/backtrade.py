@@ -9,7 +9,7 @@ from .core.backtrade import Strategy, Analyzer
 
 class RebalanceStrategy(Strategy):
 
-    params = (("ratio", 0.95), )
+    params = (("ratio", 0.95), ("weight", "weight"))
 
     def __init__(self) -> None:
         self.holdings = pd.Series(
@@ -18,7 +18,9 @@ class RebalanceStrategy(Strategy):
         )
 
     def next(self):
-        target = pd.Series(dict([(d._name, d.portfolio[0]) for d in self.datas]), name='target')
+        target = pd.Series(dict([
+            (d._name, getattr(d, self.params.weight)[0]) for d in self.datas
+        ]), name='target')
         dec = target[target < self.holdings]
         inc = target[target > self.holdings]
         # sell before buy
