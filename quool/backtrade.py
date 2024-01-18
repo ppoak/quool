@@ -7,6 +7,60 @@ from .core.util import Logger
 from .core.backtrade import Strategy, Analyzer
 
 
+def rebalance_weight(
+    weight: pd.DataFrame, 
+    price: pd.DataFrame, 
+    delay: int = 1,
+    side: str = 'both',
+    commission: float = 0.005,
+    benchmark: pd.Series = None,
+    riskfreerate: float | pd.Series = 0.02,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    # normalize weight
+    weight_norm = weight.div(weight.sum(axis=1), axis=0)
+    weight_norm = weight_norm.fillna(0).reindex(price.index).ffill()
+    
+    # compute turnover and commission
+    delta = weight_norm - weight_norm.shift(1).fillna(0)
+    if side == "both":
+        turnover = delta.abs().sum(axis=1) / 2
+    elif side == "long":
+        turnover = delta.where(delta > 0).abs().sum(axis=1)
+    elif side == "short":
+        turnover = delta.where(delta < 0).abs().sum(axis=1)
+    turnover = turnover.shift(delay).fillna(0)
+    commission *= turnover
+
+    # compute the daily return
+    returns = price.pct_change(fill_method=None).fillna(0)
+    returns = (weight_norm.shift(delay + 1) * returns).sum(axis=1)
+    returns -= commission
+    value = (returns + 1).cumprod()
+    returns.name = 'return'
+    turnover.name = 'turnover'
+
+    # evaluation indicators
+    evaluation = pd.Series(name='evaluation')
+    evaluation['annual_return(%)'] = (value.iloc[-1] ** (252 / value.shape[0]) - 1) * 100
+    evaluation['return_std(%)'] = (returns.std() * np.sqrt(252)) * 100
+    evaluation['max_drawdown(%)'] = (-(value / value.cummax() - 1).min()) * 100
+    evaluation['sharpe_ratio'] = (returns - riskfreerate).mean() / returns.std()
+    evaluation['sortino_ratio'] = (returns - riskfreerate).mean() / returns[returns < 0].std()
+    evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)']
+    if benchmark is not None:
+        benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)
+        exreturns = returns - benchmark_returns
+        evaluation['exannual_return(%)'] = ((exreturns + 1).cumprod().iloc[-1] ** (252 / exreturns.shape[0]) - 1) * 100
+        evaluation['exreturn_std(%)'] = (exreturns.std() * np.sqrt(252)) * 100
+        rf = riskfreerate.mean() if isinstance(riskfreerate, pd.Series) else riskfreerate
+        evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
+        evaluation['alpha(%)'] = (returns.mean() - (rf + evaluation['beta'] * (benchmark_returns.mean() - rf))) * 100
+        evaluation['treynor_ratio(%)'] = (exreturns.mean() / evaluation['beta']) * 100
+        evaluation['information_ratio'] = exreturns.mean() / benchmark_returns.std()
+    
+    return evaluation, returns, turnover
+
+
 class RebalanceStrategy(Strategy):
 
     params = (("ratio", 0.95), ("weight", "weight"))
@@ -334,7 +388,7 @@ class Cerebro:
             if benchmark is not None:
                 sc = cashvalue[i].iloc[:, 1].pct_change().dropna()
                 bc = cashvalue[i].iloc[:, 2].pct_change().dropna()
-                beta = sc.corr(bc) * sc.std() / bc.std()
+                beta = sc.cov(bc) / bc.var()
                 alpha = ab["return(value)(%)"] - (riskfreerate * 100 + beta * 
                     (ab[f"return({benchmark.name})(%)"] - riskfreerate * 100))
                 ab.update({"alpha(%)": alpha, "beta": beta})
