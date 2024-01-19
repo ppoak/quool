@@ -37,10 +37,7 @@ class Strategy(bt.Strategy):
             # hold the stock which has split
             if size and not np.isnan(splitfactor):
                 splitsize = int(size * splitfactor)
-                splitvalue = splitsize * data.close[0]
-                orig_value = size * position.price
-                position.set(size=size + splitsize, 
-                    price=(orig_value + splitvalue) / (size + splitsize))
+                position.update(size=splitsize, price=data.close[0])
     
     def resize(self, size: int):
         minstake = self.params._getkwargs().get("minstake", 1)
