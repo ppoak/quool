@@ -15,7 +15,7 @@ def rebalance_strategy(
     side: str = 'both',
     commission: float = 0.005,
     benchmark: pd.Series = None,
-    riskfreerate: float | pd.Series = 0.02,
+    riskfreerate: float | pd.Series = 0,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     # normalize weight
     weight_norm = weight.div(weight.sum(axis=1), axis=0)
