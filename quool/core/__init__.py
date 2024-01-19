@@ -13,7 +13,7 @@ from .table import (
     Table
 )
 
-from util import (
+from .util import (
     Logger,
     parse_commastr,
     reduce_mem_usage
