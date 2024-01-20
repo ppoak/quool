@@ -44,6 +44,7 @@ def _strategy(
     evaluation['sortino_ratio'] = (returns - riskfreerate).mean() / returns[returns < 0].std()
     evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)']
     if benchmark is not None:
+        benchmark = benchmark.squeeze()
         benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)
         exreturns = returns - benchmark_returns
         evaluation['exannual_return(%)'] = ((exreturns + 1).cumprod().iloc[-1] ** (252 / exreturns.shape[0]) - 1) * 100
