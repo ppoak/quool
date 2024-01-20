@@ -3,7 +3,6 @@ import pandas as pd
 import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
-from collections import namedtuple
 from .core.util import Logger
 from .core.backtrade import Strategy, Analyzer
 
@@ -59,8 +58,7 @@ def rebalance_strategy(
         evaluation['treynor_ratio(%)'] = (exreturns.mean() / evaluation['beta']) * 100
         evaluation['information_ratio'] = exreturns.mean() / benchmark_returns.std()
     
-    result = namedtuple('ReweightResult', ['evaluation', 'returns', 'turnover'])
-    return result(evaluation=evaluation, returns=returns, turnover=turnover)
+    return {'evaluation': evaluation, 'returns': returns, 'turnover': turnover}
 
 
 class RebalanceStrategy(Strategy):
