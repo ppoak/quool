@@ -11,6 +11,7 @@ from .core import (
 )
 
 from .backtrade import (
+    reweight_strategy,
     rebalance_strategy,
     RebalanceStrategy,
     TradeOrderRecorder,
@@ -27,4 +28,4 @@ from .table import (
 )
 
 
-__version__ = "4.1.5"
+__version__ = "4.1.6"

@@ -7,7 +7,7 @@ from .core.util import Logger
 from .core.backtrade import Strategy, Analyzer
 
 
-def rebalance_strategy(
+def _strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
     delay: int = 1,
@@ -15,13 +15,9 @@ def rebalance_strategy(
     commission: float = 0.005,
     benchmark: pd.Series = None,
     riskfreerate: float | pd.Series = 0,
-) -> tuple[pd.Series, pd.Series, pd.Series]:
-    # normalize weight
-    weight_norm = weight.div(weight.sum(axis=1), axis=0)
-    weight_norm = weight_norm.fillna(0).reindex(price.index).ffill()
-    
+):
     # compute turnover and commission
-    delta = weight_norm - weight_norm.shift(1).fillna(0)
+    delta = weight - weight.shift(1).fillna(0)
     if side == "both":
         turnover = delta.abs().sum(axis=1) / 2
     elif side == "long":
@@ -33,7 +29,7 @@ def rebalance_strategy(
 
     # compute the daily return
     returns = price.pct_change(fill_method=None).fillna(0)
-    returns = (weight_norm.shift(delay + 1) * returns).sum(axis=1)
+    returns = (weight.shift(delay + 1) * returns).sum(axis=1)
     returns -= commission
     value = (returns + 1).cumprod()
     returns.name = 'return'
@@ -59,6 +55,80 @@ def rebalance_strategy(
         evaluation['information_ratio'] = exreturns.mean() / benchmark_returns.std()
     
     return {'evaluation': evaluation, 'returns': returns, 'turnover': turnover}
+
+def rebalance_strategy(
+    weight: pd.DataFrame, 
+    price: pd.DataFrame, 
+    delay: int = 1,
+    side: str = 'both',
+    commission: float = 0.005,
+    benchmark: pd.Series = None,
+    riskfreerate: float | pd.Series = 0,
+    image: str | bool = True,
+    result: str = None,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    # normalize weight
+    weight_norm = weight.div(weight.sum(axis=1), axis=0)
+    weight_norm = weight_norm.fillna(0).reindex(price.index).ffill()
+    strat = _strategy(weight_norm, price, delay, side, commission, benchmark, riskfreerate)
+    if image is not None:
+        fig, ax = plt.subplots(figsize=(20, 10))
+        pd.concat([(strat["returns"] + 1).cumprod(), strat["turnover"]], axis=1
+            ).plot(ax=ax, secondary_y="turnover", title='startegy value')
+        if isinstance(image, str):
+            fig.tight_layout()
+            fig.savefig(image)
+        else:
+            fig.show()
+    
+    if result is not None:
+        with pd.ExcelWriter(result) as writer:
+            strat['evaluation'].to_excel(writer, sheet_name='ABSTRACT')
+            pd.concat([strat['returns'], (strat['returns'] + 1).cumprod(),
+                strat['turnover']], axis=1, keys=['returns', 'value', 'turnover']
+            ).to_excel(writer, sheet_name='DETAIL')
+    
+    return strat
+
+
+def reweight_strategy(
+    weight: pd.DataFrame, 
+    price: pd.DataFrame, 
+    delay: int = 1,
+    side: str = 'both',
+    commission: float = 0.005,
+    benchmark: pd.Series = None,
+    riskfreerate: float | pd.Series = 0,
+    image: str | bool = True,
+    result: str = None,
+):
+    # filter weight where cumsum > 1
+    weight_filtered = weight.fillna(0).where(weight.cumsum(axis=1) <=1, 0)
+    weight_filtered = weight_filtered.reindex(price.index).ffill()
+    strat = _strategy(weight_filtered, price, delay, side, commission, benchmark, riskfreerate)
+    position = weight_filtered.sum(axis=1)
+    position.name = "position"
+    strat["position"] = position
+
+    if image is not None:
+        fig, ax = plt.subplots(figsize=(20, 10))
+        pd.concat([(strat["returns"] + 1).cumprod(), strat["position"], strat["turnover"]
+            ], axis=1).plot(ax=ax, secondary_y="turnover", title='startegy')
+        if isinstance(image, str):
+            fig.tight_layout()
+            fig.savefig(image)
+        else:
+            fig.show()
+    
+    if result is not None:
+        with pd.ExcelWriter(result) as writer:
+            strat['evaluation'].to_excel(writer, sheet_name='ABSTRACT')
+            pd.concat([strat['returns'], (strat['returns'] + 1).cumprod(),
+                strat['turnover'], strat["position"]], axis=1, 
+                keys=['returns', 'value', 'turnover', "position"]
+            ).to_excel(writer, sheet_name='DETAIL')
+    
+    return strat
 
 
 class RebalanceStrategy(Strategy):
