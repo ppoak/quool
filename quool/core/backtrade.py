@@ -5,6 +5,67 @@ import backtrader as bt
 from .util import Logger
 
 
+def strategy(
+    weight: pd.DataFrame, 
+    price: pd.DataFrame, 
+    delay: int = 1,
+    side: str = 'both',
+    commission: float = 0.005,
+) -> dict[str, pd.Series]:
+    # compute turnover and commission
+    delta = weight - weight.shift(1).fillna(0)
+    if side == "both":
+        turnover = delta.abs().sum(axis=1) / 2
+    elif side == "long":
+        turnover = delta.where(delta > 0).abs().sum(axis=1)
+    elif side == "short":
+        turnover = delta.where(delta < 0).abs().sum(axis=1)
+    turnover = turnover.shift(delay).fillna(0)
+    commission *= turnover
+
+    # compute the daily return
+    returns = price.pct_change(fill_method=None).fillna(0)
+    returns = (weight.shift(delay + 1) * returns).sum(axis=1)
+    returns -= commission
+    returns.name = 'return'
+    turnover.name = 'turnover'
+
+    return {'returns': returns, 'turnover': turnover}
+
+def evaluate(
+    returns: pd.Series, 
+    turnover: pd.Series = None,    
+    benchmark: pd.Series = None,
+) -> pd.Series:
+    value = (returns + 1).cumprod()
+    if benchmark is not None:
+        benchmark = benchmark.squeeze()
+        benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)
+    
+    # evaluation indicators
+    evaluation = pd.Series(name='evaluation')
+    evaluation['total_return(%)'] = (value.iloc[-1] - 1) * 100
+    evaluation['annual_return(%)'] = (value.iloc[-1] ** (252 / value.shape[0]) - 1) * 100
+    evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
+    evaluation['max_drawdown(%)'] = (-(value / value.cummax() - 1).min()) * 100
+    evaluation['daily_turnover(%)'] = turnover.mean() * 100 if turnover is not None else np.nan
+    evaluation['sharpe_ratio'] = returns.mean() / returns.std()
+    evaluation['sortino_ratio'] = returns.mean() / returns[returns < 0].std()
+    evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)']
+    if benchmark is not None:
+        exreturns = returns - benchmark_returns
+        exvalue = (1 + exreturns).cumprod()
+        evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - 1) * 100
+        evaluation['annual_exreturn(%)'] = (exvalue.iloc[-1] ** (252 / exvalue.shape[0]) - 1) * 100
+        evaluation['annual_exvolatility(%)'] = (exreturns.std() * np.sqrt(252)) * 100
+        evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
+        evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100
+        evaluation['treynor_ratio(%)'] = (exreturns.mean() / evaluation['beta']) * 100
+        evaluation['information_ratio'] = exreturns.mean() / benchmark_returns.std()
+    
+    return evaluation
+
+            
 class Strategy(bt.Strategy):
 
     params = (

@@ -1,8 +1,10 @@
 from .backtrade import (
+    strategy,
+    evaluate,
     Strategy,
     Indicator,
     Analyzer,
-    Observer
+    Observer,
 )
 
 from .request import (
@@ -19,4 +21,4 @@ from .util import (
     reduce_mem_usage
 )
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
