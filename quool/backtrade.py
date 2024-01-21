@@ -53,18 +53,19 @@ def reweight_strategy(
     result: str = None,
 ):
     # filter weight where cumsum > 1
-    weight_filtered = weight.fillna(0).where(weight.cumsum(axis=1) <=1, 0)
+    weight = weight.fillna(0)
+    weight_filtered = weight.fillna(0).where(weight.cumsum(axis=1) <= 1, 0)
     weight_filtered = weight_filtered.reindex(price.index).ffill()
     strat = strategy(weight_filtered, price, delay, side, commission)
     strat["evaluation"] = evaluate(strat['returns'], strat["turnover"], benchmark)
-    position = weight_filtered.sum(axis=1)
+    position = weight_filtered.sum(axis=1).shift(delay)
     position.name = "position"
     strat["position"] = position
 
     if image is not None:
         fig, ax = plt.subplots(figsize=(20, 10))
         pd.concat([(strat["returns"] + 1).cumprod(), strat["position"], strat["turnover"]
-            ], axis=1).plot(ax=ax, secondary_y="turnover", title='startegy')
+            ], axis=1).plot(ax=ax, secondary_y=["position", "turnover"], title='startegy')
         if isinstance(image, str):
             fig.tight_layout()
             fig.savefig(image)
