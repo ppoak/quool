@@ -25,7 +25,7 @@ def rebalance_strategy(
     if image is not None:
         fig, ax = plt.subplots(figsize=(20, 10))
         pd.concat([(strat["returns"] + 1).cumprod(), strat["turnover"]], axis=1
-            ).plot(ax=ax, secondary_y="turnover", title='startegy value')
+            ).plot(ax=ax, secondary_y="turnover", title='startegy')
         if isinstance(image, str):
             fig.tight_layout()
             fig.savefig(image)
