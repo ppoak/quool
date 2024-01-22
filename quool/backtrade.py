@@ -272,7 +272,6 @@ class Cerebro:
         cash: float = 1e6,
         coc: bool = False,
         commission: float = 0.005,
-        riskfreerate: float = 0.02,
         verbose: bool = True,
         benchmark: pd.Series = None,
         indicators: 'bt.Indicator | list' = None,
@@ -318,8 +317,6 @@ class Cerebro:
         
         # add analyzers
         analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
-        cerebro.addanalyzer(bt.analyzers.SharpeRatio, riskfreerate=riskfreerate)
-        cerebro.addanalyzer(bt.analyzers.TimeDrawDown)
         cerebro.addanalyzer(TradeOrderRecorder, date_level=self._date_level, code_level=self._code_level)
         cerebro.addanalyzer(CashValueRecorder, date_level=self._date_level)
         for analyzer in analyzers:
@@ -328,7 +325,6 @@ class Cerebro:
 
         # add observers
         observers = observers if isinstance(observers, list) else [observers]
-        cerebro.addobserver(bt.observers.DrawDown)
         for observer in observers:
             if observer is not None:
                 cerebro.addobserver(observer)
@@ -385,42 +381,33 @@ class Cerebro:
         abstract = []
         for i, strat in enumerate(strats):
             # basic parameters
-            ab = strat.params._getkwargs()
+            _abstract = strat.params._getkwargs()
             # add return to abstract
-            ret = (cashvalue[i].dropna().iloc[-1] /
-                cashvalue[i].dropna().iloc[0] - 1) * 100
-            ret = ret.drop(index="cash").add_prefix("return(").add_suffix(")(%)")
-            ab.update(ret.to_dict())
+            _abstract.update(evaluate(
+                cashvalue[i]["value"].pct_change().fillna(0), 
+                benchmark=benchmark).to_dict())
             tor = strat.analyzers.tradeorderrecorder.get_analysis()
             trd = tor[(tor["type"] == 'Trade') & (tor["status"] == "Closed")]
             if not trd.empty:
                 # add trade count
-                ab.update({"trade_count": trd.shape[0]})
+                _abstract.update({"trade_count": trd.shape[0]})
                 # add trade win rate
                 wr = trd[trd["net_profit"] > 0].shape[0] / trd.shape[0]
-                ab.update({"winrate(%)": wr * 100})
+                _abstract.update({"winrate(%)": wr * 100})
                 # add average holding days
                 avhd = (trd["executed_time"] - trd["created_time"]).mean()
-                ab.update({"average_holding_days": avhd})
+                _abstract.update({"average_holding_days": avhd})
                 # add average return rate
                 avrr = (trd["net_profit"].values / (cashvalue[i].loc[
                     trd["created_time"].values, "value"].values)).mean()
-                ab.update({"average_return(%)": avrr * 100})
-            # return dicomposed to beta and alpha
-            if benchmark is not None:
-                sc = cashvalue[i].iloc[:, 1].pct_change().dropna()
-                bc = cashvalue[i].iloc[:, 2].pct_change().dropna()
-                beta = sc.cov(bc) / bc.var()
-                alpha = ab["return(value)(%)"] - (riskfreerate * 100 + beta * 
-                    (ab[f"return({benchmark.name})(%)"] - riskfreerate * 100))
-                ab.update({"alpha(%)": alpha, "beta": beta})
+                _abstract.update({"average_return_per_trade(%)": avrr * 100})
             # other analyzers information
             for analyzer in strat.analyzers:
                 ret = analyzer.get_analysis()
                 if isinstance(ret, dict):
-                    ab.update(ret)
+                    _abstract.update(ret)
             # append result
-            abstract.append(ab)
+            abstract.append(_abstract)
         abstract = pd.DataFrame(abstract)
         abstract = abstract.set_index(keys=list(kwargs.keys()))
         

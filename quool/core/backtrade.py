@@ -47,7 +47,11 @@ def evaluate(
     evaluation['total_return(%)'] = (value.iloc[-1] - 1) * 100
     evaluation['annual_return(%)'] = (value.iloc[-1] ** (252 / value.shape[0]) - 1) * 100
     evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
-    evaluation['max_drawdown(%)'] = (-(value / value.cummax() - 1).min()) * 100
+    cumdrawdown = -(value / value.cummax() - 1)
+    maxdate = cumdrawdown.idxmax()
+    startdate = cumdrawdown.loc[:maxdate].idxmin()
+    evaluation['max_drawdown(%)'] = (cumdrawdown.max()) * 100
+    evaluation['max_drawdown_period(days)'] = maxdate - startdate
     evaluation['daily_turnover(%)'] = turnover.mean() * 100 if turnover is not None else np.nan
     evaluation['sharpe_ratio'] = returns.mean() / returns.std()
     evaluation['sortino_ratio'] = returns.mean() / returns[returns < 0].std()
