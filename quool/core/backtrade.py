@@ -100,10 +100,12 @@ class Strategy(bt.Strategy):
             # hold the stock which has dividend
             if size and not np.isnan(divfactor):
                 dividend = divfactor * size
+                self.log(f"{self.data._name} dividend cash: {dividend}")
                 self.broker.add_cash(dividend)
             # hold the stock which has split
             if size and not np.isnan(splitfactor):
                 splitsize = int(size * splitfactor)
+                self.log(f"{self.data._name} split shares: {splitsize}")
                 position.update(size=splitsize, price=data.close[0])
     
     def resize(self, size: int):
