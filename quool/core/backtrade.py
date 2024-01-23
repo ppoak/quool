@@ -47,25 +47,29 @@ def evaluate(
     evaluation['total_return(%)'] = (value.iloc[-1] - 1) * 100
     evaluation['annual_return(%)'] = (value.iloc[-1] ** (252 / value.shape[0]) - 1) * 100
     evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
+    down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
     cumdrawdown = -(value / value.cummax() - 1)
     maxdate = cumdrawdown.idxmax()
     startdate = cumdrawdown.loc[:maxdate].idxmin()
     evaluation['max_drawdown(%)'] = (cumdrawdown.max()) * 100
     evaluation['max_drawdown_period(days)'] = maxdate - startdate
+    evaluation['max_drawdown_start'] = startdate
+    evaluation['max_drawdown_stop'] = maxdate
     evaluation['daily_turnover(%)'] = turnover.mean() * 100 if turnover is not None else np.nan
-    evaluation['sharpe_ratio'] = returns.mean() / returns.std()
-    evaluation['sortino_ratio'] = returns.mean() / returns[returns < 0].std()
+    evaluation['sharpe_ratio'] = evaluation['annual_return(%)'] / evaluation['annual_volatility(%)']
+    evaluation['sortino_ratio'] = evaluation['annual_return(%)'] / down_volatility
     evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)']
     if benchmark is not None:
         exreturns = returns - benchmark_returns
+        benchmark_volatility = (benchmark_returns.std() * np.sqrt(252)) * 100
         exvalue = (1 + exreturns).cumprod()
         evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - 1) * 100
         evaluation['annual_exreturn(%)'] = (exvalue.iloc[-1] ** (252 / exvalue.shape[0]) - 1) * 100
         evaluation['annual_exvolatility(%)'] = (exreturns.std() * np.sqrt(252)) * 100
         evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
         evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100
-        evaluation['treynor_ratio(%)'] = (exreturns.mean() / evaluation['beta']) * 100
-        evaluation['information_ratio'] = exreturns.mean() / benchmark_returns.std()
+        evaluation['treynor_ratio(%)'] = (evaluation['annual_exreturn(%)'] / evaluation['beta'])
+        evaluation['information_ratio'] = evaluation['annual_exreturn(%)'] / benchmark_volatility
     
     return evaluation
 

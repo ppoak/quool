@@ -7,7 +7,7 @@ from .core.util import Logger
 from .core.backtrade import strategy, evaluate, Strategy, Analyzer
 
 
-def rebalance_strategy(
+def weight_strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
     delay: int = 1,
@@ -17,11 +17,16 @@ def rebalance_strategy(
     image: str | bool = True,
     result: str = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
-    # normalize weight
-    weight_norm = weight.div(weight.sum(axis=1), axis=0)
-    weight_norm = weight_norm.fillna(0).reindex(price.index).ffill()
-    strat = strategy(weight_norm, price, delay, side, commission)
+    # weight check
+    if weight.isna().any().any():
+        raise ValueError("Weight contains NaN.")
+    if (weight.sum(axis=1) > 1).any():
+        raise ValueError("Weight sum exceeds 1.")
+    # apply returns on weight
+    strat = strategy(weight, price, delay, side, commission)
+    # evaluation
     strat["evaluation"] = evaluate(strat["returns"], strat["turnover"], benchmark)
+    # make plot
     if image is not None:
         fig, ax = plt.subplots(figsize=(20, 10))
         pd.concat([(strat["returns"] + 1).cumprod(), strat["turnover"]], axis=1
@@ -32,52 +37,12 @@ def rebalance_strategy(
         else:
             fig.show()
     
+    # save result
     if result is not None:
         with pd.ExcelWriter(result) as writer:
             strat['evaluation'].to_excel(writer, sheet_name='ABSTRACT')
             pd.concat([strat['returns'], (strat['returns'] + 1).cumprod(),
                 strat['turnover']], axis=1, keys=['returns', 'value', 'turnover']
-            ).to_excel(writer, sheet_name='DETAIL')
-    
-    return strat
-
-
-def reweight_strategy(
-    weight: pd.DataFrame, 
-    price: pd.DataFrame, 
-    delay: int = 1,
-    side: str = 'both',
-    commission: float = 0.005,
-    benchmark: pd.Series = None,
-    image: str | bool = True,
-    result: str = None,
-):
-    # filter weight where cumsum > 1
-    weight = weight.fillna(0)
-    weight_filtered = weight.fillna(0).where(weight.cumsum(axis=1) <= 1, 0)
-    weight_filtered = weight_filtered.reindex(price.index).ffill()
-    strat = strategy(weight_filtered, price, delay, side, commission)
-    strat["evaluation"] = evaluate(strat['returns'], strat["turnover"], benchmark)
-    position = weight_filtered.sum(axis=1).shift(delay)
-    position.name = "position"
-    strat["position"] = position
-
-    if image is not None:
-        fig, ax = plt.subplots(figsize=(20, 10))
-        pd.concat([(strat["returns"] + 1).cumprod(), strat["position"], strat["turnover"]
-            ], axis=1).plot(ax=ax, secondary_y=["position", "turnover"], title='startegy')
-        if isinstance(image, str):
-            fig.tight_layout()
-            fig.savefig(image)
-        else:
-            fig.show()
-    
-    if result is not None:
-        with pd.ExcelWriter(result) as writer:
-            strat['evaluation'].to_excel(writer, sheet_name='ABSTRACT')
-            pd.concat([strat['returns'], (strat['returns'] + 1).cumprod(),
-                strat['turnover'], strat["position"]], axis=1, 
-                keys=['returns', 'value', 'turnover', "position"]
             ).to_excel(writer, sheet_name='DETAIL')
     
     return strat
