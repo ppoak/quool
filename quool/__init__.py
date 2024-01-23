@@ -13,8 +13,7 @@ from .core import (
 )
 
 from .backtrade import (
-    reweight_strategy,
-    rebalance_strategy,
+    weight_strategy,
     RebalanceStrategy,
     TradeOrderRecorder,
     CashValueRecorder,
