@@ -50,7 +50,7 @@ def evaluate(
     down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
     cumdrawdown = -(value / value.cummax() - 1)
     maxdate = cumdrawdown.idxmax()
-    startdate = cumdrawdown.loc[:maxdate].idxmin()
+    startdate = cumdrawdown.loc[:maxdate][cumdrawdown.loc[:maxdate] == 0].index[-1]
     evaluation['max_drawdown(%)'] = (cumdrawdown.max()) * 100
     evaluation['max_drawdown_period(days)'] = maxdate - startdate
     evaluation['max_drawdown_start'] = startdate
