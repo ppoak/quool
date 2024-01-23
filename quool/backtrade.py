@@ -4,7 +4,10 @@ import backtrader as bt
 import matplotlib.pyplot as plt
 from pathlib import Path
 from .core.util import Logger
-from .core.backtrade import strategy, evaluate, Strategy, Analyzer
+from .core.backtrade import (
+    strategy, evaluate, 
+    Strategy, Analyzer, Broker
+)
 
 
 def weight_strategy(
@@ -29,8 +32,8 @@ def weight_strategy(
     # make plot
     if image is not None:
         fig, ax = plt.subplots(figsize=(20, 10))
-        pd.concat([(strat["returns"] + 1).cumprod(), strat["turnover"]], axis=1
-            ).plot(ax=ax, secondary_y="turnover", title='startegy')
+        (strat["returns"] + 1).cumprod().plot(ax=ax, title='startegy')
+        weight.sum(axis=1).plot(ax=ax, secondary_y=True, style='--', alpha=0.5)
         if isinstance(image, str):
             fig.tight_layout()
             fig.savefig(image)
@@ -234,6 +237,11 @@ class Cerebro:
         self, 
         strategy: Strategy | list[Strategy], 
         *,
+        broker: bt.BrokerBase = None,
+        minstake: int = 1,
+        minshare: int = 100,
+        divfactor: str = "divfactor",
+        splitfactor: str = "splitfactor",
         cash: float = 1e6,
         coc: bool = False,
         commission: float = 0.005,
@@ -255,6 +263,12 @@ class Cerebro:
         **kwargs
     ):
         cerebro = bt.Cerebro(stdstats=False)
+        if broker is None:
+            broker = Broker(
+                minstake=minstake, minshare=minshare,
+                divfactor=divfactor, splitfactor=splitfactor,
+            )
+        cerebro.setbroker(broker)
         cerebro.broker.set_cash(cash)
         if coc:
             self.cerebro.broker.set_coc(True)
