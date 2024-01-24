@@ -176,7 +176,7 @@ class SnowBall(Request):
 
     def __init__(
         self, 
-        cookies: str,
+        token: str,
         headers: dict = None, 
         proxies: list[dict] = None, 
         timeout: float = None, 
@@ -185,7 +185,7 @@ class SnowBall(Request):
         verbose: bool = False
     ) -> None:
         super().__init__(headers, proxies, timeout, retry, delay, verbose)
-        self.headers['Cookie'] = cookies
+        self.headers['Cookie'] = f'xq_a_token={token}'
     
     def group_list(self):
         result = self.get(self.__group_list).json[0]
