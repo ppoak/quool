@@ -259,7 +259,7 @@ class SnowBall(Request):
         shares: int, 
         price: float = None, 
         date: str = None,
-        tax_rate: float = 2.5,
+        tax_rate: float = 0.25,
         commission_rate: float = 0,
     ):
         date = date or datetime.datetime.now().strftime(r'%Y-%m-%d')
