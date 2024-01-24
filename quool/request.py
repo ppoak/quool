@@ -296,9 +296,12 @@ class SnowBall(Request):
         self,
         symbol: str | list,
     ):
+        self.headers["Host"] = 'stock.xueqiu.com'
         param = {"symbol": symbol, "extend": "detail"}
         result = self.get(self.__quote, params=param).json[0]
-        if result["errorcode"] == 0:
-            data = [res["data"]["items"]["quote"] for res in result]
+        self.headers["Host"] = 'tc.xueqiu.com'
+        if result["error_code"] == 0:
+            data = [res["quote"] for res in result["data"]["items"]]
             return pd.DataFrame(data).set_index("symbol")
+        return result["error_description"]
 
