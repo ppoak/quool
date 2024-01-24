@@ -2,6 +2,8 @@ import time
 import base64
 import hashlib
 import requests
+import datetime
+import pandas as pd
 from pathlib import Path
 from .core.request import Request
 
@@ -15,7 +17,7 @@ class WeChat(Request):
     __upload_base = "https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key={key}&type={type}"
 
     def login(self, appid: str, redirect_url: str):
-        service_url = self.__service_base.format(appid=appid, redirect_url=redirect_url)
+        service_url = self.__service_base.format(app_id=appid, redirect_url=redirect_url)
         soup = super().request(service_url, 'get').soup[0]
         if soup is None:
             raise ValueError("weixin third-party login failed")
@@ -142,3 +144,161 @@ class WeChat(Request):
 
         else:
             raise ValueError(f"Unsupported message type: {message_type}")
+
+
+class SnowBall(Request):
+
+    __group_list = 'https://tc.xueqiu.com/tc/snowx/MONI/trans_group/list.json'
+    __group_add = 'https://tc.xueqiu.com/tc/snowx/MONI/trans_group/add.json'
+    __group_delete = 'https://tc.xueqiu.com/tc/snowx/MONI/trans_group/delete.json'
+    __transaction_list = 'https://tc.xueqiu.com/tc/snowx/MONI/transaction/list.json'
+    __transaction_add = 'https://tc.xueqiu.com/tc/snowx/MONI/transaction/add.json'
+    __transaction_delete = 'https://tc.xueqiu.com/tc/snowx/MONI/transaction/delete.json'
+    __transfer_list = 'https://tc.xueqiu.com/tc/snowx/MONI/bank_transfer/query.json'
+    __transfer_add = 'https://tc.xueqiu.com/tc/snowx/MONI/bank_transfer/add.json'
+    __transfer_delete = 'https://tc.xueqiu.com/tc/snowx/MONI/bank_transfer/delete.json'
+    __performace = 'https://tc.xueqiu.com/tc/snowx//MONI/performances.json'
+    __quote = 'https://stock.xueqiu.com/v5/stock/batch/quote.json'
+
+    basic_headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json, text/plain, */*',
+        'Sec-Fetch-Site': 'same-site',
+        'Accept-Language': 'zh-CN,zh-Hans;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Sec-Fetch-Mode': 'cors',
+        'Host': 'tc.xueqiu.com',
+        'Origin': 'https://xueqiu.com',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+    }
+
+    def __init__(
+        self, 
+        cookies: str,
+        headers: dict = None, 
+        proxies: list[dict] = None, 
+        timeout: float = None, 
+        retry: int = 1, 
+        delay: float = 0, 
+        verbose: bool = False
+    ) -> None:
+        super().__init__(headers, proxies, timeout, retry, delay, verbose)
+        self.headers['Cookie'] = cookies
+    
+    def group_list(self):
+        result = self.get(self.__group_list).json[0]
+        if result["success"]:
+            return result["result_data"]["trans_groups"]
+        return result
+
+    def group_add(self, name: str):
+        data = {'name': name}
+        self.post(self.__group_add, data=data)
+        return self
+
+    def group_delete(self, gid: str):
+        data = {
+            'gid': str(gid),
+        }
+        return self.post(self.__group_delete, data=data).json[0]
+    
+    def transfer_list(
+        self, 
+        gid: str, 
+        row: int = 50,
+    ):
+        param = {
+            'gid': str(gid),
+            'row': str(row),
+        }
+        return self.get(self.__transfer_list, params=param).json[0]
+
+    def transfer_add(self, gid: str, amount: int, date: str = None):
+        date = date or datetime.datetime.now().strftime(r'%Y-%m-%d')
+        typ = '1' if amount > 0 else '2'
+        data = {
+            'gid': str(gid),
+            'date': pd.to_datetime(date).strftime(r'%Y-%m-%d'),
+            'amount': str(abs(amount)),
+            'type': typ,
+            'market': 'CHA',
+        }
+        return self.post(self.__transfer_add, data=data).json[0]
+
+    def transfer_delete(
+        self, 
+        gid: str, 
+        tid: str,
+    ):
+        data = {
+            'gid': str(gid),
+            'tid': str(tid),
+        }
+        return self.post(self.__transfer_delete, data=data).json[0]
+    
+    def transaction_list(
+        self, 
+        gid: str, 
+        symbol: str = None,
+        row: int = 1000,
+    ):
+        param = {
+            'gid': str(gid),
+            'row': str(row),
+        }
+        if symbol:
+            param['symbol'] = symbol
+        return self.get(self.__transaction_list, params=param).json[0]
+    
+    def transaction_add(
+        self, 
+        gid: str, 
+        symbol: str, 
+        shares: int, 
+        price: float = None, 
+        date: str = None,
+        tax_rate: float = 2.5,
+        commission_rate: float = 0,
+    ):
+        date = date or datetime.datetime.now().strftime(r'%Y-%m-%d')
+        typ = '1' if shares > 0 else '2'
+        price = price or self.quote(symbol).loc[symbol, 'current']
+        data = {
+            'type': typ,
+            'date': pd.to_datetime(date).strftime(r'%Y-%m-%d'),
+            'gid': str(gid),
+            'symbol': symbol,
+            'price': f'{price:.2f}',
+            'shares': f'{shares:.0f}',
+            'tax_rate': f'{tax_rate:.2f}',
+            'commission_rate': f'{commission_rate:.2f}',
+        }
+        return self.post(self.__transaction_add, data=data).json[0]
+
+    def transaction_delete(
+        self, 
+        gid: str, 
+        tid: str,
+    ):
+        data = {'gid': str(gid), 'tid': str(tid),}
+        return self.post(self.__transaction_delete, data=data).json[0]
+
+    def performance(
+        self,
+        gid: str,
+    ):
+        param = {'gid': str(gid)}
+        return self.get(self.__performace, params=param).json[0]
+    
+    def quote(
+        self,
+        symbol: str | list,
+    ):
+        param = {"symbol": symbol, "extend": "detail"}
+        result = self.get(self.__quote, params=param).json[0]
+        if result["errorcode"] == 0:
+            data = [res["data"]["items"]["quote"] for res in result]
+            return pd.DataFrame(data).set_index("symbol")
+

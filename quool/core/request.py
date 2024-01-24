@@ -35,7 +35,7 @@ class Request(abc.ABC):
         delay: float = 0,
         verbose: bool = False,
     ) -> None:
-        self.headers = headers or {}
+        self.headers = headers or self.basic_headers
         if not (self.headers.get('user-agent') or self.headers.get('User-Agent')):
             self.headers['User-Agent'] = random.choice(self.ua)
         if headers:

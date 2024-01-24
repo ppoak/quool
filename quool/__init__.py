@@ -22,6 +22,7 @@ from .backtrade import (
 
 from .request import (
     WeChat,
+    SnowBall,
 )
 from .table import (
     FrameTable,
@@ -29,4 +30,4 @@ from .table import (
 )
 
 
-__version__ = "4.3.0"
+__version__ = "4.4.0"
