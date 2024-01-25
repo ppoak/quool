@@ -195,8 +195,7 @@ class SnowBall(Request):
 
     def group_add(self, name: str):
         data = {'name': name}
-        self.post(self.__group_add, data=data)
-        return self
+        return self.post(self.__group_add, data=data).json[0]
 
     def group_delete(self, gid: str):
         data = {
