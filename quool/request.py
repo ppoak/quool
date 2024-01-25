@@ -6,6 +6,7 @@ import datetime
 import pandas as pd
 from pathlib import Path
 from .core.request import Request
+from .core.util import Logger
 
 
 class WeChat(Request):
@@ -181,11 +182,12 @@ class SnowBall(Request):
         proxies: list[dict] = None, 
         timeout: float = None, 
         retry: int = 1, 
-        delay: float = 0, 
-        verbose: bool = False
+        delay: float = 2, 
+        verbose: int = 10,
     ) -> None:
         super().__init__(headers, proxies, timeout, retry, delay, verbose)
         self.headers['Cookie'] = f'xq_a_token={token}'
+        self.logger = Logger('SnowBall', display_name=True, level=verbose)
     
     def group_list(self):
         result = self.get(self.__group_list).json[0]
@@ -203,11 +205,7 @@ class SnowBall(Request):
         }
         return self.post(self.__group_delete, data=data).json[0]
     
-    def transfer_list(
-        self, 
-        gid: str, 
-        row: int = 50,
-    ):
+    def transfer_list(self, gid: str, row: int = 50):
         param = {
             'gid': str(gid),
             'row': str(row),
@@ -276,25 +274,15 @@ class SnowBall(Request):
         }
         return self.post(self.__transaction_add, data=data).json[0]
 
-    def transaction_delete(
-        self, 
-        gid: str, 
-        tid: str,
-    ):
+    def transaction_delete(self, gid: str, tid: str):
         data = {'gid': str(gid), 'tid': str(tid),}
         return self.post(self.__transaction_delete, data=data).json[0]
 
-    def performance(
-        self,
-        gid: str,
-    ):
+    def performance(self, gid: str):
         param = {'gid': str(gid)}
         return self.get(self.__performace, params=param).json[0]
     
-    def quote(
-        self,
-        symbol: str | list,
-    ):
+    def quote(self, symbol: str | list):
         self.headers["Host"] = 'stock.xueqiu.com'
         param = {"symbol": symbol, "extend": "detail"}
         result = self.get(self.__quote, params=param).json[0]
@@ -303,4 +291,67 @@ class SnowBall(Request):
             data = [res["quote"] for res in result["data"]["items"]]
             return pd.DataFrame(data).set_index("symbol")
         return result["error_description"]
+
+    def order_target_percent(
+        self, 
+        gid: str, 
+        weight: pd.Series,
+    ):
+        perf = self.performance(gid)["result_data"]["performances"]
+        value = perf[0]["assets"]
+        cash = perf[0]["cash"]
+        target = weight.squeeze() * value
+        
+        # position exists
+        if len(perf) > 1:
+            position = pd.DataFrame(perf[1]["list"]).set_index('symbol')
+            position.index = position.index.str.slice(2)
+        # no position at all
+        else:
+            position = pd.DataFrame()
+
+        holds = position.index.intersection(target.index)
+        holds = position.loc[holds, "current"] * position.loc[holds, "shares"]
+        adjust = target - holds
+        sells = position.index.difference(target.index)
+        buys = target.index.difference(position.index)
+
+        self.logger.debug("-" * 10 + "SELLINGS" + "-" * 10)
+        for code in sells:
+            code = f'SZ{code}' if code.startswith('0') or code.startswith('3') else f'SH{code}'
+            self.transaction_add(gid, code, -position.loc[code, "shares"], position.loc[code, "current"])
+            self.logger.info(f"{code} closed position {shares:.0f} shares")
+            cash += position.loc[code, "current"] * position.loc[code, "shares"]
+            time.sleep(self.delay)
+        
+        self.logger.debug("-" * 10 + "ADJUSTING" + "-" * 10)
+        for code in adjust.index:
+            code = f'SZ{code}' if code.startswith('0') or code.startswith('3') else f'SH{code}'
+            if cash < adjust.loc[code]:
+                self.logger.warning(f"short in cash abort adjust {code}")
+                continue
+            shares = (adjust.loc[code] / position.loc[code, "current"] // 100) * 100
+            if 0 < shares < 100:
+                self.logger.warning(f"not enough share: {shares} to adjust")
+                continue
+            self.transaction_add(gid, code, shares, position.loc[code, "current"])
+            self.logger.info(f"{code} adjusted position {shares:.0f} shares")
+            cash -= shares * position.loc[code, "current"]
+            time.sleep(self.delay)
+        
+        self.logger.debug("-" * 10 + "BUYINGS" + "-" * 10)
+        for code in buys:
+            code = f'SZ{code}' if code.startswith('0') or code.startswith('3') else f'SH{code}'
+            if cash < target.loc[code]:
+                self.logger.warning(f"short in cash abort {code}")
+                continue
+            price = self.quote(code).loc[code, 'current']
+            shares = (target.loc[code] / price // 100) * 100
+            if shares < 100:
+                self.logger.warning(f"current cash {cash} is not enough for 100 share")
+                continue
+            self.transaction_add(gid, code, shares, price)
+            self.logger.info(f"{code} buy {shares} at {price}")
+            cash -= price * shares
+            time.sleep(self.delay)
 
