@@ -183,9 +183,10 @@ class SnowBall(Request):
         timeout: float = None, 
         retry: int = 1, 
         delay: float = 2, 
-        verbose: int = 10,
+        loglevel: int = 10,
+        logfile: str = None,
     ) -> None:
-        super().__init__(headers, proxies, timeout, retry, delay, verbose)
+        super().__init__(headers, proxies, timeout, retry, delay, loglevel, logfile)
         self.headers['Cookie'] = f'xq_a_token={token}'
         self.logger = Logger('SnowBall', display_name=True, level=verbose)
     
@@ -300,7 +301,7 @@ class SnowBall(Request):
         perf = self.performance(gid)["result_data"]["performances"]
         value = perf[0]["assets"]
         cash = perf[0]["cash"]
-        target = weight.squeeze() * value
+        target = weight * value
         
         # position exists
         if len(perf) > 1:
@@ -318,7 +319,7 @@ class SnowBall(Request):
 
         self.logger.debug("-" * 10 + "SELLINGS" + "-" * 10)
         for code in sells:
-            code = f'SZ{code}' if code.startswith('0') or code.startswith('3') else f'SH{code}'
+            code = f'SH{code}' if code.startswith('6') else f'SZ{code}'
             self.transaction_add(gid, code, -position.loc[code, "shares"], position.loc[code, "current"])
             self.logger.info(f"{code} closed position {shares:.0f} shares")
             cash += position.loc[code, "current"] * position.loc[code, "shares"]
@@ -326,7 +327,7 @@ class SnowBall(Request):
         
         self.logger.debug("-" * 10 + "ADJUSTING" + "-" * 10)
         for code in adjust.index:
-            code = f'SZ{code}' if code.startswith('0') or code.startswith('3') else f'SH{code}'
+            code = f'SH{code}' if code.startswith('6') else f'SZ{code}'
             if cash < adjust.loc[code]:
                 self.logger.warning(f"short in cash abort adjust {code}")
                 continue
@@ -341,7 +342,7 @@ class SnowBall(Request):
         
         self.logger.debug("-" * 10 + "BUYINGS" + "-" * 10)
         for code in buys:
-            code = f'SZ{code}' if code.startswith('0') or code.startswith('3') else f'SH{code}'
+            code = f'SH{code}' if code.startswith('6') else f'SZ{code}'
             if cash < target.loc[code]:
                 self.logger.warning(f"short in cash abort {code}")
                 continue
@@ -354,4 +355,3 @@ class SnowBall(Request):
             self.logger.info(f"{code} buy {shares} at {price}")
             cash -= price * shares
             time.sleep(self.delay)
-

@@ -33,8 +33,10 @@ class Request(abc.ABC):
         timeout: float = None,
         retry: int = 1,
         delay: float = 0,
-        verbose: bool = False,
+        loglevel: int = 10,
+        logfile: str = None,
     ) -> None:
+        self.logger = Logger("QuoolRequest", level=loglevel, stream=True, file=logfile)
         self.headers = headers or self.basic_headers
         if not (self.headers.get('user-agent') or self.headers.get('User-Agent')):
             self.headers['User-Agent'] = random.choice(self.ua)
@@ -45,9 +47,9 @@ class Request(abc.ABC):
         self.timeout = timeout
         self.retry = retry
         self.delay = delay
-        self.verbose = verbose
+        self.verbose = loglevel
     
-    def __request(
+    def _request(
         self, 
         url: str, 
         method: str = None,
@@ -63,14 +65,10 @@ class Request(abc.ABC):
                     timeout=self.timeout, **kwargs
                 )
                 resp.raise_for_status()
-                if self.verbose:
-                    logger = Logger("QuoolRequest")
-                    logger.info(f'[+] {url} try {t}')
+                self.logger.debug(f'[+] {url} try {t}')
                 return resp
             except Exception as e:
-                if self.verbose:
-                    logger = Logger("QuoolRequest")
-                    logger.warning(f'[-] {e} {url} try {t}')
+                self.logger.warning(f'[-] {e} {url} try {t}')
                 time.sleep(self.delay)
 
     def request(
@@ -82,7 +80,7 @@ class Request(abc.ABC):
     ):
         self.urls = [url] if not isinstance(url, list) else url
         self.responses = Parallel(n_jobs=n_jobs, backend=backend)(
-            delayed(self.__request)(url, method, **kwargs) for url in self.urls
+            delayed(self._request)(url, method, **kwargs) for url in self.urls
         )
         return self
     
