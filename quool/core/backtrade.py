@@ -28,11 +28,11 @@ def strategy(
             share.loc[date] = share.iloc[max(0, i - 1)]
         
         if i > 0:
-            dshare = share.loc[date] - share.iloc[max(0, i - 1)]
+            dshare = share.loc[date] - share.iloc[i - 1]
         else:
             dshare = share.loc[date]
+        
         turnover.loc[date] = dshare * price.loc[date]
-
         cash.loc[date] = value.loc[date] - (share.loc[date] * price.loc[date]).sum()
 
     if side == 'long':
