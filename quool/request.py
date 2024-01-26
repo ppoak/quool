@@ -188,7 +188,7 @@ class SnowBall(Request):
     ) -> None:
         super().__init__(headers, proxies, timeout, retry, delay, loglevel, logfile)
         self.headers['Cookie'] = f'xq_a_token={token}'
-        self.logger = Logger('SnowBall', display_name=True, level=verbose)
+        self.logger = Logger('SnowBall', display_name=True, level=loglevel)
     
     def group_list(self):
         result = self.get(self.__group_list).json[0]
