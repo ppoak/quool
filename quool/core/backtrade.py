@@ -34,9 +34,7 @@ def strategy(
         turnover.loc[date] = dshare * price.loc[date]
 
         cash.loc[date] = value.loc[date] - (share.loc[date] * price.loc[date]).sum()
-        if (cash.loc[date] < 0).any():
-            raise ValueError(f'cash is negative on date {date}, check your weight')
-    
+
     if side == 'long':
         turnover = turnover.where(turnover > 0).sum(axis=1)
     elif side == 'short':

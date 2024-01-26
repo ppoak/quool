@@ -29,8 +29,10 @@ def weight_strategy(
     # make plot
     if image is not None:
         fig, ax = plt.subplots(figsize=(20, 10))
-        strat["value"].plot(ax=ax, title='startegy')
-        strat["turnover"].plot(ax=ax, secondary_y=True, style='--', alpha=0.5)
+        pd.concat([strat["value"], strat["turnover"], 
+            weight.sum(axis=1).reindex(price.index).ffill()],
+            axis=1, keys=["value", "turnover", "weight"]
+        ).plot(ax=ax, title='startegy', secondary_y=['turnover', 'weight'])
         if isinstance(image, str):
             fig.tight_layout()
             fig.savefig(image)
