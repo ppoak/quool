@@ -8,36 +8,49 @@ from .util import Logger
 def strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
-    delay: int = 1,
     side: str = 'both',
     commission: float = 0.005,
 ) -> dict[str, pd.Series]:
-    # compute turnover and commission
-    delta = weight - weight.shift(1).fillna(0)
-    if side == "both":
-        turnover = delta.abs().sum(axis=1) / 2
-    elif side == "long":
-        turnover = delta.where(delta > 0).abs().sum(axis=1)
-    elif side == "short":
-        turnover = delta.where(delta < 0).abs().sum(axis=1)
-    turnover = turnover.shift(delay).fillna(0)
-    commission *= turnover
+    rebalance_dates = weight.index
+    price = price / price.iloc[0]
+    weight = weight.reindex(price.index).ffill()
+    share = pd.DataFrame(np.zeros_like(price), dtype='float', index=price.index, columns=price.columns)
+    turnover = pd.DataFrame(np.zeros_like(price), dtype='float', index=price.index, columns=price.columns)
+    value = pd.Series(np.ones_like(price.index), index=price.index, dtype='float')
+    cash = pd.Series(np.zeros_like(price.index), index=price.index, dtype='float')
+    for i, date in enumerate(price.index):
+        if i > 0:
+            value.loc[date] = (share.iloc[i - 1] * price.loc[date]).sum() + cash.iloc[i - 1]
+        
+        if date in rebalance_dates:
+            share.loc[date] = value.iloc[max(0, i - 1)] * weight.loc[date] / price.loc[date]
+        else:
+            share.loc[date] = share.iloc[max(0, i - 1)]
+        
+        if i > 0:
+            dshare = share.loc[date] - share.iloc[max(0, i - 1)]
+        else:
+            dshare = share.loc[date]
+        turnover.loc[date] = dshare * price.loc[date]
 
-    # compute the daily return
-    returns = price.pct_change(fill_method=None).fillna(0)
-    returns = (weight.shift(delay + 1) * returns).sum(axis=1)
-    returns -= commission
-    returns.name = 'return'
-    turnover.name = 'turnover'
+        cash.loc[date] = value.loc[date] - (share.loc[date] * price.loc[date]).sum()
+    
+    if side == 'long':
+        turnover = turnover.where(turnover > 0).sum(axis=1)
+    elif side == 'short':
+        turnover = -turnover.where(turnover < 0).sum(axis=1)
+    else:
+        turnover = turnover.abs().sum(axis=1) / 2
+    value = value - turnover * commission
 
-    return {'returns': returns, 'turnover': turnover}
+    return {'value': value, 'turnover': turnover}
 
 def evaluate(
-    returns: pd.Series, 
+    value: pd.Series, 
     turnover: pd.Series = None,    
     benchmark: pd.Series = None,
 ) -> pd.Series:
-    value = (returns + 1).cumprod()
+    returns = value.pct_change().fillna(0)
     if benchmark is not None:
         benchmark = benchmark.squeeze()
         benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)

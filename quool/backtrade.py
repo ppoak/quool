@@ -13,7 +13,6 @@ from .core.backtrade import (
 def weight_strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
-    delay: int = 1,
     side: str = 'both',
     commission: float = 0.005,
     benchmark: pd.Series = None,
@@ -21,19 +20,17 @@ def weight_strategy(
     result: str = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     # weight check
-    if weight.isna().any().any():
-        raise ValueError("Weight contains NaN.")
     if (weight.sum(axis=1) > 1).any():
         raise ValueError("Weight sum exceeds 1.")
     # apply returns on weight
-    strat = strategy(weight, price, delay, side, commission)
+    strat = strategy(weight, price, side, commission)
     # evaluation
-    strat["evaluation"] = evaluate(strat["returns"], strat["turnover"], benchmark)
+    strat["evaluation"] = evaluate(strat["value"], strat["turnover"], benchmark)
     # make plot
     if image is not None:
         fig, ax = plt.subplots(figsize=(20, 10))
-        (strat["returns"] + 1).cumprod().plot(ax=ax, title='startegy')
-        weight.sum(axis=1).plot(ax=ax, secondary_y=True, style='--', alpha=0.5)
+        strat["value"].plot(ax=ax, title='startegy')
+        strat["turnover"].plot(ax=ax, secondary_y=True, style='--', alpha=0.5)
         if isinstance(image, str):
             fig.tight_layout()
             fig.savefig(image)
