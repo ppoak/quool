@@ -9,14 +9,15 @@ def strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
     side: str = 'both',
+    cash: float = 1000000.0,
     commission: float = 0.002,
 ) -> dict[str, pd.Series]:
     rebalance_dates = weight.index
     weight = weight.reindex(price.index).ffill()
-    share = pd.DataFrame(np.zeros_like(price), dtype='float', index=price.index, columns=price.columns)
-    turnover = pd.DataFrame(np.zeros_like(price), dtype='float', index=price.index, columns=price.columns)
-    value = pd.Series(np.ones_like(price.index), index=price.index, dtype='float')
-    cash = pd.Series(np.zeros_like(price.index), index=price.index, dtype='float')
+    share = pd.DataFrame(np.zeros(price.shape), dtype='float', index=price.index, columns=price.columns)
+    turnover = pd.DataFrame(np.zeros(price.shape), dtype='float', index=price.index, columns=price.columns)
+    value = pd.Series(np.ones(price.index.size) * cash, index=price.index, dtype='float')
+    cash = pd.Series(np.zeros(price.index.size), index=price.index, dtype='float')
     for i, date in enumerate(price.index):
         if i > 0:
             value.loc[date] = (share.iloc[i - 1] * price.loc[date]).sum() + cash.iloc[i - 1]
@@ -41,8 +42,9 @@ def strategy(
     else:
         turnover = turnover.abs().sum(axis=1) / 2
     value = value - turnover * commission
-
-    return {'value': value, 'turnover': turnover}
+    turnover_rate = turnover / value.shift(1)
+    turnover_rate.iloc[0] = turnover.iloc[0] / value.iloc[0]
+    return {'value': value, 'turnover': turnover_rate}
 
 def evaluate(
     value: pd.Series, 
@@ -56,8 +58,8 @@ def evaluate(
     
     # evaluation indicators
     evaluation = pd.Series(name='evaluation')
-    evaluation['total_return(%)'] = (value.iloc[-1] - 1) * 100
-    evaluation['annual_return(%)'] = (value.iloc[-1] ** (252 / value.shape[0]) - 1) * 100
+    evaluation['total_return(%)'] = (value.iloc[-1] / value.iloc[0] - 1) * 100
+    evaluation['annual_return(%)'] = (evaluation['total_return(%)'] ** (252 / value.shape[0]) - 1) * 100
     evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
     down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
     cumdrawdown = -(value / value.cummax() - 1)
@@ -75,8 +77,8 @@ def evaluate(
         exreturns = returns - benchmark_returns
         benchmark_volatility = (benchmark_returns.std() * np.sqrt(252)) * 100
         exvalue = (1 + exreturns).cumprod()
-        evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - 1) * 100
-        evaluation['annual_exreturn(%)'] = (exvalue.iloc[-1] ** (252 / exvalue.shape[0]) - 1) * 100
+        evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - exvalue.iloc[0]) * 100
+        evaluation['annual_exreturn(%)'] = (evaluation['total_exreturn(%)'] ** (252 / exvalue.shape[0]) - 1) * 100
         evaluation['annual_exvolatility(%)'] = (exreturns.std() * np.sqrt(252)) * 100
         evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
         evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100

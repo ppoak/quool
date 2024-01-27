@@ -14,7 +14,8 @@ def weight_strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
     side: str = 'both',
-    commission: float = 0.005,
+    cash: float = 1000000,
+    commission: float = 0.002,
     benchmark: pd.Series = None,
     image: str | bool = True,
     result: str = None,
@@ -23,14 +24,14 @@ def weight_strategy(
     if (weight.sum(axis=1) > 1).any():
         raise ValueError("Weight sum exceeds 1.")
     # apply returns on weight
-    strat = strategy(weight, price, side, commission)
+    strat = strategy(weight, price, side, cash, commission)
     # evaluation
     strat["evaluation"] = evaluate(strat["value"], strat["turnover"], benchmark)
     # make plot
     if image is not None:
         fig, ax = plt.subplots(figsize=(20, 10))
         pd.concat([strat["value"], strat["turnover"], 
-            weight.sum(axis=1).reindex(price.index).ffill()],
+            weight.reindex(price.index).ffill().sum(axis=1)],
             axis=1, keys=["value", "turnover", "weight"]
         ).plot(ax=ax, title='startegy', secondary_y=['turnover', 'weight'])
         if isinstance(image, str):
