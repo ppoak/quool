@@ -9,10 +9,9 @@ def strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
     side: str = 'both',
-    commission: float = 0.005,
+    commission: float = 0.002,
 ) -> dict[str, pd.Series]:
     rebalance_dates = weight.index
-    price = price / price.iloc[0]
     weight = weight.reindex(price.index).ffill()
     share = pd.DataFrame(np.zeros_like(price), dtype='float', index=price.index, columns=price.columns)
     turnover = pd.DataFrame(np.zeros_like(price), dtype='float', index=price.index, columns=price.columns)
