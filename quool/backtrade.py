@@ -21,7 +21,8 @@ def weight_strategy(
     result: str = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     # weight check
-    if (weight.sum(axis=1) > 1).any():
+    weight_sum = weight.sum(axis=1)
+    if ((weight_sum > 1) & ~np.isclose(weight.sum(axis=1), 1, 1e-5, 1e-5)).any():
         raise ValueError("Weight sum exceeds 1.")
     # apply returns on weight
     strat = strategy(weight, price, side, cash, commission)

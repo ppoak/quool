@@ -59,7 +59,7 @@ def evaluate(
     # evaluation indicators
     evaluation = pd.Series(name='evaluation')
     evaluation['total_return(%)'] = (value.iloc[-1] / value.iloc[0] - 1) * 100
-    evaluation['annual_return(%)'] = (evaluation['total_return(%)'] ** (252 / value.shape[0]) - 1) * 100
+    evaluation['annual_return(%)'] = ((evaluation['total_return(%)'] / 100 + 1) ** (252 / value.shape[0]) - 1) * 100
     evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
     down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
     cumdrawdown = -(value / value.cummax() - 1)
@@ -78,7 +78,7 @@ def evaluate(
         benchmark_volatility = (benchmark_returns.std() * np.sqrt(252)) * 100
         exvalue = (1 + exreturns).cumprod()
         evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - exvalue.iloc[0]) * 100
-        evaluation['annual_exreturn(%)'] = (evaluation['total_exreturn(%)'] ** (252 / exvalue.shape[0]) - 1) * 100
+        evaluation['annual_exreturn(%)'] = ((evaluation['total_exreturn(%)'] / 100 + 1) ** (252 / exvalue.shape[0]) - 1) * 100
         evaluation['annual_exvolatility(%)'] = (exreturns.std() * np.sqrt(252)) * 100
         evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
         evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100
