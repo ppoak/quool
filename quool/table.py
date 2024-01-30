@@ -18,11 +18,16 @@ class FrameTable(Table):
     def read(
         self,
         column: str | list = None,
-        index: str | list = None,
+        start: str | list = None,
+        stop: str = None
     ):
         filters = None
-        if index is not None:
-            filters = [(self.get_levelname(0), "in", parse_commastr(index))]
+        if isinstance(start, list):
+            filters = [(self.get_levelname(0), "in", index)]
+        elif isinstance(start, str):
+            filters = [(self.get_levelname(0), ">=", start)]
+            if isinstance(stop, str):
+                filters.append((self.get_levelname(0), "<=", stop))
         return super().read(parse_commastr(column), filters)
 
 
