@@ -80,6 +80,7 @@ class Table(abc.ABC):
             return
         
         name = self.namer(frag)
+        frag = frag.reindex(columns=self.columns).astype(self.dtypes)
         if name in self.fragments:
             frag_dat = self._read_fragment(name)
             common_idx = frag.index.intersection(frag_dat.index)
@@ -90,7 +91,7 @@ class Table(abc.ABC):
                 frag_dat = pd.concat([frag_dat, new_dat.reindex(columns=frag_dat.columns)], axis=0)
             frag_dat.to_parquet(self.__fragment_path(name))
         else:
-            frag.reindex(columns=self.columns).to_parquet(self.__fragment_path(name))
+            frag.to_parquet(self.__fragment_path(name))
     
     def __add_frag(self, frag: pd.DataFrame):
         # in case of empty dataframe
@@ -124,6 +125,7 @@ class Table(abc.ABC):
     ):
         df = pd.read_parquet(
             self.path, 
+            dtype_backend = 'numpy_nullable',
             engine = 'pyarrow', 
             columns = parse_commastr(columns),
             filters = filters,
