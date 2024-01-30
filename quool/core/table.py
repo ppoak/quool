@@ -89,7 +89,9 @@ class Table(abc.ABC):
             if not upd_dat.empty:
                 frag_dat.loc[common_idx, frag.columns] = upd_dat
             if not (new_dat.empty or new_dat.isna().all().all()):
-                frag_dat = pd.concat([frag_dat, new_dat.reindex(columns=frag_dat.columns)], axis=0)
+                frag_dat = pd.concat([frag_dat, 
+                    new_dat.reindex(columns=frag_dat.columns).astype(self.dtypes)
+                ], axis=0)
             frag_dat.to_parquet(self.__fragment_path(name))
         else:
             frag.reindex(columns=self.columns).astype(
