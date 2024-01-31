@@ -319,15 +319,15 @@ class SnowBall(Request):
 
         self.logger.debug("-" * 10 + "SELLINGS" + "-" * 10)
         for code in sells:
-            code = f'SH{code}' if code.startswith('6') else f'SZ{code}'
-            self.transaction_add(gid, code, -position.loc[code, "shares"], position.loc[code, "current"])
+            self.transaction_add(gid, 
+                f'SH{code}' if code.startswith('6') else f'SZ{code}', 
+                -position.loc[code, "shares"], position.loc[code, "current"])
             self.logger.info(f"{code} closed position {shares:.0f} shares")
             cash += position.loc[code, "current"] * position.loc[code, "shares"]
             time.sleep(self.delay)
         
         self.logger.debug("-" * 10 + "ADJUSTING" + "-" * 10)
         for code in adjust.index:
-            code = f'SH{code}' if code.startswith('6') else f'SZ{code}'
             if cash < adjust.loc[code]:
                 self.logger.warning(f"short in cash abort adjust {code}")
                 continue
@@ -335,23 +335,24 @@ class SnowBall(Request):
             if 0 < shares < 100:
                 self.logger.warning(f"not enough share: {shares} to adjust")
                 continue
-            self.transaction_add(gid, code, shares, position.loc[code, "current"])
+            self.transaction_add(gid, 
+                f'SH{code}' if code.startswith('6') else f'SZ{code}', 
+                shares, position.loc[code, "current"])
             self.logger.info(f"{code} adjusted position {shares:.0f} shares")
             cash -= shares * position.loc[code, "current"]
             time.sleep(self.delay)
         
         self.logger.debug("-" * 10 + "BUYINGS" + "-" * 10)
         for code in buys:
-            code = f'SH{code}' if code.startswith('6') else f'SZ{code}'
             if cash < target.loc[code]:
                 self.logger.warning(f"short in cash abort {code}")
                 continue
-            price = self.quote(code).loc[code, 'current']
+            price = self.quote(f'SH{code}' if code.startswith('6') else f'SZ{code}').loc[code, 'current']
             shares = (target.loc[code] / price // 100) * 100
             if shares < 100:
                 self.logger.warning(f"current cash {cash} is not enough for 100 share")
                 continue
-            self.transaction_add(gid, code, shares, price)
+            self.transaction_add(gid, f'SH{code}' if code.startswith('6') else f'SZ{code}', shares, price)
             self.logger.info(f"{code} buy {shares} at {price}")
             cash -= price * shares
             time.sleep(self.delay)
