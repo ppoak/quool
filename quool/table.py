@@ -23,7 +23,7 @@ class FrameTable(Table):
     ):
         filters = None
         if isinstance(start, list):
-            filters = [(self.get_levelname(0), "in", index)]
+            filters = [(self.get_levelname(0), "in", start)]
         elif isinstance(start, str):
             filters = [(self.get_levelname(0), ">=", start)]
             if isinstance(stop, str):
