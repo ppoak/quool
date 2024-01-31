@@ -30,4 +30,4 @@ from .table import (
 )
 
 
-__version__ = "4.4.3"
+__version__ = "4.4.4"

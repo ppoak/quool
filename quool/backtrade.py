@@ -13,8 +13,8 @@ from .core.backtrade import (
 def weight_strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
+    delay: int = 1,
     side: str = 'both',
-    cash: float = 1000000,
     commission: float = 0.002,
     benchmark: pd.Series = None,
     image: str | bool = True,
@@ -25,7 +25,7 @@ def weight_strategy(
     if ((weight_sum > 1) & ~np.isclose(weight.sum(axis=1), 1, 1e-5, 1e-5)).any():
         raise ValueError("Weight sum exceeds 1.")
     # apply returns on weight
-    strat = strategy(weight, price, side, cash, commission)
+    strat = strategy(weight, price, delay, side, commission)
     # evaluation
     strat["evaluation"] = evaluate(strat["value"], strat["turnover"], benchmark)
     # make plot

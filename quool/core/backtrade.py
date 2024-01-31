@@ -8,43 +8,30 @@ from .util import Logger
 def strategy(
     weight: pd.DataFrame, 
     price: pd.DataFrame, 
+    delay: int = 1,
     side: str = 'both',
-    cash: float = 1000000.0,
-    commission: float = 0.002,
+    commission: float = 0.005,
 ) -> dict[str, pd.Series]:
-    rebalance_dates = weight.index
-    weight = weight.reindex(price.index).ffill()
-    share = pd.DataFrame(np.zeros(price.shape), dtype='float', index=price.index, columns=price.columns)
-    turnover = pd.DataFrame(np.zeros(price.shape), dtype='float', index=price.index, columns=price.columns)
-    value = pd.Series(np.ones(price.index.size) * cash, index=price.index, dtype='float')
-    cash = pd.Series(np.zeros(price.index.size), index=price.index, dtype='float')
-    for i, date in enumerate(price.index):
-        if i > 0:
-            value.loc[date] = (share.iloc[i - 1] * price.loc[date]).sum() + cash.iloc[i - 1]
-        
-        if date in rebalance_dates:
-            share.loc[date] = value.iloc[max(0, i - 1)] * weight.loc[date] / price.loc[date]
-        else:
-            share.loc[date] = share.iloc[max(0, i - 1)]
-        
-        if i > 0:
-            dshare = share.loc[date] - share.iloc[i - 1]
-        else:
-            dshare = share.loc[date]
-        
-        turnover.loc[date] = dshare * price.loc[date]
-        cash.loc[date] = value.loc[date] - (share.loc[date] * price.loc[date]).sum()
+    # compute turnover and commission
+    delta = weight - weight.shift(1).fillna(0)
+    if side == "both":
+        turnover = delta.abs().sum(axis=1) / 2
+    elif side == "long":
+        turnover = delta.where(delta > 0).abs().sum(axis=1)
+    elif side == "short":
+        turnover = delta.where(delta < 0).abs().sum(axis=1)
+    commission *= turnover
 
-    if side == 'long':
-        turnover = turnover.where(turnover > 0).sum(axis=1)
-    elif side == 'short':
-        turnover = -turnover.where(turnover < 0).sum(axis=1)
-    else:
-        turnover = turnover.abs().sum(axis=1) / 2
-    value = value - turnover * commission
-    turnover_rate = turnover / value.shift(1)
-    turnover_rate.iloc[0] = turnover.iloc[0] / value.iloc[0]
-    return {'value': value, 'turnover': turnover_rate}
+    # compute the daily return
+    price = price.shift(-delay).loc[weight.index]
+    returns = price.shift(-1) / price - 1
+    returns = (weight * returns).sum(axis=1)
+    returns -= commission
+    value = (1 + returns).cumprod()
+    value.name = 'value'
+    turnover.name = 'turnover'
+
+    return {'value': value, 'turnover': turnover}
 
 def evaluate(
     value: pd.Series, 
