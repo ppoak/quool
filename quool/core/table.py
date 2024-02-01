@@ -129,7 +129,6 @@ class Table(abc.ABC):
     ):
         df = pd.read_parquet(
             self.path, 
-            dtype_backend = 'numpy_nullable',
             engine = 'pyarrow', 
             columns = parse_commastr(columns),
             filters = filters,
