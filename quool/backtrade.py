@@ -363,9 +363,7 @@ class Cerebro:
             # basic parameters
             _abstract = strat.params._getkwargs()
             # add return to abstract
-            _abstract.update(evaluate(
-                cashvalue[i]["value"].pct_change().fillna(0), 
-                benchmark=benchmark).to_dict())
+            _abstract.update(evaluate(cashvalue[i]["value"], benchmark=benchmark).to_dict())
             tor = strat.analyzers.tradeorderrecorder.get_analysis()
             trd = tor[(tor["type"] == 'Trade') & (tor["status"] == "Closed")]
             if not trd.empty:
@@ -389,7 +387,8 @@ class Cerebro:
             # append result
             abstract.append(_abstract)
         abstract = pd.DataFrame(abstract)
-        abstract = abstract.set_index(keys=list(kwargs.keys()))
+        if kwargs:
+            abstract = abstract.set_index(keys=list(kwargs.keys()))
         
         if verbose:
             self.logger.info(abstract)

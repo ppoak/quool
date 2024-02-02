@@ -170,10 +170,10 @@ class Broker(bt.BackBroker):
         trailamount=None, trailpercent=None, parent=None, 
         transmit=True, histnotify=False, _checksubmit=True, **kwargs
     ):
-        minsize = self.params._getkwargs().get("minsize", 1)
+        minshare = self.params._getkwargs().get("minshare", 1)
         size = self.resize(size)
-        if size is not None and size < minsize:
-            self.logger.warning(f'[{data.datetime.date(0)}] {data._name} buy {size} < {minsize} failed')
+        if size is not None and size < minshare:
+            self.logger.warning(f'[{data.datetime.date(0)}] {data._name} buy {size} < {minshare} failed')
             size = 0
         return super().buy(owner, data, size, price, plimit,
             exectype, valid, tradeid, oco, trailamount, trailpercent, 
