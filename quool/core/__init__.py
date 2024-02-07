@@ -21,4 +21,4 @@ from .util import (
     reduce_mem_usage
 )
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"

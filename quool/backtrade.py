@@ -190,8 +190,14 @@ class Cerebro:
         code_level: int | str = 0,
         date_level : int | str = 1,
     ):
-        self._code_level = code_level
-        self._date_level = date_level
+        if data.index.nlevels == 1:
+            self._date_level = date_level if isinstance(date_level, str) else data.index.names[date_level]
+            self._date_level = self._date_level or "date"
+        else:
+            self._code_level = code_level if isinstance(code_level, str) else data.index.names[code_level]
+            self._code_level = self._code_level or "code"
+            self._date_level = date_level if isinstance(date_level, str) else data.index.names[date_level]
+            self._date_level = self._date_level or "date"
         self._data = data
         self._check()
         self.logger = Logger("Cerebro", display_time=False)
@@ -397,7 +403,7 @@ class Cerebro:
             if len(datanames) > 3:
                 self.logger.warning(f"There are {len(datanames)} stocks, the image "
                       "may be nested and takes a long time to draw")
-            figs = self.cerebro.plot(style='candel')
+            figs = cerebro.plot(style='candel')
             fig = figs[0][0]
             fig.set_size_inches(18, 3 + 6 * len(datanames))
             if not isinstance(oldimg, bool):

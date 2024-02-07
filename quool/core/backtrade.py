@@ -57,9 +57,12 @@ def evaluate(
     evaluation['max_drawdown_start'] = startdate
     evaluation['max_drawdown_stop'] = maxdate
     evaluation['daily_turnover(%)'] = turnover.mean() * 100 if turnover is not None else np.nan
-    evaluation['sharpe_ratio'] = evaluation['annual_return(%)'] / evaluation['annual_volatility(%)']
-    evaluation['sortino_ratio'] = evaluation['annual_return(%)'] / down_volatility
-    evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)']
+    evaluation['sharpe_ratio'] = evaluation['annual_return(%)'] / evaluation['annual_volatility(%)'] \
+        if evaluation['annual_volatility(%)'] != 0 else np.nan
+    evaluation['sortino_ratio'] = evaluation['annual_return(%)'] / down_volatility \
+        if down_volatility != 0 else np.nan
+    evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)'] \
+        if evaluation['max_drawdown(%)'] != 0 else np.nan
     if benchmark is not None:
         exreturns = returns - benchmark_returns
         benchmark_volatility = (benchmark_returns.std() * np.sqrt(252)) * 100
@@ -70,7 +73,8 @@ def evaluate(
         evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
         evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100
         evaluation['treynor_ratio(%)'] = (evaluation['annual_exreturn(%)'] / evaluation['beta'])
-        evaluation['information_ratio'] = evaluation['annual_exreturn(%)'] / benchmark_volatility
+        evaluation['information_ratio'] = evaluation['annual_exreturn(%)'] / benchmark_volatility \
+            if benchmark_volatility != 0 else np.nan
     
     return evaluation
 
