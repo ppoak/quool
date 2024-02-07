@@ -259,6 +259,7 @@ class SnowBall(Request):
         date: str = None,
         tax_rate: float = 0.25,
         commission_rate: float = 0,
+        comment: str = None,
     ):
         date = date or datetime.datetime.now().strftime(r'%Y-%m-%d')
         typ = '1' if shares > 0 else '2'
@@ -269,10 +270,12 @@ class SnowBall(Request):
             'gid': str(gid),
             'symbol': symbol,
             'price': f'{price:.2f}',
-            'shares': f'{shares:.0f}',
+            'shares': f'{abs(shares):.0f}',
             'tax_rate': f'{tax_rate:.2f}',
             'commission_rate': f'{commission_rate:.2f}',
         }
+        if comment:
+            data.update({"comment": comment})
         return self.post(self.__transaction_add, data=data).json[0]
 
     def transaction_delete(self, gid: str, tid: str):
