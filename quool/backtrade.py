@@ -105,6 +105,7 @@ class TradeOrderRecorder(Analyzer):
                 'trail_amount': order.trailamount,
                 'trail_percent': order.trailpercent,
                 'execute_type': order.getordername(),
+                **order.info
             })
         
         if not order.alive():
@@ -124,6 +125,7 @@ class TradeOrderRecorder(Analyzer):
                 'trail_amount': order.trailamount,
                 'trail_percent': order.trailpercent,
                 'execute_type': order.getordername(),
+                **order.info
             })
     
     def notify_trade(self, trade):
