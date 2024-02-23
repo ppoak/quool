@@ -300,7 +300,9 @@ class Cerebro:
         # add indicators
         indicators = indicators if isinstance(indicators, list) else [indicators]
         for indicator in indicators:
-            if indicator is not None:
+            if isinstance(indicator, tuple):
+                cerebro.addindicator(indicator[0], **indicator[1])
+            elif isinstance(indicator, bt.Indicator):
                 cerebro.addindicator(indicator)
         
         # add analyzers
@@ -308,13 +310,17 @@ class Cerebro:
         cerebro.addanalyzer(TradeOrderRecorder, date_level=self._date_level, code_level=self._code_level)
         cerebro.addanalyzer(CashValueRecorder, date_level=self._date_level)
         for analyzer in analyzers:
-            if analyzer is not None:
+            if isinstance(analyzer, tuple):
+                cerebro.addanalyzer(analyzer[0], **analyzer[1])
+            elif isinstance(analyzer, bt.Analyzer):
                 cerebro.addanalyzer(analyzer)
 
         # add observers
         observers = observers if isinstance(observers, list) else [observers]
         for observer in observers:
-            if observer is not None:
+            if isinstance(observer, tuple):
+                cerebro.addobserver(observer[0], **observer[1])
+            elif isinstance(observer, bt.Observer):
                 cerebro.addobserver(observer)
 
         # add strategies

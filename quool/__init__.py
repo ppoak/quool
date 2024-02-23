@@ -46,4 +46,4 @@ STOPTRAILLIMIT_ORDER = 6
 HISTORICAL_ORDER = 7
 
 
-__version__ = "4.4.5"
+__version__ = "4.4.6"
