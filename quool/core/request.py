@@ -3,9 +3,30 @@ import time
 import random
 import requests
 from lxml import etree
+from copy import deepcopy
 from bs4 import BeautifulSoup
 from joblib import Parallel, delayed
 from .util import Logger
+
+
+def proxy_request(
+    url: str, 
+    *,
+    method: str = 'get', 
+    proxies: list = None, 
+    delay: float = 0, 
+    **kwargs
+):
+    if not isinstance(proxies, list):
+        proxies = [proxies]
+    proxies = deepcopy(proxies)
+    while len(proxies):
+        proxy = proxies.pop(random.randint(0, len(proxies) - 1))
+        try:
+            return requests.request(method, url, proxies=proxy, **kwargs)
+        except:
+            time.sleep(delay)
+    raise ConnectionError("all proxies are failed")
 
 
 class Request(abc.ABC):

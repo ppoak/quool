@@ -6,6 +6,7 @@ from .core import (
     Analyzer,
     Observer,
     Request,
+    proxy_request,
     Table,
     Logger,
     parse_commastr,
@@ -23,6 +24,7 @@ from .backtrade import (
 from .request import (
     WeChat,
     SnowBall,
+    get_spot_data,
 )
 from .table import (
     FrameTable,
@@ -46,4 +48,4 @@ STOPTRAILLIMIT_ORDER = 6
 HISTORICAL_ORDER = 7
 
 
-__version__ = "4.4.6"
+__version__ = "4.4.7"
