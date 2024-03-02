@@ -2,6 +2,7 @@ import datetime
 import pandas as pd
 from pathlib import Path
 from .core.table import Table
+from .core.backtrade import evaluate
 from .core.util import parse_commastr
 
 
@@ -82,8 +83,9 @@ class TradeTable(Table):
         self, 
         date: str | pd.Timestamp,
         code: str,
-        size: int,
-        price: float,   
+        size: int = None,
+        price: float = None,
+        amount: float = None,
         commission: float = 0,
         **kwargs,
     ):
@@ -106,22 +108,28 @@ class TradeTable(Table):
     def report(
         self, 
         price: pd.DataFrame, 
-        date_level: str | int = 'date'
+        benchmark: pd.Series = None
     ) -> pd.DataFrame:
-        is_multi_index = price.index.nlevels > 1
-        dates = price.index.get_level_values(date_level).unique()
         values = []
-        from tqdm import tqdm
-        for date in tqdm(dates):
-            pr = price.xs(date, level=date_level if is_multi_index else None)
+        cashes = []
+        for date in price.index:
+            pr = price.loc[date]
             ps = self.peek(date)
             val = pr.loc[pr.index.intersection(ps.index)].mul(ps["size"], axis=0)
             val.loc["cash"] = ps.loc["cash", "size"]
-            val = val.sum()
-            val.name = date
-            values.append(val)
-        value = pd.concat(values, axis=1).T
-        return value
+            values.append(val.sum())
+            cashes.append(val.loc["cash"])
+        
+        value = pd.Series(values, index=price.index)
+        cash = pd.Series(cashes, index=price.index)
+        drawdown = value / value.cummax() - 1
+        turnover_rate = (value.diff() / value.shift(1)).abs()
+        info = pd.concat(
+            [value, cash, drawdown, turnover_rate], axis=1, 
+            keys=["value", "cash", "drawdown", "turnover_rate"]
+        )
+        evaluation = evaluate(value, turnover_rate, benchmark=benchmark)
+        return info, evaluation
             
 
 class PanelTable(Table):
