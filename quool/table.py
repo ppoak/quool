@@ -31,6 +31,99 @@ class FrameTable(Table):
         return super().read(parse_commastr(column), filters)
 
 
+class TradeTable(Table):
+
+    def __init__(
+        self, 
+        uri: str | Path, 
+        principle: float = None, 
+        start_date: str | pd.Timestamp = None,
+    ):
+        if not Path(uri).exists():
+            if principle is None or start_date is None:
+                raise ValueError("principle and start_date must be specified when initiating")
+            pd.DataFrame([{
+                "datetime": pd.to_datetime(start_date), 
+                "code": "cash", "size": principle, 
+                "price": 1, "amount": principle, "commission": 0
+            }]).to_parquet(uri)
+        super().__init__(uri, False)
+        if not self.columns.isin(["datetime", "code", "size", "price", "amount", "commission"]).all():
+            raise ValueError("The table must have columns datetime, code, size, price, amount, commission")
+            
+    @property
+    def fragments(self):
+        return [self.path]
+    
+    @property
+    def minfrag(self):
+        return self.path
+    
+    @property
+    def spliter(self):
+        return super().spliter
+
+    @property
+    def namer(self):
+        return super().namer
+    
+    def __str__(self):
+        return str(self.read())
+    
+    def __repr__(self) -> str:
+        return self.__str__()
+    
+    def read(self, date: str | pd.Timestamp = None):
+        if date is not None:
+            date = [("datetime", "<=", pd.to_datetime(date))]
+        return super().read(None, date)
+    
+    def update(
+        self, 
+        date: str | pd.Timestamp,
+        code: str,
+        size: int,
+        price: float,   
+        commission: float = 0,
+        **kwargs,
+    ):
+        pd.concat([self.read(), pd.DataFrame([{
+            "datetime": pd.to_datetime(date),
+            "code": code, "size": size,
+            "price": price, "amount": price * size,
+            "commission": commission, **kwargs
+        }])] + ([] if code == "cash" else [pd.DataFrame([{
+            "datetime": pd.to_datetime(date),
+            "code": "cash", "size": -size * price - commission,
+            "price": 1, "commission": 0,
+            "amount": -size * price - commission, **kwargs
+        }])]), axis=0, ignore_index=True).sort_index().to_parquet(self.path)
+
+    def peek(self, date: str | pd.Timestamp = None) -> pd.Series:
+        df = self.read(date)
+        return df.groupby("code")[["size", "amount", "commission"]].sum()
+        
+    def report(
+        self, 
+        price: pd.DataFrame, 
+        date_level: str | int = 'date'
+    ) -> pd.DataFrame:
+        is_multi_index = price.index.nlevels > 1
+        dates = price.index.get_level_values(date_level).unique()
+        values = []
+        from tqdm import tqdm
+        for date in tqdm(dates):
+            pr = price.xs(date, level=date_level if is_multi_index else None)
+            ps = self.peek(date)
+            val = pr.loc[pr.index.intersection(ps.index)].mul(ps["size"], axis=0)
+            val.loc["cash"] = ps.loc["cash", "size"]
+            val = val.sum()
+            val.name = date
+            values.append(val)
+        value = pd.concat(values, axis=1).T
+        return value
+            
+
 class PanelTable(Table):
     
     def __init__(

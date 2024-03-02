@@ -28,6 +28,7 @@ from .request import (
 )
 from .table import (
     FrameTable,
+    TradeTable,
     PanelTable,
 )
 
@@ -48,4 +49,4 @@ STOPTRAILLIMIT_ORDER = 6
 HISTORICAL_ORDER = 7
 
 
-__version__ = "4.4.7"
+__version__ = "4.4.8"
