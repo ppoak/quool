@@ -15,25 +15,26 @@ def weight_strategy(
     price: pd.DataFrame, 
     delay: int = 1,
     side: str = 'both',
-    commission: float = 0.005,
+    commission: float = 0.002,
     benchmark: pd.Series = None,
     image: str | bool = True,
     result: str = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     # weight check
-    if weight.isna().any().any():
-        raise ValueError("Weight contains NaN.")
-    if (weight.sum(axis=1) > 1).any():
+    weight_sum = weight.sum(axis=1)
+    if ((weight_sum > 1) & ~np.isclose(weight.sum(axis=1), 1, 1e-5, 1e-5)).any():
         raise ValueError("Weight sum exceeds 1.")
     # apply returns on weight
     strat = strategy(weight, price, delay, side, commission)
     # evaluation
-    strat["evaluation"] = evaluate(strat["returns"], strat["turnover"], benchmark)
+    strat["evaluation"] = evaluate(strat["value"], strat["turnover"], benchmark)
     # make plot
     if image is not None:
         fig, ax = plt.subplots(figsize=(20, 10))
-        (strat["returns"] + 1).cumprod().plot(ax=ax, title='startegy')
-        weight.sum(axis=1).plot(ax=ax, secondary_y=True, style='--', alpha=0.5)
+        pd.concat([strat["value"], strat["turnover"], 
+            weight.reindex(price.index).ffill().sum(axis=1)],
+            axis=1, keys=["value", "turnover", "weight"]
+        ).plot(ax=ax, title='startegy', secondary_y=['turnover', 'weight'])
         if isinstance(image, str):
             fig.tight_layout()
             fig.savefig(image)
@@ -104,6 +105,7 @@ class TradeOrderRecorder(Analyzer):
                 'trail_amount': order.trailamount,
                 'trail_percent': order.trailpercent,
                 'execute_type': order.getordername(),
+                **order.info
             })
         
         if not order.alive():
@@ -123,6 +125,7 @@ class TradeOrderRecorder(Analyzer):
                 'trail_amount': order.trailamount,
                 'trail_percent': order.trailpercent,
                 'execute_type': order.getordername(),
+                **order.info
             })
     
     def notify_trade(self, trade):
@@ -189,8 +192,14 @@ class Cerebro:
         code_level: int | str = 0,
         date_level : int | str = 1,
     ):
-        self._code_level = code_level
-        self._date_level = date_level
+        if data.index.nlevels == 1:
+            self._date_level = date_level if isinstance(date_level, str) else data.index.names[date_level]
+            self._date_level = self._date_level or "date"
+        else:
+            self._code_level = code_level if isinstance(code_level, str) else data.index.names[code_level]
+            self._code_level = self._code_level or "code"
+            self._date_level = date_level if isinstance(date_level, str) else data.index.names[date_level]
+            self._date_level = self._date_level or "date"
         self._data = data
         self._check()
         self.logger = Logger("Cerebro", display_time=False)
@@ -291,7 +300,9 @@ class Cerebro:
         # add indicators
         indicators = indicators if isinstance(indicators, list) else [indicators]
         for indicator in indicators:
-            if indicator is not None:
+            if isinstance(indicator, tuple):
+                cerebro.addindicator(indicator[0], **indicator[1])
+            elif isinstance(indicator, bt.Indicator):
                 cerebro.addindicator(indicator)
         
         # add analyzers
@@ -299,13 +310,17 @@ class Cerebro:
         cerebro.addanalyzer(TradeOrderRecorder, date_level=self._date_level, code_level=self._code_level)
         cerebro.addanalyzer(CashValueRecorder, date_level=self._date_level)
         for analyzer in analyzers:
-            if analyzer is not None:
+            if isinstance(analyzer, tuple):
+                cerebro.addanalyzer(analyzer[0], **analyzer[1])
+            elif isinstance(analyzer, bt.Analyzer):
                 cerebro.addanalyzer(analyzer)
 
         # add observers
         observers = observers if isinstance(observers, list) else [observers]
         for observer in observers:
-            if observer is not None:
+            if isinstance(observer, tuple):
+                cerebro.addobserver(observer[0], **observer[1])
+            elif isinstance(observer, bt.Observer):
                 cerebro.addobserver(observer)
 
         # add strategies
@@ -362,9 +377,7 @@ class Cerebro:
             # basic parameters
             _abstract = strat.params._getkwargs()
             # add return to abstract
-            _abstract.update(evaluate(
-                cashvalue[i]["value"].pct_change().fillna(0), 
-                benchmark=benchmark).to_dict())
+            _abstract.update(evaluate(cashvalue[i]["value"], benchmark=benchmark).to_dict())
             tor = strat.analyzers.tradeorderrecorder.get_analysis()
             trd = tor[(tor["type"] == 'Trade') & (tor["status"] == "Closed")]
             if not trd.empty:
@@ -388,7 +401,8 @@ class Cerebro:
             # append result
             abstract.append(_abstract)
         abstract = pd.DataFrame(abstract)
-        abstract = abstract.set_index(keys=list(kwargs.keys()))
+        if kwargs:
+            abstract = abstract.set_index(keys=list(kwargs.keys()))
         
         if verbose:
             self.logger.info(abstract)
@@ -397,7 +411,7 @@ class Cerebro:
             if len(datanames) > 3:
                 self.logger.warning(f"There are {len(datanames)} stocks, the image "
                       "may be nested and takes a long time to draw")
-            figs = self.cerebro.plot(style='candel')
+            figs = cerebro.plot(style='candel')
             fig = figs[0][0]
             fig.set_size_inches(18, 3 + 6 * len(datanames))
             if not isinstance(oldimg, bool):

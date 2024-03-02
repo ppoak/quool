@@ -20,32 +20,33 @@ def strategy(
         turnover = delta.where(delta > 0).abs().sum(axis=1)
     elif side == "short":
         turnover = delta.where(delta < 0).abs().sum(axis=1)
-    turnover = turnover.shift(delay).fillna(0)
     commission *= turnover
 
     # compute the daily return
-    returns = price.pct_change(fill_method=None).fillna(0)
-    returns = (weight.shift(delay + 1) * returns).sum(axis=1)
+    price = price.shift(-delay).loc[weight.index]
+    returns = price.shift(-1) / price - 1
+    returns = (weight * returns).sum(axis=1)
     returns -= commission
-    returns.name = 'return'
+    value = (1 + returns).cumprod()
+    value.name = 'value'
     turnover.name = 'turnover'
 
-    return {'returns': returns, 'turnover': turnover}
+    return {'value': value, 'turnover': turnover}
 
 def evaluate(
-    returns: pd.Series, 
+    value: pd.Series, 
     turnover: pd.Series = None,    
     benchmark: pd.Series = None,
 ) -> pd.Series:
-    value = (returns + 1).cumprod()
+    returns = value.pct_change().fillna(0)
     if benchmark is not None:
         benchmark = benchmark.squeeze()
         benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)
     
     # evaluation indicators
     evaluation = pd.Series(name='evaluation')
-    evaluation['total_return(%)'] = (value.iloc[-1] - 1) * 100
-    evaluation['annual_return(%)'] = (value.iloc[-1] ** (252 / value.shape[0]) - 1) * 100
+    evaluation['total_return(%)'] = (value.iloc[-1] / value.iloc[0] - 1) * 100
+    evaluation['annual_return(%)'] = ((evaluation['total_return(%)'] / 100 + 1) ** (252 / value.shape[0]) - 1) * 100
     evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
     down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
     cumdrawdown = -(value / value.cummax() - 1)
@@ -56,20 +57,24 @@ def evaluate(
     evaluation['max_drawdown_start'] = startdate
     evaluation['max_drawdown_stop'] = maxdate
     evaluation['daily_turnover(%)'] = turnover.mean() * 100 if turnover is not None else np.nan
-    evaluation['sharpe_ratio'] = evaluation['annual_return(%)'] / evaluation['annual_volatility(%)']
-    evaluation['sortino_ratio'] = evaluation['annual_return(%)'] / down_volatility
-    evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)']
+    evaluation['sharpe_ratio'] = evaluation['annual_return(%)'] / evaluation['annual_volatility(%)'] \
+        if evaluation['annual_volatility(%)'] != 0 else np.nan
+    evaluation['sortino_ratio'] = evaluation['annual_return(%)'] / down_volatility \
+        if down_volatility != 0 else np.nan
+    evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)'] \
+        if evaluation['max_drawdown(%)'] != 0 else np.nan
     if benchmark is not None:
         exreturns = returns - benchmark_returns
         benchmark_volatility = (benchmark_returns.std() * np.sqrt(252)) * 100
         exvalue = (1 + exreturns).cumprod()
-        evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - 1) * 100
-        evaluation['annual_exreturn(%)'] = (exvalue.iloc[-1] ** (252 / exvalue.shape[0]) - 1) * 100
+        evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - exvalue.iloc[0]) * 100
+        evaluation['annual_exreturn(%)'] = ((evaluation['total_exreturn(%)'] / 100 + 1) ** (252 / exvalue.shape[0]) - 1) * 100
         evaluation['annual_exvolatility(%)'] = (exreturns.std() * np.sqrt(252)) * 100
         evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
         evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100
-        evaluation['treynor_ratio'] = (evaluation['annual_exreturn(%)'] / evaluation['beta'])
-        evaluation['information_ratio'] = evaluation['annual_exreturn(%)'] / benchmark_volatility
+        evaluation['treynor_ratio(%)'] = (evaluation['annual_exreturn(%)'] / evaluation['beta'])
+        evaluation['information_ratio'] = evaluation['annual_exreturn(%)'] / benchmark_volatility \
+            if benchmark_volatility != 0 else np.nan
     
     return evaluation
 
@@ -169,10 +174,10 @@ class Broker(bt.BackBroker):
         trailamount=None, trailpercent=None, parent=None, 
         transmit=True, histnotify=False, _checksubmit=True, **kwargs
     ):
-        minsize = self.params._getkwargs().get("minsize", 1)
+        minshare = self.params._getkwargs().get("minshare", 1)
         size = self.resize(size)
-        if size is not None and size < minsize:
-            self.logger.warning(f'[{data.datetime.date(0)}] {data._name} buy {size} < {minsize} failed')
+        if size is not None and size < minshare:
+            self.logger.warning(f'[{data.datetime.date(0)}] {data._name} buy {size} < {minshare} failed')
             size = 0
         return super().buy(owner, data, size, price, plimit,
             exectype, valid, tradeid, oco, trailamount, trailpercent, 

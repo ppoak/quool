@@ -84,13 +84,18 @@ class Table(abc.ABC):
             frag_dat = self._read_fragment(name)
             common_idx = frag.index.intersection(frag_dat.index)
             new_idx = frag.index.difference(frag_dat.index)
-            frag_dat.loc[common_idx, frag.columns] = frag.loc[common_idx, frag.columns]
-            new_dat = frag.loc[new_idx]
-            if not new_dat.empty or new_dat.isna().all().all():
-                frag_dat = pd.concat([frag_dat, new_dat.reindex(columns=frag_dat.columns)], axis=0)
+            upd_dat = frag.loc[common_idx].astype(self.dtypes.loc[frag.columns])
+            new_dat = frag.loc[new_idx].astype(self.dtypes.loc[frag.columns])
+            if not upd_dat.empty:
+                frag_dat.loc[common_idx, frag.columns] = upd_dat
+            if not (new_dat.empty or new_dat.isna().all().all()):
+                frag_dat = pd.concat([frag_dat, 
+                    new_dat.reindex(columns=frag_dat.columns).astype(self.dtypes)
+                ], axis=0)
             frag_dat.to_parquet(self.__fragment_path(name))
         else:
-            frag.reindex(columns=self.columns).to_parquet(self.__fragment_path(name))
+            frag.reindex(columns=self.columns).astype(
+                self.dtypes).to_parquet(self.__fragment_path(name))
     
     def __add_frag(self, frag: pd.DataFrame):
         # in case of empty dataframe

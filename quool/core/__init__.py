@@ -8,7 +8,8 @@ from .backtrade import (
 )
 
 from .request import (
-    Request
+    Request,
+    proxy_request
 )
 
 from .table import (
@@ -21,4 +22,4 @@ from .util import (
     reduce_mem_usage
 )
 
-__version__ = "0.2.0"
+__version__ = "0.2.7"
