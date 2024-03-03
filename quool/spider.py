@@ -24,11 +24,11 @@ class ProxyManager(ItemTable):
     
     @property
     def spliter(self):
-        return lambda x: x // self._size
+        return pd.Grouper(level=0, freq='D')
 
     @property
     def namer(self):
-        return lambda x: f'{x.index[0]}-{x.index[0] + self._size - 1}'
+        return lambda x: x.index[0].strftime(f"%Y-%m-%d")
 
     @property
     def invalid(self):
