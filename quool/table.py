@@ -14,12 +14,16 @@ class ItemTable(Table):
         stop: str = None
     ):
         filters = None
+        index_name = self.get_levelname(0)
+        index_name = '__index_level_0__' if isinstance(index_name, int) else index_name
+
         if isinstance(start, list):
-            filters = [(self.get_levelname(0), "in", start)]
+            filters = [(index_name, "in", start)]
         elif isinstance(start, str):
-            filters = [(self.get_levelname(0), ">=", start)]
-            if isinstance(stop, str):
-                filters.append((self.get_levelname(0), "<=", stop))
+            filters = [(index_name, ">=", start)]
+        if isinstance(stop, str) and not isinstance(start, list):
+            filters.append((index_name, "<=", stop))
+        
         return super().read(parse_commastr(column), filters)
 
 
