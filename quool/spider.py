@@ -1,13 +1,39 @@
 import time
 import base64
+import random
 import hashlib
 import requests
 import datetime
 import pandas as pd
+from .core import Table
 from pathlib import Path
-from .core.request import Request, proxy_request
-from .core.util import Logger
+from .util import Logger
+from copy import deepcopy
 
+
+class ProxyManager(Table):
+
+    def __init__(self, uri: str | Path, create: bool = False):
+        super().__init__(uri, create)
+
+def proxy_request(
+    url: str, 
+    *,
+    method: str = 'get', 
+    proxies: list = None, 
+    delay: float = 0, 
+    **kwargs
+):
+    if not isinstance(proxies, list):
+        proxies = [proxies]
+    proxies = deepcopy(proxies)
+    while len(proxies):
+        proxy = proxies.pop(random.randint(0, len(proxies) - 1))
+        try:
+            return requests.request(method, url, proxies=proxy, **kwargs)
+        except:
+            time.sleep(delay)
+    raise ConnectionError("all proxies are failed")
 
 def get_spot_data(proxies: list = None) -> pd.DataFrame:
     url = "http://82.push2.eastmoney.com/api/qt/clist/get"
