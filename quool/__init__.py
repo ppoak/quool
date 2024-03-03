@@ -1,22 +1,16 @@
 from .core import Table
 
-from .backtrade import (
-    weight_strategy,
-    RebalanceStrategy,
-    TradeOrderRecorder,
-    CashValueRecorder,
-    Cerebro,
-)
-
-from .request import (
-    WeChat,
-    SnowBall,
-    get_spot_data,
-)
 from .table import (
     ItemTable,
     DatetimeTable,
     PanelTable,
+)
+
+from .spider import (
+    ProxyManager,
+    get_spot_data,
+    wechat_login,
+    ewechat_notify,
 )
 
 
