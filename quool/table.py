@@ -5,16 +5,8 @@ from .core import Table
 from .util import parse_commastr
 
 
-class FrameTable(Table):
+class ItemTable(Table):
 
-    @property
-    def spliter(self):
-        return super().spliter
-    
-    @property
-    def namer(self):
-        return super().namer
-    
     def read(
         self,
         column: str | list = None,
@@ -29,6 +21,55 @@ class FrameTable(Table):
             if isinstance(stop, str):
                 filters.append((self.get_levelname(0), "<=", stop))
         return super().read(parse_commastr(column), filters)
+
+
+class DatetimeTable(Table):
+
+    def __init__(
+        self, 
+        uri: str | Path,
+        freq: str = 'M',
+        format: str = '%Y%m',
+        create: bool = False,
+    ):
+        self._freq = freq
+        self._format = format
+        super().__init__(uri, create)
+    
+    @property
+    def spliter(self):
+        return pd.Grouper(level=0, freq=self._freq, sort=True)
+    
+    @property
+    def namer(self):
+        return lambda x: x.index[0].strftime(self._format)
+    
+    def get_levelname(self) -> int | str:
+        return super().get_levelname(0)
+    
+    def read(
+        self, 
+        field: str | list = None,
+        start: str | list = None,
+        stop: str = None,
+        filters: list[list[tuple]] = None,
+    ) -> pd.Series | pd.DataFrame:
+        index_name = self.get_levelname()
+        field = parse_commastr(field)
+        filters = filters or []
+        start = pd.to_datetime(start or "20000104")
+        stop = pd.to_datetime(stop or datetime.datetime.today().strftime(r'%Y%m%d %H%M%S'))
+
+        if not isinstance(start, pd.DatetimeIndex):
+            filters += [
+                (index_name, ">=", start),
+                (index_name, "<=", stop), 
+            ]
+            return super().read(field, filters)
+        
+        else:
+            filters += [(index_name, "in", start)]
+            return super().read(field, filters)
 
 
 class PanelTable(Table):

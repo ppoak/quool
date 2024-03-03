@@ -24,11 +24,11 @@ class Table(abc.ABC):
         if self.fragments:
             return sorted(list(self.path.glob('**/*.parquet')), key=lambda f: f.stat().st_size)[0]
     
-    @abc.abstractproperty
+    @property
     def spliter(self):
         return lambda _: 1
     
-    @abc.abstractproperty
+    @property
     def namer(self):
         return lambda _: self.name
     
