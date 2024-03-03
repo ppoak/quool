@@ -3,7 +3,6 @@ import base64
 import random
 import hashlib
 import requests
-import datetime
 import pandas as pd
 from pathlib import Path
 from retrying import retry
