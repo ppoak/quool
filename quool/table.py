@@ -25,6 +25,9 @@ class ItemTable(Table):
         if isinstance(stop, str) and not isinstance(start, list):
             filters.append((index_name, "<=", stop))
         
+        if not len(filters):
+            filters = None
+        
         return super().read(parse_commastr(column), filters)
 
 
