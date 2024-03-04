@@ -1,136 +1,84 @@
 import datetime
 import pandas as pd
 from pathlib import Path
-from .core.table import Table
-from .core.backtrade import evaluate
-from .core.util import parse_commastr
+from .core import Table
+from .util import parse_commastr
 
 
-class FrameTable(Table):
+class ItemTable(Table):
 
-    @property
-    def spliter(self):
-        return super().spliter
-    
-    @property
-    def namer(self):
-        return super().namer
-    
     def read(
         self,
         column: str | list = None,
         start: str | list = None,
-        stop: str = None
+        stop: str = None,
+        filters: list[list[tuple]] = None,
     ):
-        filters = None
+        filters = filters or []
+        index_name = self.get_levelname(0)
+        index_name = '__index_level_0__' if isinstance(index_name, int) else index_name
+
         if isinstance(start, list):
-            filters = [(self.get_levelname(0), "in", start)]
+            filters.append((index_name, "in", start))
         elif isinstance(start, str):
-            filters = [(self.get_levelname(0), ">=", start)]
-            if isinstance(stop, str):
-                filters.append((self.get_levelname(0), "<=", stop))
+            filters.append((index_name, ">=", start))
+        if isinstance(stop, str) and not isinstance(start, list):
+            filters.append((index_name, "<=", stop))
+        
+        if not len(filters):
+            filters = None
+        
         return super().read(parse_commastr(column), filters)
 
 
-class TradeTable(Table):
+class DatetimeTable(Table):
 
     def __init__(
         self, 
-        uri: str | Path, 
-        principle: float = None, 
-        start_date: str | pd.Timestamp = None,
+        uri: str | Path,
+        freq: str = 'M',
+        format: str = '%Y%m',
+        create: bool = False,
     ):
-        if not Path(uri).exists():
-            if principle is None or start_date is None:
-                raise ValueError("principle and start_date must be specified when initiating")
-            pd.DataFrame([{
-                "datetime": pd.to_datetime(start_date), 
-                "code": "cash", "size": principle, 
-                "price": 1, "amount": principle, "commission": 0
-            }]).to_parquet(uri)
-        super().__init__(uri, False)
-        if not self.columns.isin(["datetime", "code", "size", "price", "amount", "commission"]).all():
-            raise ValueError("The table must have columns datetime, code, size, price, amount, commission")
-            
-    @property
-    def fragments(self):
-        return [self.path]
-    
-    @property
-    def minfrag(self):
-        return self.path
+        self._freq = freq
+        self._format = format
+        super().__init__(uri, create)
     
     @property
     def spliter(self):
-        return super().spliter
-
+        return pd.Grouper(level=0, freq=self._freq, sort=True)
+    
     @property
     def namer(self):
-        return super().namer
+        return lambda x: x.index[0].strftime(self._format)
     
-    def __str__(self):
-        return str(self.read())
+    def get_levelname(self) -> int | str:
+        return super().get_levelname(0)
     
-    def __repr__(self) -> str:
-        return self.__str__()
-    
-    def read(self, date: str | pd.Timestamp = None):
-        if date is not None:
-            date = [("datetime", "<=", pd.to_datetime(date))]
-        return super().read(None, date)
-    
-    def update(
+    def read(
         self, 
-        date: str | pd.Timestamp,
-        code: str,
-        size: int = None,
-        price: float = None,
-        amount: float = None,
-        commission: float = 0,
-        **kwargs,
-    ):
-        pd.concat([self.read(), pd.DataFrame([{
-            "datetime": pd.to_datetime(date),
-            "code": code, "size": size,
-            "price": price, "amount": price * size,
-            "commission": commission, **kwargs
-        }])] + ([] if code == "cash" else [pd.DataFrame([{
-            "datetime": pd.to_datetime(date),
-            "code": "cash", "size": -size * price - commission,
-            "price": 1, "commission": 0,
-            "amount": -size * price - commission, **kwargs
-        }])]), axis=0, ignore_index=True).sort_index().to_parquet(self.path)
+        field: str | list = None,
+        start: str | list = None,
+        stop: str = None,
+        filters: list[list[tuple]] = None,
+    ) -> pd.Series | pd.DataFrame:
+        index_name = self.get_levelname()
+        field = parse_commastr(field)
+        filters = filters or []
+        start = pd.to_datetime(start or "20000104")
+        stop = pd.to_datetime(stop or datetime.datetime.today().strftime(r'%Y%m%d %H%M%S'))
 
-    def peek(self, date: str | pd.Timestamp = None) -> pd.Series:
-        df = self.read(date)
-        return df.groupby("code")[["size", "amount", "commission"]].sum()
+        if not isinstance(start, pd.DatetimeIndex):
+            filters += [
+                (index_name, ">=", start),
+                (index_name, "<=", stop), 
+            ]
+            return super().read(field, filters)
         
-    def report(
-        self, 
-        price: pd.DataFrame, 
-        benchmark: pd.Series = None
-    ) -> pd.DataFrame:
-        values = []
-        cashes = []
-        for date in price.index:
-            pr = price.loc[date]
-            ps = self.peek(date)
-            val = pr.loc[pr.index.intersection(ps.index)].mul(ps["size"], axis=0)
-            val.loc["cash"] = ps.loc["cash", "size"]
-            values.append(val.sum())
-            cashes.append(val.loc["cash"])
-        
-        value = pd.Series(values, index=price.index)
-        cash = pd.Series(cashes, index=price.index)
-        drawdown = value / value.cummax() - 1
-        turnover_rate = (value.diff() / value.shift(1)).abs()
-        info = pd.concat(
-            [value, cash, drawdown, turnover_rate], axis=1, 
-            keys=["value", "cash", "drawdown", "turnover_rate"]
-        )
-        evaluation = evaluate(value, turnover_rate, benchmark=benchmark)
-        return info, evaluation
-            
+        else:
+            filters += [(index_name, "in", start)]
+            return super().read(field, filters)
+
 
 class PanelTable(Table):
     
