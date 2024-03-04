@@ -24,6 +24,7 @@ setup(
         'joblib',
         'pandas',
         'pyarrow',
+        'retrying',
         'requests',
         'matplotlib',
         'backtrader',
