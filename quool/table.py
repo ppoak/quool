@@ -11,16 +11,17 @@ class ItemTable(Table):
         self,
         column: str | list = None,
         start: str | list = None,
-        stop: str = None
+        stop: str = None,
+        filters: list[list[tuple]] = None,
     ):
-        filters = None
+        filters = filters or []
         index_name = self.get_levelname(0)
         index_name = '__index_level_0__' if isinstance(index_name, int) else index_name
 
         if isinstance(start, list):
-            filters = [(index_name, "in", start)]
+            filters.append((index_name, "in", start))
         elif isinstance(start, str):
-            filters = [(index_name, ">=", start)]
+            filters.append((index_name, ">=", start))
         if isinstance(stop, str) and not isinstance(start, list):
             filters.append((index_name, "<=", stop))
         
