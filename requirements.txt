@@ -4,6 +4,7 @@ tqdm
 numpy
 joblib
 pandas
+retrying
 requests
 matplotlib
 backtrader
