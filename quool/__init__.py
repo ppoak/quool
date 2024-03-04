@@ -17,6 +17,10 @@ from .trade import (
     TradeRecorder
 )
 
+from .factor import (
+    Factor
+)
+
 from .util import (
     Logger,
     parse_commastr,
