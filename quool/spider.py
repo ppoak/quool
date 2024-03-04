@@ -269,6 +269,7 @@ def wechat_login(appid: str, redirect_url: str):
         else:
             raise ValueError("weixin third-party login failed")
 
+
 def ewechat_notify(
     key: str, 
     content_or_path: str,
