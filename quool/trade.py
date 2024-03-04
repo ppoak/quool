@@ -68,7 +68,7 @@ class TradeRecorder(ItemTable):
         self.update(trade)
 
     def peek(self, date: str | pd.Timestamp = None) -> pd.Series:
-        df = self.read(filters=[("datetime", "<=", pd.to_datetime(date))])
+        df = self.read(filters=[("datetime", "<=", pd.to_datetime(date or 'now'))])
         return df.groupby("code")[["size", "amount", "commission"]].sum()
         
     def report(
