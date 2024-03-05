@@ -95,11 +95,12 @@ class ProxyManager(ItemTable):
                 if self.check(proxy):
                     results.append(pd.Series(proxy, name=pd.to_datetime('now')))
         
-        results = pd.concat(results, axis=1).T
-        if self.fragments:
-            self.update(results)
-        else:
-            self.add(results)
+        if len(results):
+            results = pd.concat(results, axis=1).T
+            if self.fragments:
+                self.update(results)
+            else:
+                self.add(results)
     
     def add_kuaidaili(self, pages: int = 1):
         inha_base = 'https://www.kuaidaili.com/free/inha/{i}/'
@@ -127,11 +128,12 @@ class ProxyManager(ItemTable):
                 if self.check(proxy):
                     results.append(pd.Series(proxy, name=pd.to_datetime('now')))
         
-        results = pd.concat(results, axis=1).T
-        if self.fragments:
-            self.update(results)
-        else:
-            self.add(results)
+        if len(results):
+            results = pd.concat(results, axis=1).T
+            if self.fragments:
+                self.update(results)
+            else:
+                self.add(results)
     
     def add_ip3366(self, pages: int = 1):
         base1 = 'http://www.ip3366.net/free/?stype=1&page={i}' 
@@ -156,11 +158,12 @@ class ProxyManager(ItemTable):
                 if self.check(proxy):
                     results.append(pd.Series(proxy, name=pd.to_datetime('now')))
         
-        results = pd.concat(results, axis=1).T
-        if self.fragments:
-            self.update(results)
-        else:
-            self.add(results)
+        if len(results):
+            results = pd.concat(results, axis=1).T
+            if self.fragments:
+                self.update(results)
+            else:
+                self.add(results)
 
     def add_89ip(self, pages: int = 1):
         url_base = "https://www.89ip.cn/index_{i}.html"
@@ -181,11 +184,12 @@ class ProxyManager(ItemTable):
                 if self.check(proxy):
                     results.append(pd.Series(proxy, name=pd.to_datetime('now')))
         
-        results = pd.concat(results, axis=1).T
-        if self.fragments:
-            self.update(results)
-        else:
-            self.add(results)
+        if len(results):
+            results = pd.concat(results, axis=1).T
+            if self.fragments:
+                self.update(results)
+            else:
+                self.add(results)
 
 @retry
 def get_spot_data(proxy_manager: ProxyManager = None) -> pd.DataFrame:
