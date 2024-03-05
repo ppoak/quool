@@ -126,13 +126,13 @@ class Table(abc.ABC):
         self,
         columns: str | list[str] | None = None,
         filters: list[list[tuple]] = None,
-    ):
+    ) -> pd.DataFrame | pd.Series:
         df = pd.read_parquet(
             self.path, 
             engine = 'pyarrow', 
             columns = parse_commastr(columns),
             filters = filters,
-        )
+        ).squeeze()
         return df
     
     def update(
