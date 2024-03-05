@@ -173,6 +173,7 @@ cython_debug/
 **/*.db
 
 .vscode
+data
 output
 dev
 logs
