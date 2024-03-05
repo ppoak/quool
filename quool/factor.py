@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 from .table import PanelTable
-from .util import parse_commastr
+from .trade import TradeRecorder
 from joblib import Parallel, delayed
 
 
@@ -44,7 +44,7 @@ class Factor(PanelTable):
     ) -> pd.Series | pd.DataFrame:
         df = super().read(field, code, start, stop, filters)
         if df.columns.size == 1:
-            df = df.squeeze().unstack(level=self._code_level)
+            df = df.unstack(level=self._code_level).squeeze()
         return df
 
     def save(
@@ -123,7 +123,6 @@ class Factor(PanelTable):
     def perform_grouping(
         self, name: str,
         future: pd.DataFrame,
-        topk: int = 100,
         ngroup: int = 5,
         commission: float = 0.002,
         image: str | bool = True,
@@ -148,62 +147,76 @@ class Factor(PanelTable):
             turnover = delta.abs().sum(axis=1) / 2
             ret = (future * weight).sum(axis=1).shift(1).fillna(0)
             ret -= commission * turnover
-            return ret
+            val = (ret + 1).cumprod()
+            return {
+                'evaluation': TradeRecorder.evaluate(val, turnover=turnover, image=False),
+                'value': val, 'turnover': turnover,
+            }
             
         ngroup_result = Parallel(n_jobs=-1, backend='loky')(
-            delayed(weight_strategy)(
-                (groups.where(groups == i) / groups.where(groups == i)).div(
-                    groups.where(groups == i).count(axis=1), axis=0).fillna(0), 
-                price, delay, 'both', commission, benchmark, False, None
-        ) for i in range(1, ngroup + 1))
+            delayed(_grouping)(i) for i in range(1, ngroup + 1))
         ngroup_evaluation = pd.concat([res['evaluation'] for res in ngroup_result], 
             axis=1, keys=range(1, ngroup + 1)).add_prefix('group')
         ngroup_value = pd.concat([res['value'] for res in ngroup_result], 
             axis=1, keys=range(1, ngroup + 1)).add_prefix('group')
         ngroup_turnover = pd.concat([res['turnover'] for res in ngroup_result], 
             axis=1, keys=range(1, ngroup + 1)).add_prefix('group')
+        ngroup_returns = ngroup_value.pct_change().fillna(0)
+        longshort_returns = ngroup_returns[f"group{ngroup}"] - ngroup_returns["group1"]
+        longshort_value = (longshort_returns + 1).cumprod()
+        longshort_evaluation = TradeRecorder.evaluate(longshort_value, image=False)
+        
+        # naming
+        longshort_evaluation.name = "longshort"
+        longshort_value.name = "longshort value"
 
-        # topk test
+        if image is not None:
+            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+            longshort_value.plot(ax=ax, linestyle='--')
+            ngroup_value.plot(ax=ax, alpha=0.8)
+            ngroup_turnover.plot(ax=ax, secondary_y=True, alpha=0.2)
+            fig.tight_layout()
+            if isinstance(image, (str, Path)):
+                fig.savefig(image)
+            else:
+                fig.show()            
+        
+        if result is not None:
+            with pd.ExcelWriter(result) as writer:
+                ngroup_evaluation.to_excel(writer, sheet_name="ngroup_evaluation")
+                longshort_evaluation.to_excel(writer, sheet_name="longshort_evaluation")
+                ngroup_value.to_excel(writer, sheet_name="ngroup_value")
+                ngroup_turnover.to_excel(writer, sheet_name="ngroup_turnover")
+                longshort_value.to_excel(writer, sheet_name="longshort_value")
+        
+        return pd.concat([ngroup_evaluation, longshort_evaluation], axis=1)
+                
+
+    def perform_topk(
+        self, name: str,
+        future: pd.DataFrame,
+        topk: int = 100,
+        commission: float = 0.002,
+        image: str | bool = True,
+        result: str = None,
+    ):
+        factor = self.read(field=name, start=future.index)
         topks = factor.rank(ascending=False, axis=1) < topk
         topks = factor.where(topks)
         topks = (topks / topks).div(topks.count(axis=1), axis=0).fillna(0)
-        topk_result = quool.weight_strategy(topks, price, delay, 'both', 
-            commission, benchmark, None, None)
-        topk_evaluation = topk_result['evaluation']
-        topk_value = topk_result['value']
-        topk_turnover = topk_result['turnover']
+        turnover = topks.diff().fillna(0).abs().sum(axis=1) / 2
+        ret = (topks * future).sum(axis=1).shift(1) - turnover * commission
+        val = (1 + ret).cumprod()
+        eva = TradeRecorder.evaluate(val, turnover=turnover, image=False)
 
-        # compute returns
-        ngroup_returns = ngroup_value.pct_change().fillna(0)
-        topk_returns = topk_value.pct_change().fillna(0)
-        
-        # longshort test
-        longshort_returns = ngroup_returns[f"group{ngroup}"] - ngroup_returns["group1"]
-        longshort_value = (longshort_returns + 1).cumprod()
-        longshort_value.name = "long-short"
-        
-        # naming
-        ngroup_evaluation.name = "ngroup evaluation"
-        ngroup_value.name = "ngroup value"
-        topk_value.name = "topk value"
-        longshort_value.name = "longshort value"
-        ngroup_turnover.name = "ngroup turnover"
-        topk_turnover.name = "topk turnover"
-        if benchmark is not None:
-            ngroup_exvalue.name = "ngroup exvalue"
-            topk_exvalue.name = "topk exvalue"
+        val.name = "value"
+        turnover.name = "turnover"
+        eva.name = "evaluation"
 
         if image is not None:
-            fignum = 5 + 2 * (benchmark is not None)
-            fig, axes = plt.subplots(nrows=fignum, ncols=1, figsize=(20, 10 * fignum))
-            ngroup_value.plot(ax=axes[0], title=ngroup_value.name)
-            ngroup_turnover.plot(ax=axes[1], title=ngroup_turnover.name)
-            topk_value.plot(ax=axes[2], title=topk_value.name)
-            topk_turnover.plot(ax=axes[3], title=topk_turnover.name)
-            longshort_value.plot(ax=axes[4], title=longshort_value.name)
-            if benchmark is not None:
-                ngroup_exvalue.plot(ax=axes[5], title=ngroup_exvalue.name)
-                topk_exvalue.plot(ax=axes[6], title=topk_exvalue.name)
+            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+            val.plot(ax=ax, title="Top K")
+            turnover.plot(ax=ax, secondary_y=True, alpha=0.5)
             fig.tight_layout()
             if not isinstance(image, bool):
                 fig.savefig(image)
@@ -211,25 +224,6 @@ class Factor(PanelTable):
                 fig.show()
 
         if result is not None:
-            with pd.ExcelWriter(result) as writer:
-                ngroup_evaluation.to_excel(writer, sheet_name=ngroup_evaluation.name)
-                topk_evaluation.to_excel(writer, sheet_name=topk_evaluation.name)
-                ngroup_value.to_excel(writer, sheet_name=ngroup_returns.name)
-                ngroup_turnover.to_excel(writer, sheet_name=ngroup_turnover.name)
-                topk_value.to_excel(writer, sheet_name=topk_returns.name)
-                topk_turnover.to_excel(writer, sheet_name=topk_turnover.name)
-                longshort_value.to_excel(writer, sheet_name=longshort_returns.name)
-                
-                if benchmark is not None:
-                    ngroup_exvalue.to_excel(writer, sheet_name=ngroup_exreturns.name)
-                    topk_exvalue.to_excel(writer, sheet_name=topk_exreturns.name)
+            pd.concat([eva, val, turnover], axis=1).to_excel(result)
 
-        return {
-            'ngroup_evaluation': ngroup_evaluation, 
-            'ngroup_value': ngroup_value, 
-            'ngroup_turnover': ngroup_turnover,
-            'topk_evaluation': topk_evaluation, 
-            'topk_value': topk_value, 
-            'topk_turnover': topk_turnover,
-            'longshort_value': longshort_value,
-        }
+        return eva
