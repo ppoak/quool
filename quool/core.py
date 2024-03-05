@@ -62,10 +62,10 @@ class Table(abc.ABC):
             return self._read_fragment(minfrag).index.names[level] or level
         return level
 
-    def __fragment_path(self, fragment: str):
+    def _fragment_path(self, fragment: str):
         return (self.path / fragment).with_suffix('.parquet')
     
-    def __related_frag(self, df: pd.DataFrame | pd.Series):
+    def _related_frag(self, df: pd.DataFrame | pd.Series):
         # in case of empty dataframe
         frags = df.groupby(self.spliter).apply(
             lambda x: np.nan if x.empty else self.namer(x)
@@ -74,7 +74,7 @@ class Table(abc.ABC):
             return []
         return frags.unique().tolist()
     
-    def __update_frag(self, frag: pd.DataFrame):
+    def _update_frag(self, frag: pd.DataFrame):
         # in case of empty dataframe
         if frag.empty:
             return
@@ -92,12 +92,12 @@ class Table(abc.ABC):
                 frag_dat = pd.concat([frag_dat, 
                     new_dat.reindex(columns=frag_dat.columns).astype(self.dtypes)
                 ], axis=0)
-            frag_dat.to_parquet(self.__fragment_path(name))
+            frag_dat.to_parquet(self._fragment_path(name))
         else:
             frag.reindex(columns=self.columns).astype(
-                self.dtypes).to_parquet(self.__fragment_path(name))
+                self.dtypes).to_parquet(self._fragment_path(name))
     
-    def __add_frag(self, frag: pd.DataFrame):
+    def _add_frag(self, frag: pd.DataFrame):
         # in case of empty dataframe
         if frag.empty:
             return
@@ -108,10 +108,10 @@ class Table(abc.ABC):
             # here we need to use outer join for inner join may delete data
             frag_dat = pd.concat([frag_dat, frag], axis=1, join='outer')
             frag_dat = frag_dat.astype(frag.dtypes)
-            frag_dat.to_parquet(self.__fragment_path(name))
+            frag_dat.to_parquet(self._fragment_path(name))
         else:
             frag.reindex(columns=self.columns.union(frag.columns)
-                ).to_parquet(self.__fragment_path(name))
+                ).to_parquet(self._fragment_path(name))
     
     def _read_fragment(
         self,
@@ -119,7 +119,7 @@ class Table(abc.ABC):
     ):
         fragment = fragment or self.fragments
         fragment = [fragment] if not isinstance(fragment, list) else fragment
-        fragment = [self.__fragment_path(frag) for frag in fragment]
+        fragment = [self._fragment_path(frag) for frag in fragment]
         return pd.read_parquet(fragment, engine='pyarrow')
     
     def read(
@@ -145,7 +145,7 @@ class Table(abc.ABC):
         if not df.columns.difference(self.columns).empty:
             raise ValueError("new field found, please add first")
 
-        df.groupby(self.spliter).apply(self.__update_frag)
+        df.groupby(self.spliter).apply(self._update_frag)
 
     def add(self, df: pd.Series | pd.DataFrame):
         if isinstance(df, pd.Series):
@@ -157,22 +157,22 @@ class Table(abc.ABC):
         if not df.columns.intersection(self.columns).empty:
             raise ValueError("existing field found, please update it")
         
-        df.groupby(self.spliter).apply(self.__add_frag)
-        related_fragment = self.__related_frag(df)
+        df.groupby(self.spliter).apply(self._add_frag)
+        related_fragment = self._related_frag(df)
         dtypes = self._read_fragment(related_fragment[0]).dtypes
         columns = df.columns if isinstance(df, pd.DataFrame) else [df.name]
         for frag in set(self.fragments) - set(related_fragment):
             d = self._read_fragment(frag)
             d[columns] = np.nan
             d = d.astype(dtypes)
-            d.to_parquet(self.__fragment_path(frag))
+            d.to_parquet(self._fragment_path(frag))
     
     def delete(self, index: pd.Index):
-        related_fragment = self.__related_frag(pd.DataFrame(index=index))
+        related_fragment = self._related_frag(pd.DataFrame(index=index))
         for frag in related_fragment:
             df = self._read_fragment(frag)
             df = df.drop(index=index.intersection(df.index))
-            df.to_parquet(self.__fragment_path(frag))
+            df.to_parquet(self._fragment_path(frag))
 
     def remove(self, fragment: str | list = None):
         fragment = fragment or self.fragments
@@ -185,14 +185,14 @@ class Table(abc.ABC):
         for frag in self.fragments:
             df = self._read_fragment(frag)
             df = df.drop(column, axis=1)
-            df.to_parquet(self.__fragment_path(frag))
+            df.to_parquet(self._fragment_path(frag))
 
     def rename(self, column: dict):
         column = parse_commastr(column)
         for frag in self.fragments:
             df = self._read_fragment(frag)
             df = df.rename(columns=column)
-            df.to_parquet(self.__fragment_path(frag))
+            df.to_parquet(self._fragment_path(frag))
     
     def __str__(self) -> str:
         return (f'Table at <{self.path.absolute()}>\n' + 

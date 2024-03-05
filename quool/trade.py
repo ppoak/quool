@@ -34,7 +34,11 @@ class TradeRecorder(ItemTable):
     def namer(self):
         return lambda x: x['datetime'].iloc[0].strftime('%Y%m')
     
-    def add_trade(
+    def prune(self):
+        for frag in self.fragments:
+            self._fragment_path(frag).unlink()
+
+    def trade(
         self, 
         date: str | pd.Timestamp,
         code: str,
@@ -73,33 +77,39 @@ class TradeRecorder(ItemTable):
         
     def report(
         self, 
-        price: pd.DataFrame, 
+        price: pd.Series, 
         code_level: int | str = 0,
         date_level: int | str = 1,
     ) -> pd.DataFrame:
-        if price.index.nlevels == 1:
+        data = self.read(["datetime", "code", "size", "amount", "commission"])
+        if isinstance(price, pd.DataFrame) and price.index.nlevels == 1:
             code_level = code_level if not isinstance(code_level, int) else "code"
             date_level = date_level if not isinstance(date_level, int) else "datetime"
             price = price.stack().sort_index().to_frame("price")
             price.index.names = [date_level, code_level]
-        price = price.reorder_levels([code_level, date_level]).sort_index()
+        price = price.sort_index()
         dates = price.index.get_level_values(date_level).unique()
+        dates = dates[(dates <= data["datetime"].max()) & (dates >= data["datetime"].min())]
 
-        data = self.read(["datetime", "code", "size", "amount", "commission"],
-            filters=[("datetime", "<=", dates.max())])
         data = data.groupby(["code", "datetime"]).sum()
         data = data.groupby("code").apply(lambda x: x.droplevel('code').reindex(
             dates.union(x.index.get_level_values('datetime').unique().sort_values())
-        ).fillna(0).cumsum())
-
+        ))
         cash = data.loc["cash", "amount"]
-        noncash = data.drop(labels="cash", axis=0)
-        noncash.index.names = [price.index.names[code_level], price.index.names[date_level]]
-        market = price.mul(noncash['size'], axis=0).groupby(level=date_level).sum()
-        market = market.reindex(cash.index).fillna(0)
+        cash = cash.fillna(0).cumsum()
 
-        data = pd.concat([market.add_suffix("_market"), cash.to_frame("cash")], axis=1)
-        data = pd.concat([data, market.add_suffix("_value").add(cash, axis=0)], axis=1)
+        noncash = data.drop(labels="cash", axis=0)
+        noncash.index.names = price.index.names
+        # if it raise, there are some price not available
+        price = price.loc[noncash.index]
+        delta = (price * noncash["size"]).groupby(level=date_level).sum()
+        noncash = noncash.groupby(level=code_level, group_keys=False).apply(lambda x: x.fillna(0).cumsum())
+        market = (price * noncash["size"]).groupby(level=date_level).sum()
+        market = market.reindex(cash.index).fillna(0)
+        value = market + cash
+        turnover = delta / value.shift(1)
+
+        data = pd.concat([value, cash, turnover], axis=1, keys=["value", "cash", "turnover"])
         return data
 
     @staticmethod
@@ -164,10 +174,10 @@ class TradeRecorder(ItemTable):
         
         if image is not None:
             fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
-            data[["value", "cash"]].plot(ax=ax, title="Portfolio", color=['black', 'red'])
-            data[["returns", "drawdown", "turnover"]].plot(ax=ax, alpha=0.7, 
+            data[["value", "cash"]].plot(ax=ax, title="Portfolio", color=['#1C1C1C', '#EE7600'])
+            data[["returns", "drawdown", "turnover"]].plot(ax=ax, alpha=0.5, 
                 secondary_y=True, label=['returns', "drawdown", 'turnover'],
-                color=["blue", "purple", "yellow"])
+                color=["#9400D3", "#7CFC00", "#66CDAA"])
             if isinstance(image, (str, Path)):
                 fig.savefig(image)
 
