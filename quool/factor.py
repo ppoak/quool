@@ -44,7 +44,7 @@ class Factor(PanelTable):
     ) -> pd.Series | pd.DataFrame:
         df = super().read(field, code, start, stop, filters)
         if df.columns.size == 1:
-            df = df.unstack(level=self._code_level)
+            df = df.squeeze().unstack(level=self._code_level)
         return df
 
     def save(
@@ -74,34 +74,28 @@ class Factor(PanelTable):
     
     def perform_crosssection(
         self, name: str,
-        future: pd.DataFrame,
+        future: pd.Series,
         image: str | bool = True,
         result: str = None,
     ):
-        factor = self.read(field=name, start=future.index)
-        
+        factor = self.read(field=name, start=future.name, stop=future.name)
+        data = pd.concat([factor.squeeze(), future], axis=1, keys=[name, future.name])
         if image is not None:
-            fig, axes = plt.subplots(factor.index.size, 1, 
-                figsize=(20, 10 * factor.index.size))
-            for i, date in enumerate(factor.index):
-                data = pd.concat([factor.loc[date], future.loc[date]], 
-                    axis=1, keys=[name, date])
-                data[name].plot.kde(ax=axes[i], title=date)
-                data.plot.scatter(ax=axes[i], secondary_y=True, x=name, y=date)
+            pd.plotting.scatter_matrix(data, figsize=(20, 20), hist_kwds={'bins': 100})
             
-            fig.tight_layout()
+            plt.tight_layout()
             if isinstance(image, (str, Path)):
-                fig.savefig(image)
+                plt.savefig(image)
             else:
-                fig.show()
+                plt.show()
                 
         if result is not None:
-            pd.concat([factor, future], axis=1, 
-                keys=[name, 'future']).to_excel(result)
+            data.to_excel(result)
 
     def perform_inforcoef(
         self, name: str,
         future: pd.DataFrame,
+        rolling: int = 20,
         method: str = 'pearson',
         image: str | bool = True,
         result: str = None,
@@ -112,9 +106,10 @@ class Factor(PanelTable):
 
         if image is not None:
             fig, ax = plt.subplots(1, 1, figsize=(20, 10))
-            inforcoef.plot(ax=ax)
-            inforcoef.rolling(5).mean().plot(linestyle='--', ax=ax)
-            inforcoef.cumsum().plot(linestyle='-.', secondary_y=True)
+            inforcoef.plot(ax=ax, label='infor-coef', alpha=0.7, title=f'{name} Information Coef')
+            inforcoef.rolling(rolling).mean().plot(linestyle='--', ax=ax, label='trend')
+            inforcoef.cumsum().plot(linestyle='-.', secondary_y=True, ax=ax, label='cumm-infor-coef')
+            pd.Series(np.zeros(inforcoef.shape[0]), index=inforcoef.index).plot(color='grey', ax=ax, alpha=0.5)
             fig.tight_layout()
             if not isinstance(image, bool):
                 fig.savefig(image)

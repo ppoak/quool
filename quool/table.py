@@ -121,7 +121,7 @@ class PanelTable(Table):
         code = parse_commastr(code)
         field = parse_commastr(field)
         filters = filters or []
-        start = pd.to_datetime(start or "20000104")
+        start = pd.to_datetime(start if start is not None else "20000104")
         stop = pd.to_datetime(stop or datetime.datetime.today().strftime(r'%Y%m%d %H%M%S'))
 
         if not isinstance(start, pd.DatetimeIndex):
