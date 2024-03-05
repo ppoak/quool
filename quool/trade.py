@@ -106,19 +106,18 @@ class TradeRecorder(ItemTable):
     def evaluate(
         value: pd.Series, 
         cash: pd.Series = None,
+        turnover: pd.Series = None,
         benchmark: pd.Series = None,
         image: str = None,
         result: str = None,
     ):
         cash = cash if isinstance(cash, (pd.Series, pd.DataFrame)) else \
             pd.Series(np.zeros(value.shape[0]), index=value.index)
-        market = value - cash
         returns = value.pct_change(fill_method=None).fillna(0)
         if benchmark is not None:
             benchmark = benchmark.squeeze()
             benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)
         drawdown = value / value.cummax() - 1
-        turnover = (market.diff() / value.shift(1)).fillna(0)
         
         # evaluation indicators
         evaluation = pd.Series(name='evaluation')
@@ -172,4 +171,4 @@ class TradeRecorder(ItemTable):
             if isinstance(image, (str, Path)):
                 fig.savefig(image)
 
-        return data
+        return evaluation
