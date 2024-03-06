@@ -1,5 +1,6 @@
 {
     "terminal.integrated.env.linux": {
-        "IPYTHONDIR": "${workspaceFolder}/.ipython"
+        "IPYTHONDIR": "${workspaceFolder}/.ipython",
+        "JUPYTER_CONFIG_DIR": "${workspaceFolder}/.jupyter"
     }
 }

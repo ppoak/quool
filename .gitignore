@@ -84,6 +84,7 @@ target/
 
 # IPython
 .ipython/
+.jupyter/
 profile_default/
 
 # pyenv
@@ -179,4 +180,5 @@ dev
 logs
 drafts
 test
+test*
 strategy/coilysis.py
