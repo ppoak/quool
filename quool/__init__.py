@@ -6,11 +6,8 @@ from .table import (
     PanelTable,
 )
 
-from .spider import (
+from .proxy import (
     ProxyManager,
-    get_spot_data,
-    wechat_login,
-    ewechat_notify,
 )
 
 from .trade import (
