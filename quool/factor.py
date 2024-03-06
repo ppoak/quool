@@ -24,15 +24,17 @@ class Factor(PanelTable):
     
     def get_trading_days_rollback(
         self, 
-        date: str | pd.Timestamp, 
+        date: str | pd.Timestamp = None, 
         rollback: int = 1
     ):
+        date = pd.to_datetime(date or 'now')
         if rollback > 0:
             trading_days = self.get_trading_days(start=None, stop=date)
             rollback = trading_days[trading_days <= date][-rollback - 1]
         else:
             trading_days = self.get_trading_days(start=date, stop=None)
             rollback = trading_days[min(len(trading_days), -rollback)]
+        return rollback
 
     def read(
         self, 
@@ -43,7 +45,7 @@ class Factor(PanelTable):
         filters: list[list[tuple]] = None
     ) -> pd.Series | pd.DataFrame:
         df = super().read(field, code, start, stop, filters)
-        if df.columns.size == 1:
+        if isinstance(df, pd.Series):
             df = df.unstack(level=self._code_level).squeeze()
         return df
 
