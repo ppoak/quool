@@ -1,0 +1,5 @@
+{
+    "terminal.integrated.env.linux": {
+        "IPYTHONDIR": "/home/kali/factor/.ipython"
+    }
+}

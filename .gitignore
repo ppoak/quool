@@ -172,7 +172,7 @@ cython_debug/
 **/mlruns
 **/*.db
 
-.vscode
+.vscode/launch.json
 data
 output
 dev
