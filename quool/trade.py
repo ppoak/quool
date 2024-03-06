@@ -50,9 +50,9 @@ class TradeRecorder(ItemTable):
     ):
         if size is None and price is None and amount is None:
             raise ValueError("two of size, price or amount must be specified")
-        size = size or (amount / price)
-        price = price or (amount / size)
-        amount = amount or (size * price)
+        size = size if size is not None else (amount / price)
+        price = price if size is not None else (amount / size)
+        amount = amount if size is not None else (size * price)
 
         trade = pd.DataFrame([{
             "datetime": pd.to_datetime(date),
