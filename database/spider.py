@@ -1,4 +1,5 @@
 import time
+import config
 import base64
 import hashlib
 import requests
@@ -6,11 +7,10 @@ import pandas as pd
 from pathlib import Path
 from retrying import retry
 from bs4 import BeautifulSoup
-from quool import ProxyManager
 
 
 @retry
-def get_spot_data(proxy_manager: ProxyManager = None) -> pd.DataFrame:
+def get_spot_price() -> pd.DataFrame:
     url = "http://82.push2.eastmoney.com/api/qt/clist/get"
     params = {
         "pn": "1", "pz": "50000", "po": "1", "np": "1", 
@@ -19,7 +19,7 @@ def get_spot_data(proxy_manager: ProxyManager = None) -> pd.DataFrame:
         "fields": "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152",
         "_": "1623833739532",
     }
-    r = requests.get(url, proxies=proxy_manager.pick('http'), params=params, timeout=2)
+    r = requests.get(url, proxies=config.prx.pick('http'), params=params, timeout=2)
     data_json = r.json()
     if not data_json["data"]["diff"]:
         return pd.DataFrame()
@@ -40,6 +40,17 @@ def get_spot_data(proxy_manager: ProxyManager = None) -> pd.DataFrame:
             temp_df[col] = pd.to_numeric(temp_df[col], errors='coerce')
     return temp_df
 
+def get_spot_return(day: int = 1):
+    spot = get_spot_price()
+
+    if day <= 1:
+        return spot["change_rate"]
+    
+    last_date = config.fqtd.get_trading_days_rollback(rollback=day)
+    price = config.fqtd.read("close", start=last_date, stop=last_date)
+    price.index = price.index.str.slice(0, 6)
+    spot["change_rate"] = (spot["latest_price"] / price - 1).dropna() * 100
+    return spot
 
 def wechat_login(appid: str, redirect_url: str):
     service_base = "https://open.weixin.qq.com/connect/qrconnect?appid={app_id}&scope=snsapi_login&redirect_uri={redirect_url}"
