@@ -47,8 +47,10 @@ class ProxyManager(ItemTable):
             self._fraglen.sum() > random.random()].index
         if rand_frag.size == 0:
             raise ValueError("no more proxies available")
+        rand_frag = rand_frag[0]
         proxy = self._read_fragment(rand_frag)
         if field is not None:
+            field = field if isinstance(field, list) else [field]
             proxy = proxy[field]
         index = random.choice(list(set(range(proxy.shape[0])) - self._picked.loc[rand_frag]))
         self._picked.loc[rand_frag].add(index)
