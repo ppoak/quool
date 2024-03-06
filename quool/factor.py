@@ -45,8 +45,8 @@ class Factor(PanelTable):
         filters: list[list[tuple]] = None
     ) -> pd.Series | pd.DataFrame:
         df = super().read(field, code, start, stop, filters)
-        if isinstance(df, pd.Series):
-            df = df.unstack(level=self._code_level).squeeze()
+        if df.columns.size == 1:
+            df = df.squeeze().unstack(level=self._code_level)
         return df
 
     def save(
