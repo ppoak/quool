@@ -7,7 +7,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name = "quool",
-    packages = find_packages(),
+    packages = ["quool"],
     author = "ppoak",
     author_email = "ppoak@foxmail.com",
     description = "Quantitative Toolkit - a helper in quant developping",
