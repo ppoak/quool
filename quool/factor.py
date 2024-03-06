@@ -28,7 +28,7 @@ class Factor(PanelTable):
         rollback: int = 1
     ):
         date = pd.to_datetime(date or 'now')
-        if rollback > 0:
+        if rollback >= 0:
             trading_days = self.get_trading_days(start=None, stop=date)
             rollback = trading_days[trading_days <= date][-rollback - 1]
         else:
