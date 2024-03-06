@@ -132,7 +132,7 @@ class Table(abc.ABC):
             engine = 'pyarrow', 
             columns = parse_commastr(columns),
             filters = filters,
-        ).squeeze()
+        )
         return df
     
     def update(
