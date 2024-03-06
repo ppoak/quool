@@ -44,7 +44,7 @@ def get_spot_return(day: int = 1):
     spot = get_spot_price()
 
     if day <= 1:
-        return spot["change_rate"]
+        return spot
     
     last_date = config.fqtd.get_trading_days_rollback(rollback=day)
     price = config.fqtd.read("close", start=last_date, stop=last_date)
