@@ -1,11 +1,11 @@
-import quool
 import config
 import pandas as pd
 from tqdm import tqdm
+from .base import Factor
 from joblib import Parallel, delayed
 
 
-class MinFreqFactor(quool.Factor):
+class MinFreqFactor(Factor):
 
     def get_tail_volume_percent(self, start: str = None, stop: str = None) -> pd.DataFrame:
         def _get(date: pd.Timestamp):
