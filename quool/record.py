@@ -287,7 +287,11 @@ class ProxyRecorder(ItemTable):
 
         resps = []
         for i in range(1, pages + 1):
-            resps.append(requests.get(url_base.format(i=i), headers=self.headers))
+            try:
+                resps.append(requests.get(url_base.format(i=i), headers=self.headers))
+            except:
+                pass
+            time.sleep(1)
         
         results = []
         for resp in resps:
@@ -320,7 +324,10 @@ class ProxyRecorder(ItemTable):
             
         resps = []
         for url in urls:
-            resps.append(requests.get(url, headers=self.headers))
+            try:
+                resps.append(requests.get(url, headers=self.headers))
+            except:
+                pass
             time.sleep(1)
         
         results = []
@@ -353,7 +360,10 @@ class ProxyRecorder(ItemTable):
             
         resps = []
         for url in urls:
-            resps.append(requests.get(url, headers=self.headers))
+            try:
+                resps.append(requests.get(url, headers=self.headers))
+            except:
+                pass
             time.sleep(1)
         
         results = []
@@ -377,7 +387,10 @@ class ProxyRecorder(ItemTable):
 
         resps = []
         for i in range(1, pages + 1):
-            resps.append(requests.get(url_base.format(i=i), headers=self.headers))
+            try:
+                resps.append(requests.get(url_base.format(i=i), headers=self.headers))
+            except:
+                pass
             time.sleep(1)
         
         results = []
