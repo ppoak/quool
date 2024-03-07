@@ -1,9 +1,24 @@
+import quool
 import time
 import base64
 import hashlib
 import requests
 from pathlib import Path
 from bs4 import BeautifulSoup
+
+
+qtd = quool.PanelTable("./data/quotes-day", code_level="order_book_id", date_level="date")
+qtm = quool.PanelTable("./data/quotes-min", code_level="order_book_id", date_level="datetime")
+fin = quool.PanelTable("./data/financial", code_level="order_book_id", date_level="date")
+idxwgt = quool.PanelTable("./data/index-weights", code_level="order_book_id", date_level="date")
+idxqtd = quool.PanelTable("./data/index-quotes-day", code_level="order_book_id", date_level="date")
+idxqtm = quool.PanelTable("./data/index-quotes-min", code_level="order_book_id", date_level="datetime")
+sec = quool.PanelTable("./data/security-margin", code_level="order_book_id", date_level="date")
+ids = quool.PanelTable("./data/industry-info", code_level="order_book_id", date_level="date")
+con = quool.PanelTable("./data/stock-connect", code_level="order_book_id", date_level="date")
+div = quool.PanelTable("./data/dividend-split", code_level="order_book_id", date_level="date")
+ins = quool.ItemTable("./data/instruments-info")
+prx = quool.ProxyRecorder("./data/proxy")
 
 
 def wechat_login(appid: str, redirect_url: str):
@@ -137,4 +152,3 @@ def ewechat_notify(
 
     else:
         raise ValueError(f"Unsupported message type: {message_type}")
-

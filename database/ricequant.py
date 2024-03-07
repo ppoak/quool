@@ -1,4 +1,4 @@
-__version__ = "5.0.0"
+__version__ = "5.0.1"
 
 
 import os
@@ -7,10 +7,8 @@ import quool
 import tarfile
 import argparse
 import datetime
-import requests
 import pandas as pd
 from pathlib import Path
-from functools import partial
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -18,69 +16,24 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-
-CODE_LEVEL = "order_book_id"
-DATE_LEVEL = "date"
-DATABASE_ROOT = "./data/"
-PROXY_URI = "./data/proxy"
+from .base import (
+    qtd, qtm, fin, idxwgt, idxqtd,
+    idxqtm, sec, ids, con, div, ins, prx,
+)
 
 
 TABLE_DICT = {
-    "index-weights": partial(
-        quool.PanelTable, 
-        date_level=DATE_LEVEL, 
-        code_level=CODE_LEVEL
-    ),
-    "industry-info": partial(
-        quool.PanelTable, 
-        date_level=DATE_LEVEL, 
-        code_level=CODE_LEVEL
-    ),
-    "instruments-info": partial(quool.ItemTable),
-    "quotes-day": partial(
-        quool.PanelTable, 
-        date_level=DATE_LEVEL, 
-        code_level=CODE_LEVEL
-    ),
-    "quotes-min": partial(
-        quool.PanelTable, 
-        date_level="datetime", 
-        code_level=CODE_LEVEL
-    ),
-    "security-margin": partial(
-        quool.PanelTable, 
-        date_level="date", 
-        code_level=CODE_LEVEL
-    ),
-    "stock-connect": partial(
-        quool.PanelTable, 
-        date_level=DATE_LEVEL, 
-        code_level=CODE_LEVEL
-    ),
-    "financial": partial(
-        quool.PanelTable, 
-        date_level=DATE_LEVEL, 
-        code_level=CODE_LEVEL, 
-        freq='Y', 
-        format='%Y'
-    ),
-    "dividend-split": partial(
-        quool.PanelTable, 
-        date_level=DATE_LEVEL, 
-        code_level=CODE_LEVEL, 
-        freq='Y', 
-        format='%Y'
-    ),
-    "index-quotes-day": partial(
-        quool.PanelTable, 
-        date_level=DATE_LEVEL, 
-        code_level=CODE_LEVEL
-    ),
-    "index-quotes-min": partial(
-        quool.PanelTable, 
-        date_level="datetime", 
-        code_level=CODE_LEVEL
-    ),
+    "index-weights": idxwgt,
+    "industry-info": ids,
+    "instruments-info": ins,
+    "quotes-day": qtd,
+    "quotes-min": qtm,
+    "security-margin": sec,
+    "stock-connect": con,
+    "financial": fin,
+    "dividend-split": div,
+    "index-quotes-day": idxqtd,
+    "index-quotes-min": idxqtm,
 }
 
 
@@ -213,7 +166,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def update_data(filename: str, table_base: str, logfile: str = 'debug.log'):
+def update_data(filename: str, logfile: str = 'debug.log'):
     logger = quool.Logger("UpdateData", stream=False, display_name=True, file=logfile)
     logger.debug("=" * 5 + " update data start " + "=" * 5)
     data_path = Path(filename).expanduser().resolve()
@@ -229,27 +182,38 @@ def update_data(filename: str, table_base: str, logfile: str = 'debug.log'):
     logger.debug('-' * 20)
     for file in directory.glob('**/*.parquet'):
         logger.debug(f'processing {file}')
-        _update_data(file, table_base)
+        _update_data(file)
 
     directory.rmdir()
     logger.debug("=" * 5 + " update data stop " + "=" * 5)
 
-def _update_data(filename: str | Path, table_base: str, logfile: str = 'debug.log'):
+def _update_data(filename: str | Path):
     filename = Path(filename).expanduser().resolve()
     name = filename.stem.split('_')[0]
-    table = TABLE_DICT[name](Path(table_base).joinpath(name))
+    table = TABLE_DICT[name]
     df = pd.read_parquet(filename)
     table.update(df)
     filename.unlink()
 
-def update_proxy(proxy_table_path: str, logfile: str = 'debug.log'):
+def update_proxy(logfile: str = 'debug.log'):
     logger = quool.Logger("UpdateProxy", stream=False, display_name=True, file=logfile)
     logger.debug("=" * 5 + " update proxy start " + "=" * 5)
-    table = quool.ProxyManager(proxy_table_path)
-    table.add_kuaidaili(pages=10)
-    table.add_kxdaili(pages=10)
-    table.add_ip3366(pages=10)
-    table.add_89ip(pages=10)
+    try:
+        prx.add_kuaidaili(pages=10)
+    except:
+        logger.warning("kuaidaili failed")
+    try:
+        prx.add_kxdaili(pages=10)
+    except:
+        logger.warning("kxdaili failed")
+    try:
+        prx.add_ip3366(pages=10)
+    except:
+        logger.warning("ip3366 failed")
+    try:
+        prx.add_89ip(pages=10)
+    except:
+        logger.warning("89ip failed")
     logger.debug("=" * 5 + " update proxy stop " + "=" * 5)
 
 def backup_data(uri: str | Path, backup: str | Path, logfile: str = "debug.log"):
@@ -273,10 +237,10 @@ def unbackup_data(backup: str | Path, uribase: str | Path = '/'):
 
 if __name__ == "__main__":
     args = parse_args()
-    user, password, driver, target, backup, logfile = (args.user, 
-        args.password, args.driver, args.target, args.backup, args.logfile)
+    user, password, driver, target, logfile = (args.user, 
+        args.password, args.driver, args.target, args.logfile)
     filename = ricequant_fetcher(user, password, driver, target, logfile)
-    update_data(filename, DATABASE_ROOT, logfile=logfile)
-    update_proxy(PROXY_URI, logfile=logfile)
-    for uri in Path(DATABASE_ROOT).iterdir():
-        backup_data(uri, backup)
+    update_data(filename, logfile=logfile)
+    update_proxy(logfile=logfile)
+    for uri in Path("./data/").iterdir():
+        backup_data(uri, "./data/backupdata")
