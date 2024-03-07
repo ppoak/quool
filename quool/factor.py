@@ -46,7 +46,7 @@ class Factor(PanelTable):
     ) -> pd.Series | pd.DataFrame:
         df = super().read(field, code, start, stop, filters)
         if df.columns.size == 1:
-            df = df.squeeze().unstack(level=self._code_level)
+            df = df.squeeze().unstack(level=self._code_level).squeeze()
         return df
 
     def save(
@@ -112,6 +112,7 @@ class Factor(PanelTable):
             inforcoef.rolling(rolling).mean().plot(linestyle='--', ax=ax, label='trend')
             inforcoef.cumsum().plot(linestyle='-.', secondary_y=True, ax=ax, label='cumm-infor-coef')
             pd.Series(np.zeros(inforcoef.shape[0]), index=inforcoef.index).plot(color='grey', ax=ax, alpha=0.5)
+            ax.legend()
             fig.tight_layout()
             if not isinstance(image, bool):
                 fig.savefig(image)

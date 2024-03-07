@@ -142,7 +142,7 @@ class TradeRecorder(ItemTable):
         evaluation['max_drawdown_period(days)'] = maxdate - startdate
         evaluation['max_drawdown_start'] = startdate
         evaluation['max_drawdown_stop'] = maxdate
-        evaluation['daily_turnover(%)'] = turnover.mean() * 100
+        evaluation['daily_turnover(%)'] = turnover.mean() * 100 if turnover is not None else np.nan
         evaluation['sharpe_ratio'] = evaluation['annual_return(%)'] / evaluation['annual_volatility(%)'] \
             if evaluation['annual_volatility(%)'] != 0 else np.nan
         evaluation['sortino_ratio'] = evaluation['annual_return(%)'] / down_volatility \
@@ -175,9 +175,11 @@ class TradeRecorder(ItemTable):
         if image is not None:
             fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
             data[["value", "cash"]].plot(ax=ax, title="Portfolio", color=['#1C1C1C', '#EE7600'])
-            data[["returns", "drawdown", "turnover"]].plot(ax=ax, alpha=0.5, 
-                secondary_y=True, label=['returns', "drawdown", 'turnover'],
-                color=["#9400D3", "#7CFC00", "#66CDAA"])
+            data[["returns", "drawdown"]].plot(ax=ax, alpha=0.5, 
+                secondary_y=True, label=['returns', "drawdown"],
+                color=["#9400D3", "#7CFC00"])
+            if turnover is not None:
+                data["turnover"].plot(ax=ax, alpha=0.5, secondary_y=True, color="#66CDAA", label="turnover")
             if isinstance(image, (str, Path)):
                 fig.savefig(image)
 
