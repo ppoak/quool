@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 from .table import PanelTable
-from .trade import TradeRecorder
+from .record import TradeRecorder
 from joblib import Parallel, delayed
 
 

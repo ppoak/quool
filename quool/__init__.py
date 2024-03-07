@@ -6,12 +6,10 @@ from .table import (
     PanelTable,
 )
 
-from .proxy import (
-    ProxyManager,
-)
-
-from .trade import (
-    TradeRecorder
+from .record import (
+    RunRecorder,
+    TradeRecorder,
+    ProxyRecorder,
 )
 
 from .factor import (
@@ -31,4 +29,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.0.1"
+__version__ = "5.0.3"
