@@ -169,9 +169,9 @@ class TradeRecorder(ItemTable):
             365 / (value.index.max() - value.index.min()).days) - 1) * 100
         evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
         down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
-        maxdate = drawdown.idxmax()
+        maxdate = drawdown.idxmin()
         startdate = drawdown.loc[:maxdate][drawdown.loc[:maxdate] == 0].index[-1]
-        evaluation['max_drawdown(%)'] = (drawdown.max()) * 100
+        evaluation['max_drawdown(%)'] = (-drawdown.min()) * 100
         evaluation['max_drawdown_period(days)'] = maxdate - startdate
         evaluation['max_drawdown_start'] = startdate
         evaluation['max_drawdown_stop'] = maxdate
