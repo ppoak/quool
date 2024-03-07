@@ -5,4 +5,4 @@ qtd = quool.PanelTable("./data/quotes-day", code_level="order_book_id", date_lev
 qtm = quool.PanelTable("./data/quotes-min", code_level="order_book_id", date_level="datetime")
 fqtd = quool.Factor("./data/quotes-day", code_level="order_book_id", date_level="date")
 fqtm = quool.Factor("./data/quotes-min", code_level="order_book_id", date_level="datetime")
-prx = quool.ProxyManager("./data/proxy")
+prx = quool.ProxyRecorder("./data/proxy")
