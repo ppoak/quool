@@ -1,4 +1,3 @@
-import datetime
 import pandas as pd
 from pathlib import Path
 from .core import Table
@@ -66,7 +65,7 @@ class DatetimeTable(Table):
         field = parse_commastr(field)
         filters = filters or []
         start = pd.to_datetime(start or "20000104")
-        stop = pd.to_datetime(stop or datetime.datetime.today().strftime(r'%Y%m%d %H%M%S'))
+        stop = pd.to_datetime(stop or 'now')
 
         if not isinstance(start, pd.DatetimeIndex):
             filters += [
@@ -122,7 +121,7 @@ class PanelTable(Table):
         field = parse_commastr(field)
         filters = filters or []
         start = pd.to_datetime(start if start is not None else "20000104")
-        stop = pd.to_datetime(stop or datetime.datetime.today().strftime(r'%Y%m%d %H%M%S'))
+        stop = pd.to_datetime(stop or 'now')
 
         if not isinstance(start, pd.DatetimeIndex):
             filters += [

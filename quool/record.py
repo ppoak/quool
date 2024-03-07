@@ -120,7 +120,7 @@ class TradeRecorder(ItemTable):
             date_level = date_level if not isinstance(date_level, int) else "datetime"
             price = price.stack().sort_index().to_frame("price")
             price.index.names = [date_level, code_level]
-        price = price.sort_index()
+        price = price.squeeze().sort_index()
         dates = price.index.get_level_values(date_level).unique()
         dates = dates[(dates <= data["datetime"].max()) & (dates >= data["datetime"].min())]
 
@@ -140,7 +140,7 @@ class TradeRecorder(ItemTable):
         market = (price * noncash["size"]).groupby(level=date_level).sum()
         market = market.reindex(cash.index).fillna(0)
         value = market + cash
-        turnover = delta / value.shift(1)
+        turnover = (delta / value.shift(1)).fillna(0)
 
         data = pd.concat([value, cash, turnover], axis=1, keys=["value", "cash", "turnover"])
         return data
@@ -213,8 +213,11 @@ class TradeRecorder(ItemTable):
                 color=["#9400D3", "#7CFC00"])
             if turnover is not None:
                 data["turnover"].plot(ax=ax, alpha=0.5, secondary_y=True, color="#66CDAA", label="turnover")
+            fig.tight_layout()
             if isinstance(image, (str, Path)):
                 fig.savefig(image)
+            else:
+                fig.show()
 
         return evaluation
 
