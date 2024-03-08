@@ -16,7 +16,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from .base import (
+from database.base import (
     qtd, qtm, fin, idxwgt, idxqtd,
     idxqtm, sec, ids, con, div, ins, prx,
 )
