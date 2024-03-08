@@ -60,11 +60,7 @@ def fillna(
 ):
     return df.fillna(val)
 
-def dropnum(
-    df: pd.DataFrame,
-    val: int = 0,
-):
-    return df.replace(val, np.nan)
-
-def log(df: pd.DataFrame):
+def log(df: pd.DataFrame, dropinf: bool = True):
+    if dropinf:
+        return np.log(df).replace([np.inf, -np.inf], np.nan)
     return np.log(df)
