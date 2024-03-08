@@ -1,10 +1,11 @@
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from joblib import Parallel, delayed
 from .base import (
     Factor,
     fqtd, fqtm,
 )
-from joblib import Parallel, delayed
 
 
 class MinFreqFactor(Factor):
@@ -44,5 +45,25 @@ class MinFreqFactor(Factor):
         )
         return pd.concat(result, axis=0).sort_index().loc(axis=0)[:, start:stop]
 
+    def get_long_short_ratio(self, start: str = None, stop: str = None):
+        def _get(start, stop):
+            price = fqtm.read("close", start=start, stop=stop + pd.Timedelta(days=1))
+            vol = fqtm.read("volume", start=start, stop=stop + pd.Timedelta(days=1))
+            ret = price.pct_change(fill_method=None)
+            vol_per_unit = abs(vol / ret).replace([np.inf, -np.inf], np.nan)
+            tot_ret = (price.iloc[-1] / price.iloc[0] - 1).abs()
+            res = (tot_ret * vol_per_unit.mean()) / vol.sum()
+            res.name = stop
+            return res
+        
+        start = start or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        stop = stop or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        rollback = fqtd.get_trading_days_rollback(start, 5)
+        trading_days = fqtd.get_trading_days(rollback, stop)
+        result = Parallel(n_jobs=-1, backend='loky')(delayed(_get)
+            (_start, _stop) for _start, _stop in  tqdm(list(
+                zip(trading_days[:-4], trading_days[4:])
+        )))
+        return pd.concat(result, axis=1).T.loc[start:stop]
 
 mff = MinFreqFactor("./data/minfreq", code_level="order_book_id", date_level="date")
