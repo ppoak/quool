@@ -1,6 +1,7 @@
 import requests
 import squarify
 import pandas as pd
+import quool as q
 import factor as f
 import database as d
 import matplotlib.pyplot as plt
@@ -38,7 +39,7 @@ def get_spot_price() -> pd.DataFrame:
             temp_df[col] = pd.to_numeric(temp_df[col], errors='coerce')
     return temp_df
 
-def get_spot_return(day: int = 1):
+def get_spot_return(day: int = 0):
     spot = get_spot_price()
 
     if day <= 1:
@@ -54,6 +55,27 @@ def get_factor_value(fct: f.Factor, name: str, day: int = 0, processor: list = N
     last_date = f.fqtd.get_trading_days_rollback(rollback=day)
     factor = fct.read(name, start=last_date, stop=last_date, processor=processor).squeeze()
     return factor
+
+def get_holding_spot_return(traderec: q.TradeRecorder):
+    def _mapcode(x):
+        if x.startswith("6"):
+            return x + '.XSHG'
+        elif x.startswith("3") or x.startswith("0"):
+            return x + '.XSHE'
+        else:
+            return x
+
+    logger = q.Logger()
+    spot = get_spot_price()
+    price = spot["latest_price"]
+    price.index = price.index.map(_mapcode)
+    holdings = traderec.peek(price=price)
+    holdings["pnl(%)"] = holdings["pnl"] * 100
+    holdings = holdings.drop("pnl", axis=1)
+    logger.info(f"Portfolio Value: {holdings['value'].sum():.2f}; "
+                f"PNL Value: {holdings['value'].sum() - holdings['amount'].sum():.2f}; "
+                f"PNL Rate: {100 *(holdings['value'].sum() / holdings['amount'].sum() - 1):.2f}%")
+    return holdings
 
 def treemap(size: pd.Series, nday: int = 0):
     size.index = size.index.str.slice(0, 6)
