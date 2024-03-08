@@ -44,14 +44,14 @@ class TradeRecorder(ItemTable):
         self, 
         uri: str | Path, 
         principle: float = None, 
-        start_date: str | pd.Timestamp = None,
+        start: str | pd.Timestamp = None,
     ):
         super().__init__(uri, True)
         if not self.fragments:
-            if principle is None or start_date is None:
+            if principle is None or start is None:
                 raise ValueError("principle and start_date must be specified when initiating")
             self.add(pd.DataFrame([{
-                "datetime": pd.to_datetime(start_date), 
+                "datetime": pd.to_datetime(start), 
                 "code": "cash", "size": float(principle), 
                 "price": 1.0, "amount": float(principle), "commission": 0.0
             }], index=[pd.to_datetime('now')]))
@@ -84,8 +84,8 @@ class TradeRecorder(ItemTable):
         if size is None and price is None and amount is None:
             raise ValueError("two of size, price or amount must be specified")
         size = size if size is not None else (amount / price)
-        price = price if size is not None else (amount / size)
-        amount = amount if size is not None else (size * price)
+        price = price if price is not None else (amount / size)
+        amount = amount if amount is not None else (size * price)
 
         trade = pd.DataFrame([{
             "datetime": pd.to_datetime(date),
