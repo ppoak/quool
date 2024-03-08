@@ -53,3 +53,18 @@ def iqroutlier(
     return df.where(
         df.le(thresh_up, axis=0) & df.ge(thresh_down, axis=0),
         other=np.nan, axis=0).where(~df.isna())
+
+def fillna(
+    df: pd.DataFrame,
+    val: int | str = 0,
+):
+    return df.fillna(val)
+
+def dropnum(
+    df: pd.DataFrame,
+    val: int = 0,
+):
+    return df.replace(val, np.nan)
+
+def log(df: pd.DataFrame):
+    return np.log(df)
