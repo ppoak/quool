@@ -1,6 +1,6 @@
 import squarify
-import config as c
 import pandas as pd
+import factor as f
 import database as d
 import matplotlib.pyplot as plt
 from IPython.core.magic import magics_class, line_magic, Magics
@@ -27,9 +27,9 @@ class MonitorMagics(Magics):
         ret["colors"] = pd.cut(ret["change_rate"], bins=bins, labels=labels)
         name = opts.get("name", "circulating_market_cap")
         if name != "circulating_market_cap":
-            date = c.fqtd.get_trading_days_rollback(rollback=n)
+            date = f.fqtd.get_trading_days_rollback(rollback=n)
             table, name = name.split(".")
-            ret[name] = getattr(c, table).read(name, start=date, stop=date)
+            ret[name] = getattr(f, table).read(name, start=date, stop=date)
         ret = ret.dropna(subset=[name, "change_rate"], axis=0, how='any')
         ret = ret.sort_values(by=name, ascending=False)
         fig, ax = plt.subplots(1, 1, figsize=(20, 20))
