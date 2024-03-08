@@ -7,19 +7,6 @@ from pathlib import Path
 from joblib import Parallel, delayed
 
 
-def get_spot_return(day: int = 1):
-    spot = d.get_spot_price()
-
-    if day <= 1:
-        return spot
-    
-    last_date = fqtd.get_trading_days_rollback(rollback=day)
-    price = fqtd.read("close", start=last_date, stop=last_date)
-    price.index = price.index.str.slice(0, 6)
-    spot["change_rate"] = (spot["latest_price"] / price - 1).dropna() * 100
-    return spot
-
-
 class Factor(quool.PanelTable):
 
     def read(
