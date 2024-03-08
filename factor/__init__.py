@@ -14,7 +14,6 @@ from .ops import (
     madoutlier,
     stdoutlier,
     iqroutlier,
-    dropnum,
     fillna,
     log,
 )
