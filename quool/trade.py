@@ -200,12 +200,16 @@ class TradeRecorder(ItemTable):
             ax00_twi.fill_between(data.index, 0, data['drawdown'], color='#009100', alpha=0.3)
             ax00_twi.set_ylabel("Drawdown")
 
-            year = (data['net_value'].resample('Y').last() - data['net_value'].resample('Y').first())
+            if not (benchmark==0).all():
+                year = (data[['net_value', 'exvalue', 'benchmark']].resample('Y').last() - data[['net_value', 'exvalue', 'benchmark']].resample('Y').first())
+            else:
+                year = (data['net_value'].resample('Y').last() - data['net_value'].resample('Y').first())
             month = (data['net_value'].resample('M').last() - data['net_value'].resample('M').first())
             year.index = year.index.year
             month.index = month.index.strftime('%Y-%m')
-            year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45)
+            year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45, colormap='Paired')
             month.plot(ax=ax[0,2], kind='bar', title="Monthly Return", rot=45)
+
 
             ax10 = data['exvalue'].plot(ax=ax[1,0], title='Extra Return', legend=True)
             ax10.legend(loc='lower left')
