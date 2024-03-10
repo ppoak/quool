@@ -220,7 +220,8 @@ class TradeRecorder(ItemTable):
 
             data[['net_value', 'benchmark']].plot(ax=ax[1,1], title="Fund Return")
 
-            data[['turnover', 'net_cash']].plot(ax=ax[1,2], title="Turnover")
+            data[['turnover', 'net_cash']].plot(ax=ax[1,2], title="Turnover", secondary_y=True)
+
 
             if isinstance(image, (str, Path)):
                 fig.savefig(image)
