@@ -1,13 +1,52 @@
+import quool
 import numpy as np
 import pandas as pd
+import database as d
 import matplotlib.pyplot as plt
 from pathlib import Path
-from .table import PanelTable
-from .trade import TradeRecorder
 from joblib import Parallel, delayed
 
 
-class Factor(PanelTable):
+class Factor(quool.PanelTable):
+
+    def read(
+        self, 
+        field: str | list = None, 
+        code: str | list = None, 
+        start: str | list = None, 
+        stop: str = None, 
+        processor: list = None,
+    ) -> pd.Series | pd.DataFrame:
+        processor = processor or []
+        if not isinstance(processor, list):
+            processor = [processor]
+        
+        df = super().read(field, code, start, stop)
+        
+        if df.columns.size == 1:
+            df = df.squeeze().unstack(level=self._code_level)
+        
+        for proc in processor:
+            kwargs = {}
+            if isinstance(proc, tuple):
+                proc, kwargs = proc
+            df = proc(df, **kwargs)
+        return df
+        
+    def get_future(
+        self, 
+        period: int = 1, 
+        ptype: str = "close",
+        start: str | pd.Timestamp = None,
+        stop: str | pd.Timestamp = None,
+    ):
+        if stop is not None:
+            stop = self.get_trading_days_rollback(stop, -period - 1)
+        price = d.qtd.read([ptype, "st", "suspended"], start=start, stop=stop)
+        price = price[ptype].where(~(price["st"].fillna(True) | price["suspended"].fillna(True)))
+        price = price.unstack(self._code_level)
+        future = price.shift(-1 - period) / price.shift(-1) - 1
+        return future.dropna(axis=0, how='all').squeeze()
 
     def get_trading_days(
         self,
@@ -28,27 +67,14 @@ class Factor(PanelTable):
         rollback: int = 1
     ):
         date = pd.to_datetime(date or 'now')
-        if rollback > 0:
+        if rollback >= 0:
             trading_days = self.get_trading_days(start=None, stop=date)
             rollback = trading_days[trading_days <= date][-rollback - 1]
         else:
             trading_days = self.get_trading_days(start=date, stop=None)
             rollback = trading_days[min(len(trading_days), -rollback)]
         return rollback
-
-    def read(
-        self, 
-        field: str | list = None, 
-        code: str | list = None, 
-        start: str | list = None, 
-        stop: str = None, 
-        filters: list[list[tuple]] = None
-    ) -> pd.Series | pd.DataFrame:
-        df = super().read(field, code, start, stop, filters)
-        if isinstance(df, pd.Series):
-            df = df.unstack(level=self._code_level).squeeze()
-        return df
-
+    
     def save(
         self,
         df: pd.DataFrame | pd.Series, 
@@ -57,7 +83,7 @@ class Factor(PanelTable):
         if isinstance(df, pd.DataFrame) and df.index.nlevels == 1:
             code_level = self.get_levelname(self._code_level)
             date_level = self.get_levelname(self._date_level)
-            code_level = 'code' if isinstance(code_level, int) else code_level
+            code_level = 'order_book_id' if isinstance(code_level, int) else code_level
             date_level = 'date' if isinstance(date_level, int) else date_level
             df = df.stack(dropna=True).swaplevel()
             df.index.names = [code_level, date_level]
@@ -75,12 +101,17 @@ class Factor(PanelTable):
             self.add(df)
     
     def perform_crosssection(
-        self, name: str,
-        future: pd.Series,
-        image: str | bool = True,
-        result: str = None,
+        self, name: str, 
+        date: str | pd.Timestamp,
+        *,
+        processor: list = None,
+        period: int = 1,
+        ptype: str = "close",
+        image: str | bool = True, 
+        result: str = None
     ):
-        factor = self.read(field=name, start=future.name, stop=future.name)
+        future = self.get_future(period, ptype, date, date)
+        factor = self.read(field=name, start=future.name, stop=future.name, processor=processor)
         data = pd.concat([factor.squeeze(), future], axis=1, keys=[name, future.name])
         if image is not None:
             pd.plotting.scatter_matrix(data, figsize=(20, 20), hist_kwds={'bins': 100})
@@ -95,14 +126,20 @@ class Factor(PanelTable):
             data.to_excel(result)
 
     def perform_inforcoef(
-        self, name: str,
-        future: pd.DataFrame,
-        rolling: int = 20,
-        method: str = 'pearson',
-        image: str | bool = True,
-        result: str = None,
+        self, name: str, 
+        *,
+        period: int = 1,
+        start: str = None,
+        stop: str = None,
+        ptype: str = "close",
+        processor: list = None,
+        rolling: int = 20, 
+        method: str = 'pearson', 
+        image: str | bool = True, 
+        result: str = None
     ):
-        factor = self.read(field=name)
+        future = self.get_future(period, ptype, start, stop)
+        factor = self.read(field=name, start=future.index, processor=processor)
         inforcoef = factor.corrwith(future, axis=1, method=method).dropna()
         inforcoef.name = f"infocoef"
 
@@ -112,6 +149,7 @@ class Factor(PanelTable):
             inforcoef.rolling(rolling).mean().plot(linestyle='--', ax=ax, label='trend')
             inforcoef.cumsum().plot(linestyle='-.', secondary_y=True, ax=ax, label='cumm-infor-coef')
             pd.Series(np.zeros(inforcoef.shape[0]), index=inforcoef.index).plot(color='grey', ax=ax, alpha=0.5)
+            ax.legend()
             fig.tight_layout()
             if not isinstance(image, bool):
                 fig.savefig(image)
@@ -123,14 +161,20 @@ class Factor(PanelTable):
         return inforcoef
     
     def perform_grouping(
-        self, name: str,
-        future: pd.DataFrame,
-        ngroup: int = 5,
-        commission: float = 0.002,
-        image: str | bool = True,
-        result: str = None,
+        self, 
+        name: str, 
+        period: int = 1,
+        start: str = None,
+        stop: str = None,
+        processor: list = None,
+        ptype: str = "close",
+        ngroup: int = 5, 
+        commission: float = 0.002, 
+        image: str | bool = True, 
+        result: str = None
     ):
-        factor = self.read(field=name, start=future.index)
+        future = self.get_future(period, ptype, start, stop)
+        factor = self.read(field=name, start=future.index, processor=processor)
         # ngroup test
         try:
             groups = factor.apply(lambda x: pd.qcut(x, q=ngroup, labels=False), axis=1) + 1
@@ -151,7 +195,7 @@ class Factor(PanelTable):
             ret -= commission * turnover
             val = (ret + 1).cumprod()
             return {
-                'evaluation': TradeRecorder.evaluate(val, turnover=turnover, image=False),
+                'evaluation': quool.TradeRecorder.evaluate(val, turnover=turnover, image=False),
                 'value': val, 'turnover': turnover,
             }
             
@@ -166,7 +210,7 @@ class Factor(PanelTable):
         ngroup_returns = ngroup_value.pct_change().fillna(0)
         longshort_returns = ngroup_returns[f"group{ngroup}"] - ngroup_returns["group1"]
         longshort_value = (longshort_returns + 1).cumprod()
-        longshort_evaluation = TradeRecorder.evaluate(longshort_value, image=False)
+        longshort_evaluation = quool.TradeRecorder.evaluate(longshort_value, image=False)
         
         # naming
         longshort_evaluation.name = "longshort"
@@ -193,23 +237,28 @@ class Factor(PanelTable):
         
         return pd.concat([ngroup_evaluation, longshort_evaluation], axis=1)
                 
-
     def perform_topk(
-        self, name: str,
-        future: pd.DataFrame,
-        topk: int = 100,
-        commission: float = 0.002,
-        image: str | bool = True,
-        result: str = None,
+        self, 
+        name: str, 
+        period: int = 1,
+        start: str = None,
+        stop: str = None,
+        ptype: str = "close",
+        processor: list = None,
+        topk: int = 100, 
+        commission: float = 0.002, 
+        image: str | bool = True, 
+        result: str = None
     ):
-        factor = self.read(field=name, start=future.index)
+        future = self.get_future(period, ptype, start, stop)
+        factor = self.read(field=name, start=future.index, processor=processor)
         topks = factor.rank(ascending=False, axis=1) < topk
         topks = factor.where(topks)
         topks = (topks / topks).div(topks.count(axis=1), axis=0).fillna(0)
         turnover = topks.diff().fillna(0).abs().sum(axis=1) / 2
-        ret = (topks * future).sum(axis=1).shift(1) - turnover * commission
+        ret = (topks * future).sum(axis=1).shift(1).fillna(0) - turnover * commission
         val = (1 + ret).cumprod()
-        eva = TradeRecorder.evaluate(val, turnover=turnover, image=False)
+        eva = quool.TradeRecorder.evaluate(val, turnover=turnover, image=False)
 
         val.name = "value"
         turnover.name = "turnover"
@@ -229,3 +278,7 @@ class Factor(PanelTable):
             pd.concat([eva, val, turnover], axis=1).to_excel(result)
 
         return eva
+
+
+fqtd = Factor("./data/quotes-day", code_level="order_book_id", date_level="date")
+fqtm = Factor("./data/quotes-min", code_level="order_book_id", date_level="datetime")
