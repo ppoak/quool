@@ -248,9 +248,10 @@ class TradeRecorder(ItemTable):
                 year = (data['net_value'].resample('Y').last() - data['net_value'].resample('Y').first())
             month = (data['net_value'].resample('M').last() - data['net_value'].resample('M').first())
             year.index = year.index.year
-            month.index = month.index.strftime('%Y-%m')
+            # month.index = month.index.strftime('%Y-%m')
             year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45, colormap='Paired')
-            month.plot(ax=ax[0,2], kind='bar', title="Monthly Return", rot=45)
+            ax[0, 2].bar(month.index, month.values, width=20)
+            # month.plot(ax=, kind='bar', title="Monthly Return", rot=45)
 
 
             ax10 = data['exvalue'].plot(ax=ax[1,0], title='Extra Return', legend=True)
