@@ -248,10 +248,8 @@ class TradeRecorder(ItemTable):
                 year = (data['net_value'].resample('Y').last() - data['net_value'].resample('Y').first())
             month = (data['net_value'].resample('M').last() - data['net_value'].resample('M').first())
             year.index = year.index.year
-            # month.index = month.index.strftime('%Y-%m')
             year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45, colormap='Paired')
             ax[0, 2].bar(month.index, month.values, width=20)
-            # month.plot(ax=, kind='bar', title="Monthly Return", rot=45)
 
 
             ax10 = data['exvalue'].plot(ax=ax[1,0], title='Extra Return', legend=True)
@@ -263,7 +261,6 @@ class TradeRecorder(ItemTable):
 
             data[['net_value', 'benchmark']].plot(ax=ax[1,1], title="Fund Return")
 
-            # data[['turnover', 'net_cash']].plot(ax=ax[1,2], title="Turnover", secondary_y=True)
             ax12 = data['net_cash'].plot(ax=ax[1,2], title="Turnover")
             ax12.set_ylabel('net_cash')
             ax12_twi = ax[1,2].twinx()
