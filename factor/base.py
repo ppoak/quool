@@ -42,9 +42,10 @@ class Factor(quool.PanelTable):
     ):
         if stop is not None:
             stop = self.get_trading_days_rollback(stop, -period - 1)
-        price = d.qtd.read([ptype, "st", "suspended"], start=start, stop=stop)
-        price = price[ptype].where(~(price["st"].fillna(True) | price["suspended"].fillna(True)))
-        price = price.unstack(self._code_level)
+        price = d.qtd.read([ptype, "st", "suspended", "adjfactor"], start=start, stop=stop)
+        price[ptype] = price[ptype].where(~(price["st"].fillna(True) | price["suspended"].fillna(True)))
+        price[ptype] = price[ptype] * price["adjfactor"]
+        price = price[ptype].unstack(self._code_level)
         future = price.shift(-1 - period) / price.shift(-1) - 1
         return future.dropna(axis=0, how='all').squeeze()
 
