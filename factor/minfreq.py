@@ -94,5 +94,22 @@ class MinFreqFactor(Factor):
         return pd.concat(Parallel(n_jobs=-1, backend='loky')(delayed(_get)
             (date) for date in tqdm(list(trading_days))), axis=1).T.loc[start:stop]
 
+    def get_average_relative_price_percent(self, start: str = None, stop: str = None) -> pd.DataFrame:
+        def _get(date: pd.Timestamp):
+            df = fqtm.read("open, high, low, close", start=date, stop=date + pd.Timedelta(days=1))
+            twap = df.mean(axis=1).groupby(level=fqtm._code_level).mean()
+            high = df["high"].groupby(level=fqtm._code_level).max()
+            low = df["low"].groupby(level=fqtm._code_level).min()
+            arrp = (twap - low) / (high - low)
+            arrp.name = date
+            return arrp
+
+        start = start or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        stop = stop or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        trading_days = fqtd.get_trading_days(start, stop)
+        return pd.concat(Parallel(n_jobs=-1, backend='loky')(delayed(_get)
+            (date) for date in tqdm(list(trading_days))), axis=1
+        ).T.loc[:, start:stop]
+
 
 mff = MinFreqFactor("./data/minfreq", code_level="order_book_id", date_level="date")
