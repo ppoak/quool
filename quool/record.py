@@ -131,7 +131,7 @@ class TradeRecorder(ItemTable):
             price.index.names = [date_level, code_level]
         price = price.squeeze().sort_index()
         dates = price.index.get_level_values(date_level).unique()
-        dates = dates[(dates <= data["datetime"].max()) & (dates >= data["datetime"].min())]
+        dates = dates[dates >= data["datetime"].min()]
 
         data = data.groupby(["code", "datetime"]).sum()
         data = data.groupby("code").apply(lambda x: x.droplevel('code').reindex(
