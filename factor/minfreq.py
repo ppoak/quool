@@ -80,5 +80,19 @@ class MinFreqFactor(Factor):
         return pd.concat(Parallel(n_jobs=-1, backend='loky')(delayed(_get)
             (date) for date in tqdm(list(trading_days))), axis=1).T.loc[start:stop]
 
+    def get_down_trend_volatility(self, start: str = None, stop: str = None) -> pd.DataFrame:
+        def _get(date: pd.Timestamp):
+            price = fqtm.read("close", start=date, stop=date + pd.Timedelta(days=1))
+            ret = price.pct_change(fill_method=None)
+            res = ret.apply(lambda x: x[x < 0].pow(2).sum() / x.pow(2).sum())
+            res.name = date
+            return res
+        
+        start = start or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        stop = stop or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        trading_days = fqtd.get_trading_days(start, stop)
+        return pd.concat(Parallel(n_jobs=-1, backend='loky')(delayed(_get)
+            (date) for date in tqdm(list(trading_days))), axis=1).T.loc[start:stop]
+
 
 mff = MinFreqFactor("./data/minfreq", code_level="order_book_id", date_level="date")
