@@ -267,8 +267,11 @@ class TradeRecorder(ItemTable):
             ax12_twi.set_ylabel('turnover')
             ax12_twi.plot(data.index, data['turnover'], color='red')
 
+            fig.tight_layout()
             if isinstance(image, (str, Path)):
                 fig.savefig(image)
+            else:
+                fig.show()
 
         return evaluation
 
