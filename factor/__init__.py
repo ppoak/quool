@@ -1,14 +1,4 @@
 from .base import (
-    Factor,
-    fqtm, fqtd,
-)
-
-from .minfreq import (
-    MinFreqFactor,
-    mff
-)
-
-from .ops import (
     zscore,
     minmax,
     madoutlier,
@@ -17,4 +7,10 @@ from .ops import (
     fillna,
     log,
     tsmean,
+    fqtm, fqtd,
+)
+
+from .minfreq import (
+    MinFreqFactor,
+    mff,
 )

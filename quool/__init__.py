@@ -12,6 +12,10 @@ from .record import (
     ProxyRecorder,
 )
 
+from .factor import (
+    Factor
+)
+
 from .util import (
     Logger,
     parse_commastr,
