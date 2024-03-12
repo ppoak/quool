@@ -1,6 +1,8 @@
 import quool as q
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
+from joblib import Parallel, delayed
 
 
 def zscore(df: pd.DataFrame):
@@ -68,6 +70,29 @@ def log(df: pd.DataFrame, dropinf: bool = True):
 
 def tsmean(df: pd.DataFrame, n: int = 20):
     return df.rolling(n).mean()
+
+
+class Factor(q.Factor):
+
+    def get_vwap(self, start: str = None, stop: str = None) -> pd.DataFrame:
+        def _get(date: pd.Timestamp):
+            p = fqtm.read("close", start=date, stop=date + pd.Timedelta(days=1))
+            vol = fqtm.read("volume", start=date, stop=date + pd.Timedelta(days=1))
+            w = vol / vol.sum()
+            res = (p * w).sum() * adjfactor.loc[date]
+            res.name = date
+            return res
+        
+        start = start or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        stop = stop or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        trading_days = fqtd.get_trading_days(start, stop)
+        adjfactor = fqtd.read("adjfactor", start=start, stop=stop)
+        stsus = fqtd.read("st, suspended", start=start, stop=stop)
+        nontradable = stsus["st"] | stsus["suspended"]
+        nontradable = nontradable.unstack(level=fqtd._code_level).fillna(True)
+        adjfactor = adjfactor.where(~nontradable)
+        return pd.concat(Parallel(n_jobs=-1, backend='loky')(delayed(_get)
+            (date) for date in tqdm(list(trading_days))), axis=1).T.loc[start:stop]
 
 
 fqtd = q.Factor("./data/quotes-day", code_level="order_book_id", date_level="date")

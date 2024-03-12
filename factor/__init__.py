@@ -1,4 +1,5 @@
 from .base import (
+    Factor,
     zscore,
     minmax,
     madoutlier,
