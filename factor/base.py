@@ -31,7 +31,7 @@ class Factor(quool.PanelTable):
             if isinstance(proc, tuple):
                 proc, kwargs = proc
             df = proc(df, **kwargs)
-        return df
+        return df.dropna(axis=0, how='all')
         
     def get_future(
         self, 
@@ -192,8 +192,9 @@ class Factor(quool.PanelTable):
             weight = weight.div(weight.sum(axis=1), axis=0)
             delta = weight.diff().fillna(0)
             turnover = delta.abs().sum(axis=1) / 2
-            ret = (future * weight).sum(axis=1).shift(1).fillna(0)
+            ret = (future * weight).sum(axis=1).shift(1)
             ret -= commission * turnover
+            ret = ret.fillna(0)
             val = (ret + 1).cumprod()
             return {
                 'evaluation': quool.TradeRecorder.evaluate(val, turnover=turnover, image=False),

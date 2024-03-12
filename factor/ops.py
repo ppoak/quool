@@ -64,3 +64,6 @@ def log(df: pd.DataFrame, dropinf: bool = True):
     if dropinf:
         return np.log(df).replace([np.inf, -np.inf], np.nan)
     return np.log(df)
+
+def tsmean(df: pd.DataFrame, n: int = 20):
+    return df.rolling(n).mean()

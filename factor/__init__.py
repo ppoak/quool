@@ -16,4 +16,5 @@ from .ops import (
     iqroutlier,
     fillna,
     log,
+    tsmean,
 )
