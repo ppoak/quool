@@ -36,17 +36,14 @@ class Factor(PanelTable):
         
     def get_future(
         self, 
+        ptype: str = "vwap",
         period: int = 1, 
-        ptype: str = "close",
         start: str | pd.Timestamp = None,
         stop: str | pd.Timestamp = None,
     ):
         if stop is not None:
             stop = self.get_trading_days_rollback(stop, -period - 1)
-        price = d.qtd.read([ptype, "st", "suspended", "adjfactor"], start=start, stop=stop)
-        price[ptype] = price[ptype].where(~(price["st"].fillna(True) | price["suspended"].fillna(True)))
-        price[ptype] = price[ptype] * price["adjfactor"]
-        price = price[ptype].unstack(self._code_level)
+        price = self.read(ptype, start=start, stop=stop)
         future = price.shift(-1 - period) / price.shift(-1) - 1
         return future.dropna(axis=0, how='all').squeeze()
 
@@ -169,13 +166,13 @@ class Factor(PanelTable):
         start: str = None,
         stop: str = None,
         processor: list = None,
-        ptype: str = "close",
+        ptype: str = "vwap",
         ngroup: int = 5, 
         commission: float = 0.002, 
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(period, ptype, start, stop)
+        future = self.get_future(ptype, period, start, stop)
         factor = self.read(field=name, start=future.index, processor=processor)
         # ngroup test
         try:
@@ -191,9 +188,9 @@ class Factor(PanelTable):
             group = groups.where(groups == x)
             weight = (group / group).fillna(0)
             weight = weight.div(weight.sum(axis=1), axis=0)
-            delta = weight.diff().fillna(0)
-            turnover = delta.abs().sum(axis=1) / 2
-            ret = (future * weight).sum(axis=1).shift(1)
+            delta = weight.diff(periods=period).fillna(0)
+            turnover = delta.abs().sum(axis=1) / 2 / period
+            ret = (future * weight).sum(axis=1).shift(1) / period
             ret -= commission * turnover
             ret = ret.fillna(0)
             val = (ret + 1).cumprod()
@@ -202,7 +199,7 @@ class Factor(PanelTable):
                 'value': val, 'turnover': turnover,
             }
             
-        ngroup_result = Parallel(n_jobs=-1, backend='loky')(
+        ngroup_result = Parallel(n_jobs=1, backend='loky')(
             delayed(_grouping)(i) for i in range(1, ngroup + 1))
         ngroup_evaluation = pd.concat([res['evaluation'] for res in ngroup_result], 
             axis=1, keys=range(1, ngroup + 1)).add_prefix('group')
@@ -246,20 +243,21 @@ class Factor(PanelTable):
         period: int = 1,
         start: str = None,
         stop: str = None,
-        ptype: str = "close",
+        ptype: str = "vwap",
         processor: list = None,
         topk: int = 100, 
         commission: float = 0.002, 
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(period, ptype, start, stop)
+        future = self.get_future(ptype, period, start, stop)
         factor = self.read(field=name, start=future.index, processor=processor)
         topks = factor.rank(ascending=False, axis=1) < topk
         topks = factor.where(topks)
         topks = (topks / topks).div(topks.count(axis=1), axis=0).fillna(0)
-        turnover = topks.diff().fillna(0).abs().sum(axis=1) / 2
+        turnover = topks.diff().fillna(0).abs().sum(axis=1) / 2 / period
         ret = (topks * future).sum(axis=1).shift(1).fillna(0) - turnover * commission
+        ret = ret.fillna(0) / period
         val = (1 + ret).cumprod()
         eva = TradeRecorder.evaluate(val, turnover=turnover, image=False)
 
