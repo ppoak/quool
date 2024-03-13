@@ -105,11 +105,11 @@ class Factor(PanelTable):
         *,
         processor: list = None,
         period: int = 1,
-        ptype: str = "close",
+        ptype: str = "vwap",
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(period, ptype, date, date)
+        future = self.get_future(ptype, period, date, date)
         factor = self.read(field=name, start=future.name, stop=future.name, processor=processor)
         data = pd.concat([factor.squeeze(), future], axis=1, keys=[name, future.name])
         if image is not None:
@@ -130,14 +130,14 @@ class Factor(PanelTable):
         period: int = 1,
         start: str = None,
         stop: str = None,
-        ptype: str = "close",
+        ptype: str = "vwap",
         processor: list = None,
         rolling: int = 20, 
         method: str = 'pearson', 
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(period, ptype, start, stop)
+        future = self.get_future(ptype, period, start, stop)
         factor = self.read(field=name, start=future.index, processor=processor)
         inforcoef = factor.corrwith(future, axis=1, method=method).dropna()
         inforcoef.name = f"infocoef"
