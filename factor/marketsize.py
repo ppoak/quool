@@ -5,7 +5,7 @@ from .base import (
 )
 
 
-class BarraFactor(Factor):
+class MarketSizeFactor(Factor):
 
     def get_barra_log_marketcap(self, date: str):
         shares = fqtd.read("circulation_a", start=date, stop=date)
@@ -14,5 +14,4 @@ class BarraFactor(Factor):
         res = np.log(shares * price * adjfactor).loc[date]
         return res
 
-
-brf = BarraFactor("./data/factor", code_level="order_book_id", date_level="date")
+msf = MarketSizeFactor("./data/factor", code_level="order_book_id", date_level="date")

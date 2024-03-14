@@ -5,8 +5,8 @@ from .base import (
     fillna, log, tsmean,
 )
 
-from .barra import (
-    BarraFactor, brf
+from .marketsize import (
+    MarketSizeFactor, msf
 )
 
 from .retdist import (
