@@ -130,5 +130,22 @@ class MinFreqFactor(Factor):
             (date) for date in tqdm(list(trading_days))), axis=1
         ).T.loc[start:stop]
 
+    def get_information_distribution_uniformity(self, start: str = None, stop: str = None) -> pd.DataFrame:
+        def _get(date: pd.Timestamp):
+            rollback = fqtd.get_trading_days_rollback(date, 20)
+            price = fqtm.read("close", start=rollback, stop=date + pd.Timedelta(days=1))
+            ret = price.groupby(price.index.date).pct_change(fill_method=None)
+            std = ret.groupby(ret.index.date).std()
+            res = std.std() / std.mean()
+            res.name = date
+            return res
+
+        start = start or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        stop = stop or pd.to_datetime('now').strftime(r"%Y-%m-%d")
+        trading_days = fqtd.get_trading_days(start, stop)
+        return pd.concat(Parallel(n_jobs=4, backend='loky')(delayed(_get)
+            (date) for date in tqdm(list(trading_days))), axis=1
+        ).T.loc[start:stop]
+
 
 mff = MinFreqFactor("./data/minfreq", code_level="order_book_id", date_level="date")
