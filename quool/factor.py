@@ -36,7 +36,7 @@ class Factor(PanelTable):
         
     def get_future(
         self, 
-        ptype: str = "vwap",
+        ptype: str = "volume_weighted_price",
         period: int = 1, 
         start: str | pd.Timestamp = None,
         stop: str | pd.Timestamp = None,
@@ -106,7 +106,7 @@ class Factor(PanelTable):
         *,
         processor: list = None,
         period: int = 1,
-        ptype: str = "vwap",
+        ptype: str = "volume_weighted_price",
         image: str | bool = True, 
         result: str = None
     ):
@@ -131,7 +131,7 @@ class Factor(PanelTable):
         period: int = 1,
         start: str = None,
         stop: str = None,
-        ptype: str = "vwap",
+        ptype: str = "volume_weighted_price",
         processor: list = None,
         rolling: int = 20, 
         method: str = 'pearson', 
@@ -167,7 +167,7 @@ class Factor(PanelTable):
         start: str = None,
         stop: str = None,
         processor: list = None,
-        ptype: str = "vwap",
+        ptype: str = "volume_weighted_price",
         ngroup: int = 5, 
         commission: float = 0.002, 
         image: str | bool = True, 
@@ -244,7 +244,7 @@ class Factor(PanelTable):
         period: int = 1,
         start: str = None,
         stop: str = None,
-        ptype: str = "vwap",
+        ptype: str = "volume_weighted_price",
         processor: list = None,
         topk: int = 100, 
         commission: float = 0.002, 
