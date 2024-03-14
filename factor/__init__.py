@@ -24,3 +24,7 @@ from .voldist import (
 from .volatile import (
     VolatileFactor, vtf
 )
+
+from .capflow import (
+    CapFlowFactor, cff
+)
