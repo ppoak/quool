@@ -15,4 +15,5 @@ class VolatileFactor(Factor):
         res.name = date
         return res
 
+
 vtf = VolatileFactor("./data/factor", code_level="order_book_id", date_level="date")

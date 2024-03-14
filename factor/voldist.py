@@ -25,3 +25,5 @@ class VolDistFactor(Factor):
         res.name = date
         return res
 
+
+vdf = VolDistFactor("./data/factor", code_level="order_book_id", date_level="date")

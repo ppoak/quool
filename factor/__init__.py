@@ -17,6 +17,10 @@ from .deraprice import (
     DeraPriceFactor, dpf
 )
 
+from .voldist import (
+    VolDistFactor, vdf
+)
+
 from .volatile import (
     VolatileFactor, vtf
 )
