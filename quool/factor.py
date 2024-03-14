@@ -79,17 +79,18 @@ class Factor(PanelTable):
         df: pd.DataFrame | pd.Series, 
         name: str = None, 
     ):
+        code_level = self.get_levelname(self._code_level)
+        date_level = self.get_levelname(self._date_level)
+        code_level = 'order_book_id' if isinstance(code_level, int) else code_level
+        date_level = 'date' if isinstance(date_level, int) else date_level
         if isinstance(df, pd.DataFrame) and df.index.nlevels == 1:
-            code_level = self.get_levelname(self._code_level)
-            date_level = self.get_levelname(self._date_level)
-            code_level = 'order_book_id' if isinstance(code_level, int) else code_level
-            date_level = 'date' if isinstance(date_level, int) else date_level
             df = df.stack(dropna=True).swaplevel()
             df.index.names = [code_level, date_level]
         
         if isinstance(df, pd.Series):
             if name is None:
                 raise ValueError('name cannot be None')
+            df.index.names = [code_level, date_level]
             df = df.to_frame(name)
         
         update_data = df[df.columns[df.columns.isin(self.columns)]]

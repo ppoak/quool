@@ -187,7 +187,7 @@ class TradeRecorder(ItemTable):
         down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
         enddate = drawdown.idxmin()
         startdate = drawdown.loc[:enddate][drawdown.loc[:enddate] == 0].index[-1]
-        evaluation['max_drawdown(%)'] = (drawdown.min()) * 100
+        evaluation['max_drawdown(%)'] = (-drawdown.min()) * 100
         evaluation['max_drawdown_period(days)'] = enddate - startdate
         evaluation['max_drawdown_start'] = startdate
         evaluation['max_drawdown_stop'] = enddate
