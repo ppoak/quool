@@ -7,15 +7,15 @@ from .base import (
 
 class DeraPriceFactor(Factor):
 
-    def get_vwap(self, date: pd.Timestamp):
+    def get_volume_weighted_price(self, date: pd.Timestamp):
         p = fqtm.read("close", start=date, stop=date + pd.Timedelta(days=1))
         vol = fqtm.read("volume", start=date, stop=date + pd.Timedelta(days=1))
         stsus = fqtd.read("st, suspended", start=date, stop=date)
         adjfactor = fqtd.read("adjfactor", start=date, stop=date).squeeze()
         nontradable = stsus["st"] | stsus["suspended"]
-        nontradable = nontradable.unstack(level=fqtd._code_level).fillna(True)
+        nontradable = nontradable.unstack(level=fqtd._code_level).fillna(True).squeeze()
         w = vol / vol.sum()
-        res = ((p * w).sum() * adjfactor).where(nontradable)
+        res = ((p * w).sum() * adjfactor).where(~nontradable)
         res.name = date
         return res
 

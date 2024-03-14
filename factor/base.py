@@ -74,17 +74,17 @@ def tsmean(df: pd.DataFrame, n: int = 20):
 
 class Factor(q.Factor):
 
-    def get(self, name: str, start: str = None, stop: str = None):
+    def get(self, name: str, start: str = None, stop: str = None, n_jobs: int = -1):
         start = start or pd.to_datetime('now').strftime(r"%Y-%m-%d")
         stop = stop or pd.to_datetime('now').strftime(r"%Y-%m-%d")
         trading_days = fqtd.get_trading_days(start, stop)
-        result = Parallel(n_jobs=-1, backend='loky')(
+        result = Parallel(n_jobs=n_jobs, backend='loky')(
             delayed(getattr(self, "get_" + name))(date) for date in tqdm(list(trading_days))
         )
         if isinstance(result[0], pd.Series):
             return pd.concat(result, axis=1).T.loc[start:stop]
         elif isinstance(result[0], pd.DataFrame):
-            return pd.cocnat(result, axis=0).sort_index().loc(axis=0)[:, start:stop]
+            return pd.concat(result, axis=0).sort_index().loc(axis=0)[:, start:stop]
 
 
 fqtd = q.Factor("./data/quotes-day", code_level="order_book_id", date_level="date")
