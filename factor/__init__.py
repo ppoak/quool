@@ -1,17 +1,22 @@
 from .base import (
-    Factor,
-    zscore,
-    minmax,
-    madoutlier,
-    stdoutlier,
-    iqroutlier,
-    fillna,
-    log,
-    tsmean,
-    fqtm, fqtd,
+    Factor, fqtm, fqtd, fcon,
+    zscore, minmax,
+    madoutlier, stdoutlier, iqroutlier,
+    fillna, log, tsmean,
 )
 
-from .minfreq import (
-    MinFreqFactor,
-    mff,
+from .barra import (
+    BarraFactor, brf
+)
+
+from .retdist import (
+    RetDistFactor, rdf
+)
+
+from .deraprice import (
+    DeraPriceFactor, dpf
+)
+
+from .volatile import (
+    VolatileFactor, vtf
 )
