@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 from .base import (
-    fqtd, Factor
+    fqtd, BaseFactor
 )
 
 
-class MarketSizeFactor(Factor):
+class MarketSizeFactor(BaseFactor):
 
     def get_barra_log_marketcap(self, date: str):
         shares = fqtd.read("circulation_a", start=date, stop=date)
@@ -14,4 +14,3 @@ class MarketSizeFactor(Factor):
         res = np.log(shares * price * adjfactor).loc[date]
         return res
 
-msf = MarketSizeFactor("./data/factor", code_level="order_book_id", date_level="date")

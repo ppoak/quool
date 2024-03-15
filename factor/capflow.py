@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 from .base import (
-    fcon, fqtd, Factor
+    fcon, fqtd, BaseFactor
 )
 
 
-class CapFlowFactor(Factor):
+class CapFlowFactor(BaseFactor):
 
     def get_stock_connect_stableinc(self, date: pd.Timestamp) -> pd.Series:
         rollback = fqtd.get_trading_days_rollback(date, 20)
@@ -16,5 +16,3 @@ class CapFlowFactor(Factor):
         res.name = date
         return res
 
-
-cff = CapFlowFactor("./data/factor", code_level="order_book_id", date_level="date")

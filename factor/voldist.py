@@ -1,10 +1,10 @@
 import pandas as pd
 from .base import (
-    fqtm, Factor
+    fqtm, BaseFactor
 )
 
 
-class VolDistFactor(Factor):
+class VolDistFactor(BaseFactor):
 
     def get_tail_volume_percent(self, date: pd.Timestamp):
         data = fqtm.read("volume", start=date, stop=date + pd.Timedelta(days=1))
@@ -25,5 +25,3 @@ class VolDistFactor(Factor):
         res.name = date
         return res
 
-
-vdf = VolDistFactor("./data/factor", code_level="order_book_id", date_level="date")

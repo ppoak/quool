@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 from .base import (
-    fqtd, fqtm, Factor
+    fqtd, fqtm, BaseFactor
 )
 
 
-class DeraPriceFactor(Factor):
+class DeraPriceFactor(BaseFactor):
 
     def get_volume_weighted_price(self, date: pd.Timestamp):
         p = fqtm.read("close", start=date, stop=date + pd.Timedelta(days=1))
@@ -35,5 +35,3 @@ class DeraPriceFactor(Factor):
         arrp.name = date
         return arrp
 
-
-dpf = DeraPriceFactor("./data/factor", code_level="order_book_id", date_level="date")

@@ -1,10 +1,10 @@
 import pandas as pd
 from .base import (
-    fqtd, fqtm, Factor
+    fqtd, fqtm, BaseFactor
 )
 
 
-class VolatileFactor(Factor):
+class VolatileFactor(BaseFactor):
 
     def get_information_distribution_uniformity(self, date: str):
         rollback = fqtd.get_trading_days_rollback(date, 20)
@@ -15,5 +15,3 @@ class VolatileFactor(Factor):
         res.name = date
         return res
 
-
-vtf = VolatileFactor("./data/factor", code_level="order_book_id", date_level="date")

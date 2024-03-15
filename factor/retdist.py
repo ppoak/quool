@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 from .base import (
-    fqtd, fqtm, Factor
+    fqtd, fqtm, BaseFactor
 )
 
 
-class RetDistFactor(Factor):
+class RetDistFactor(BaseFactor):
 
     def get_intraday_distribution(self, date: str) -> pd.DataFrame:
         data = fqtm.read("close", start=date, stop=date + pd.Timedelta(days=1))
@@ -34,5 +34,3 @@ class RetDistFactor(Factor):
         res.name = date
         return res
 
-
-rdf = RetDistFactor("./data/factor", code_level="order_book_id", date_level="date")

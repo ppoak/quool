@@ -72,7 +72,7 @@ def tsmean(df: pd.DataFrame, n: int = 20):
     return df.rolling(n).mean()
 
 
-class Factor(q.Factor):
+class BaseFactor(q.Factor):
 
     def get(self, name: str, start: str = None, stop: str = None, n_jobs: int = -1):
         start = start or pd.to_datetime('now').strftime(r"%Y-%m-%d")

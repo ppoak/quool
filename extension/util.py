@@ -51,7 +51,7 @@ def get_spot_return(day: int = 0):
     spot["change_rate"] = (spot["latest_price"] / price - 1).dropna() * 100
     return spot
 
-def get_factor_value(fct: f.Factor, name: str, day: int = 0, processor: list = None):
+def get_factor_value(fct: f.BaseFactor, name: str, day: int = 0, processor: list = None):
     last_date = f.fqtd.get_trading_days_rollback(rollback=day)
     factor = fct.read(name, start=last_date, stop=last_date, processor=processor).squeeze()
     return factor
