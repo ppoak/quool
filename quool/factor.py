@@ -71,7 +71,7 @@ class Factor(PanelTable):
             rollback = trading_days[trading_days <= date][-rollback - 1]
         else:
             trading_days = self.get_trading_days(start=date, stop=None)
-            rollback = trading_days[min(len(trading_days), -rollback)]
+            rollback = trading_days[min(len(trading_days) - 1, -rollback)]
         return rollback
     
     def save(
