@@ -73,8 +73,7 @@ def get_holding_spot_return(traderec: q.TradeRecorder):
     holdings["pnl(%)"] = holdings["pnl"] * 100
     holdings = holdings.drop("pnl", axis=1)
     logger.info(f"Portfolio Value: {holdings['value'].sum():.2f}; "
-                f"PNL Value: {holdings['value'].sum() - holdings['amount'].sum():.2f}; "
-                f"PNL Rate: {100 *(holdings['value'].sum() / holdings['amount'].sum() - 1):.2f}%")
+                f"PNL Value: {holdings['value'].sum() - holdings['amount'].sum() - holdings['commission'].sum():.2f}")
     return holdings
 
 def treemap(size: pd.Series, nday: int = 0):
