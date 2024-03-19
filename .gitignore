@@ -181,4 +181,5 @@ logs
 drafts
 test
 test*
+script
 strategy/coilysis.py
