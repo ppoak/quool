@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from .base import (
     fqtm, BaseFactor
@@ -38,3 +39,24 @@ class VolDistFactor(BaseFactor):
         res.name = date
         return res
 
+    def get_corr_volume_portion(self, date: pd.Timestamp) -> pd.Series:
+        close = fqtm.read("close", start=date, stop=date + pd.Timedelta(days=1))
+        vol = fqtm.read("volume", start=date, stop=date + pd.Timedelta(days=1))
+        volp = vol / vol.sum()
+        mean = close.rolling(10).mean()
+        std = close.rolling(10).std()
+        upper = mean + std
+        lower = mean - std
+        pos = pd.DataFrame(np.zeros(close.shape), index=close.index, columns=close.columns)
+        pos[close > upper] = 1
+        pos[close <= lower] = -1
+        negpos_vol = volp.where(pos < 0).sum(axis=1)
+        zeropos_vol = volp.where(pos == 0).sum(axis=1)
+        pospos_vol = volp.where(pos > 0).sum(axis=1)
+        corr_vol = pd.DataFrame(np.full(close.shape, np.nan), index=close.index, columns=close.columns)
+        corr_vol = corr_vol.mask(pos > 0, pospos_vol, axis=0)
+        corr_vol = corr_vol.mask(pos < 0, negpos_vol, axis=0)
+        corr_vol = corr_vol.mask(pos == 0, zeropos_vol, axis=0)
+        res = volp.corrwith(corr_vol)
+        res.name = date
+        return res
