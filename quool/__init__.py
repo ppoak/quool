@@ -29,4 +29,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.0.6"
+__version__ = "5.0.7"

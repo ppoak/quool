@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import database as d
 import matplotlib.pyplot as plt
 from pathlib import Path
 from .table import PanelTable
