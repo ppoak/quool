@@ -249,7 +249,8 @@ class TradeRecorder(ItemTable):
             month = (data['net_value'].resample('M').last() - data['net_value'].resample('M').first())
             year.index = year.index.year
             year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45, colormap='Paired')
-            ax[0, 2].bar(month.index, month.values, width=20, title='Monthly Return')
+            ax[0, 2].bar(month.index, month.values, width=20)
+            ax[0, 2].set_title("Monthly Return")
 
 
             ax10 = data['exvalue'].plot(ax=ax[1,0], title='Extra Return', legend=True)

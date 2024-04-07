@@ -1,63 +1,69 @@
 # Quool
 
-![Python](https://img.shields.io/badge/Python-FFD43B?style=for-the-badge&logo=python&logoColor=blue) ![Numpy](https://img.shields.io/badge/Numpy-777BB4?style=for-the-badge&logo=numpy&logoColor=white) ![Pandas](https://img.shields.io/badge/Pandas-2C2D72?style=for-the-badge&logo=pandas&logoColor=white) ![Wechat](https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white)
-
-
-# Financial Data Analysis Toolkit
-
-This toolkit provides a comprehensive suite of modules for financial data analysis, including web requests, data processing, and logging. Designed with ease of use and efficiency in mind, it's an ideal solution for analysts and developers working in financial data analytics.
+Quool is a Python framework designed specifically for quantitative investment research. It aims to provide a flexible and efficient set of tools to help researchers and developers quickly implement data management, factor analysis, trading recording, and strategy evaluation functionalities. With Quool, users can focus on strategy and factor research without spending excessive time on data management and infrastructure setup.
 
 ## Features
 
-* **Request Module** : Interfaces with various financial data APIs and web scraping for stock market information.
-* **Tool Module** : A collection of utility functions for data parsing, logging, memory optimization, and more.
-* **Custom Logging** : Enhanced logging capabilities for both console and file output with customizable formats.
-
-## Modules
-
-### 1. Request Module
-
-Handles various types of web requests and interactions with APIs. It includes classes for:
-
-* **AkShare** : Fetching financial data using the AkShare API.
-* **Em** : Interacting with East Money (东方财富网) for financial data and analysis.
-* **StockUS** : Accessing US stock market data and research reports.
-* **WeiXin** : Interfacing with WeChat for functionalities like QR code-based login and notifications.
-
-### 2. Tool Module
-
-Provides utility functions and classes to support operations such as:
-
-* **Logger** : Enhanced logging with configurable display options.
-* **Date Parsing** : Converts date strings into `pandas.Timestamp` objects.
-* **Memory Optimization** : Reduces memory usage of pandas DataFrames.
+- **Data Management**: Offers a unified interface for managing and accessing financial market data, supporting both intraday and daily data processing.
+- **Factor Research**: Simplifies the process of factor development and testing, supporting factor definition, storage, analysis, and performance evaluation.
+- **Trading Recording**: Provides flexible Recorder classes for recording and managing trade data and model execution data.
+- **Strategy Evaluation**: Integrates strategy evaluation tools, supporting calculations of various performance metrics and result visualization.
 
 ## Installation
 
-To use this toolkit, clone the repository to your local machine:
+Currently, the Quool framework is not available on PyPI. You can install it from the source code as follows:
 
-<pre><div class="bg-black rounded-md"><div class="flex items-center relative text-gray-200 bg-gray-800 dark:bg-token-surface-primary px-4 py-2 text-xs font-sans justify-between rounded-t-md"><span>bash</span><span class="" data-state="closed"><button class="flex gap-1 items-center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-sm"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 4C10.8954 4 10 4.89543 10 6H14C14 4.89543 13.1046 4 12 4ZM8.53513 4C9.22675 2.8044 10.5194 2 12 2C13.4806 2 14.7733 2.8044 15.4649 4H17C18.6569 4 20 5.34315 20 7V19C20 20.6569 18.6569 22 17 22H7C5.34315 22 4 20.6569 4 19V7C4 5.34315 5.34315 4 7 4H8.53513ZM8 6H7C6.44772 6 6 6.44772 6 7V19C6 19.5523 6.44772 20 7 20H17C17.5523 20 18 19.5523 18 19V7C18 6.44772 17.5523 6 17 6H16C16 7.10457 15.1046 8 14 8H10C8.89543 8 8 7.10457 8 6Z" fill="currentColor"></path></svg>Copy code</button></span></div><div class="p-4 overflow-y-auto"><code class="!whitespace-pre hljs language-bash">git clone https://github.com/ppoak/quool
-</code></div></div></pre>
+```bash
+git clone https://github.com/your-username/quool.git
+cd quool
+pip install .
+```
 
-## Usage
+## Quick Start
 
-Here's a quick example of how to use the `AkShare` class to fetch daily market data:
+Here are the basic steps to conduct factor research and strategy evaluation using Quool:
 
-<pre><div class="bg-black rounded-md"><div class="flex items-center relative text-gray-200 bg-gray-800 dark:bg-token-surface-primary px-4 py-2 text-xs font-sans justify-between rounded-t-md"><span>python</span><span class="" data-state="closed"><button class="flex gap-1 items-center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-sm"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 4C10.8954 4 10 4.89543 10 6H14C14 4.89543 13.1046 4 12 4ZM8.53513 4C9.22675 2.8044 10.5194 2 12 2C13.4806 2 14.7733 2.8044 15.4649 4H17C18.6569 4 20 5.34315 20 7V19C20 20.6569 18.6569 22 17 22H7C5.34315 22 4 20.6569 4 19V7C4 5.34315 5.34315 4 7 4H8.53513ZM8 6H7C6.44772 6 6 6.44772 6 7V19C6 19.5523 6.44772 20 7 20H17C17.5523 20 18 19.5523 18 19V7C18 6.44772 17.5523 6 17 6H16C16 7.10457 15.1046 8 14 8H10C8.89543 8 8 7.10457 8 6Z" fill="currentColor"></path></svg>Copy code</button></span></div><div class="p-4 overflow-y-auto"><code class="!whitespace-pre hljs language-python">import quool.request as qr
-daily_data = qr.AkShare.market_daily('600000', start='20200101', end='20201231')
-</code></div></div></pre>
+### Define a Factor
 
-For logging:
+First, inherit the `BaseFactor` class to define your own factor. For example, define a factor that calculates the Volume Weighted Average Price (VWAP):
 
-<pre><div class="bg-black rounded-md"><div class="flex items-center relative text-gray-200 bg-gray-800 dark:bg-token-surface-primary px-4 py-2 text-xs font-sans justify-between rounded-t-md"><span>python</span><span class="" data-state="closed"><button class="flex gap-1 items-center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-sm"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 4C10.8954 4 10 4.89543 10 6H14C14 4.89543 13.1046 4 12 4ZM8.53513 4C9.22675 2.8044 10.5194 2 12 2C13.4806 2 14.7733 2.8044 15.4649 4H17C18.6569 4 20 5.34315 20 7V19C20 20.6569 18.6569 22 17 22H7C5.34315 22 4 20.6569 4 19V7C4 5.34315 5.34315 4 7 4H8.53513ZM8 6H7C6.44772 6 6 6.44772 6 7V19C6 19.5523 6.44772 20 7 20H17C17.5523 20 18 19.5523 18 19V7C18 6.44772 17.5523 6 17 6H16C16 7.10457 15.1046 8 14 8H10C8.89543 8 8 7.10457 8 6Z" fill="currentColor"></path></svg>Copy code</button></span></div><div class="p-4 overflow-y-auto"><code class="!whitespace-pre hljs language-python">import quool.tool import qt
-logger = qt.Logger(name="MyLogger", level=logging.INFO, file="log.txt")
-logger.info("This is an info message")
-</code></div></div></pre>
+```python
+from quool import BaseFactor
+
+class VWAPFactor(BaseFactor):
+    def get_vwap(self, date: pd.Timestamp):
+        # Implement the calculation logic for VWAP
+        pass
+```
+
+### Calculate Factor Values
+
+Instantiate your factor class and use the `get` method to calculate factor values for a specific date range:
+
+```python
+vwap_factor = VWAPFactor(uri="./path/to/factor/data")
+vwap_values = vwap_factor.get("vwap", start="2021-01-01", stop="2021-12-31")
+```
+
+### Evaluate Strategies
+
+Use the `TradeRecorder` or other recorder classes to record your trading activities and use the `evaluate` method to assess strategy performance:
+
+```python
+from quool import TradeRecorder
+
+# Record trading activities
+trade_recorder = TradeRecorder(uri="./path/to/trade/data")
+trade_recorder.record(date="2021-01-01", ...)
+
+# Evaluate strategy performance
+performance = trade_recorder.evaluate(...)
+```
 
 ## Contributing
 
-Contributions to improve this toolkit are welcome. Please fork the repository and submit a pull request with your changes.
+Contributions in the form of issue reports and pull requests are welcome on GitHub.
 
 ## License
 
-This project is licensed under [MIT License]().
+Quool is released under the MIT license.
