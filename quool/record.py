@@ -107,12 +107,13 @@ class TradeRecorder(ItemTable):
     def peek(self, date: str | pd.Timestamp = None, price: pd.Series = None) -> pd.Series:
         df = self.read(filters=[("datetime", "<=", pd.to_datetime(date or 'now'))])
         df = df.groupby("code")[["size", "amount", "commission"]].sum()
-        df["cost"] = df["amount"] / df["size"]
+        df["cost"] = (df["amount"] / df["size"]).replace([-np.inf, np.inf], 0)
         if price is None:
             return df
         price = price.copy()
         price.loc["cash"] = 1
-        df["price"] = price.loc[df.index]
+        indexer = price.index.get_indexer_for(df.index)
+        df["price"] = price.iloc[indexer[indexer != -1]]
         df["value"] = df["price"] * df["size"]
         df["pnl"] = df["price"] / df["cost"] - 1
         return df
@@ -142,8 +143,7 @@ class TradeRecorder(ItemTable):
 
         noncash = data.drop(labels="cash", axis=0)
         noncash.index.names = price.index.names
-        # if it raise, there are some price not available
-        price = price.loc[noncash.index]
+        price = price.loc[noncash.index.intersection(price.index)]
         delta = (price * noncash["size"]).groupby(level=date_level).sum()
         noncash = noncash.groupby(level=code_level, group_keys=False).apply(lambda x: x.fillna(0).cumsum())
         market = (price * noncash["size"]).groupby(level=date_level).sum()
@@ -249,7 +249,7 @@ class TradeRecorder(ItemTable):
             month = (data['net_value'].resample('M').last() - data['net_value'].resample('M').first())
             year.index = year.index.year
             year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45, colormap='Paired')
-            ax[0, 2].bar(month.index, month.values, width=20)
+            ax[0, 2].bar(month.index, month.values, width=20, title='Monthly Return')
 
 
             ax10 = data['exvalue'].plot(ax=ax[1,0], title='Extra Return', legend=True)
