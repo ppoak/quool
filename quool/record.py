@@ -61,7 +61,7 @@ class TradeRecorder(ItemTable):
     
     @property
     def spliter(self):
-        return pd.Grouper(key='datetime', freq='M')
+        return pd.Grouper(key='datetime', freq='ME')
 
     @property
     def namer(self):
