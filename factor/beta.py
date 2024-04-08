@@ -19,11 +19,13 @@ class BetaFactor(BaseFactor):
         return pd.Series(beta_values)
 
     def get_beta_factor(self, date: str):
-        stock_prices = fqtd.read("close", start=date, stop=date)
-        market_prices = fidx_c.read('close',start=date, stop=date).loc[:,'000001.XSHG']
+        rollback = fqtd.get_trading_days_rollback(date, 252)
+        stock_prices = fqtd.read("close", start=rollback, stop=date)
+        market_prices = fidx_c.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
         
         stock_returns = self.get_returns(stock_prices).tail(252).ewm(halflife=63).mean()
         market_returns = self.get_returns(market_prices).tail(252).ewm(halflife=63).mean()
 
         beta = self.calculate_beta(stock_returns, market_returns)
+        beta.index.name = 'order_book_id'
         return beta
