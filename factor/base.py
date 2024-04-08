@@ -1,3 +1,4 @@
+import os
 import quool as q
 import numpy as np
 import pandas as pd
@@ -87,6 +88,9 @@ class BaseFactor(q.Factor):
             return pd.concat(result, axis=0).sort_index().loc(axis=0)[:, start:stop]
 
 
-fqtd = q.Factor("./data/quotes-day", code_level="order_book_id", date_level="date")
-fqtm = q.Factor("./data/quotes-min", code_level="order_book_id", date_level="datetime")
-fcon = q.Factor("./data/stock-connect", code_level="order_book_id", date_level="date")
+fqtd = q.Factor("../data/quotes-day", code_level="order_book_id", date_level="date")
+fqtm = q.Factor("../data/quotes-min", code_level="order_book_id", date_level="datetime")
+# fcon = q.Factor("../data/stock-connect", code_level="order_book_id", date_level="date")
+fina = q.Factor("../data/financial", code_level="order_book_id", date_level="date")
+fidx_w = q.Factor("../data/index-weights", code_level="order_book_id", date_level="date")
+fidx_c = q.Factor("../data/index-quotes-day", code_level="order_book_id", date_level="date")
