@@ -10,22 +10,20 @@ class BetaFactor(BaseFactor):
         return price.pct_change()
 
     def calculate_beta(self, stock_returns, market_returns):
-        beta_values = {}
+        res = {}
         var = np.var(market_returns)
-        for stock in stock_returns.columns:
-            covr = np.cov(stock_returns[stock],market_returns)[0][1]
+        for code in stock_returns.columns:
+            covr = np.cov(stock_returns[code],market_returns)[0][1]
             result = covr/var
-            beta_values[stock] = result
-        return pd.Series(beta_values)
+            res[code] = result
+        return pd.Series(res)
 
     def get_beta_factor(self, date: str):
         rollback = fqtd.get_trading_days_rollback(date, 252)
-        stock_prices = fqtd.read("close", start=rollback, stop=date)
+        prices = fqtd.read("close", start=rollback, stop=date)
         market_prices = fidx_c.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
-        
-        stock_returns = self.get_returns(stock_prices).tail(252).ewm(halflife=63).mean()
+        stock_returns = self.get_returns(prices).tail(252).ewm(halflife=63).mean()
         market_returns = self.get_returns(market_prices).tail(252).ewm(halflife=63).mean()
-
-        beta = self.calculate_beta(stock_returns, market_returns)
-        beta.index.name = 'order_book_id'
-        return beta
+        res = self.calculate_beta(stock_returns, market_returns)
+        res.index.name = 'order_book_id'
+        return res
