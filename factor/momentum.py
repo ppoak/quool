@@ -9,7 +9,9 @@ class MomentumFactor(BaseFactor):
     def get_rstr(self, date: str): # with a lag of L=21 tradingdays
         rollback = fqtd.get_trading_days_rollback(date, 504+21)
         prices = fqtd.read("close", start=rollback, stop=date)
-        ret  = np.log(1 + prices.pct_change()).ewm(halflife=126).mean()
+        adjfactor = fqtd.read("adjfactor", start=rollback, stop=date)
+        prices_adj = prices * adjfactor
+        ret  = np.log(1 + prices_adj.pct_change()).ewm(halflife=126).mean()
 
         for end_date in ret.index[21:]:
             start_date = ret.index[ret.index.get_loc(end_date) - 504-21]
