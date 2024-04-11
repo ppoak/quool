@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from base import (
-    fqtd, fqtm, fidx_c, BaseFactor
+from .base import (
+    fqtd, fqtm, fidxqtd, BaseFactor
 )
 
 
@@ -22,7 +22,7 @@ class VolatileFactor(BaseFactor):
         prices = fqtd.read("close", start=rollback, stop=date)
         adjfactor = fqtd.read("adjfactor", start=rollback, stop=date)
         prices_adj = prices * adjfactor
-        market_prices = fidx_c.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
+        market_prices = fidxqtd.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
         stock_ret = prices_adj.pct_change()
         market_ret = market_prices.pct_change()
         excess_ret = stock_ret.subtract(market_ret, axis=0)
@@ -34,7 +34,7 @@ class VolatileFactor(BaseFactor):
         prices = fqtd.read("close", start=rollback, stop=date)
         adjfactor = fqtd.read("adjfactor", start=rollback, stop=date)
         prices_adj = prices * adjfactor
-        market_prices = fidx_c.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
+        market_prices = fidxqtd.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
         stock_ret = np.log(1 + prices_adj.pct_change())
         market_ret = np.log(1 + market_prices.pct_change())
         zt = stock_ret.subtract(market_ret, axis=0).rolling(window=21).sum()
@@ -46,7 +46,7 @@ class VolatileFactor(BaseFactor):
         prices = fqtd.read("close", start=rollback, stop=date)
         adjfactor = fqtd.read("adjfactor", start=rollback, stop=date)
         prices_adj = prices * adjfactor
-        market_prices = fidx_c.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
+        market_prices = fidxqtd.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
         stock_returns = prices_adj.pct_change().tail(252).ewm(halflife=63).mean()
         market_returns = market_prices.pct_change().tail(252).ewm(halflife=63).mean()
         res = self.calculate_resid(stock_returns, market_returns).std()
@@ -86,7 +86,7 @@ class VolatileFactor(BaseFactor):
         prices = fqtd.read("close", start=rollback, stop=date)
         adjfactor = fqtd.read("adjfactor", start=rollback, stop=date)
         prices_adj = prices * adjfactor
-        market_prices = fidx_c.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
+        market_prices = fidxqtd.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
         stock_returns = prices_adj.pct_change().tail(252).ewm(halflife=63).mean()
         market_returns = market_prices.pct_change().tail(252).ewm(halflife=63).mean()
         res = self.calculate_beta(stock_returns, market_returns)
