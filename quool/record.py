@@ -61,7 +61,7 @@ class TradeRecorder(ItemTable):
     
     @property
     def spliter(self):
-        return pd.Grouper(key='datetime', freq='M')
+        return pd.Grouper(key='datetime', freq='ME')
 
     @property
     def namer(self):
@@ -178,7 +178,7 @@ class TradeRecorder(ItemTable):
         benchmark_returns = benchmark_returns if not benchmark_returns.isna().all() else pd.Series(np.zeros(benchmark_returns.shape[0]), index=benchmark.index)
         drawdown = net_value / net_value.cummax() - 1
 
-        # # evaluation indicators
+        # evaluation indicators
         evaluation = pd.Series(name='evaluation')
         evaluation['total_return(%)'] = (net_value.iloc[-1] / net_value.iloc[0] - 1) * 100
         evaluation['annual_return(%)'] = ((evaluation['total_return(%)'] / 100 + 1) ** (
@@ -243,10 +243,10 @@ class TradeRecorder(ItemTable):
             ax00_twi.set_ylabel("Drawdown")
 
             if not (benchmark==0).all():
-                year = (data[['net_value', 'exvalue', 'benchmark']].resample('Y').last() - data[['net_value', 'exvalue', 'benchmark']].resample('Y').first())
+                year = (data[['net_value', 'exvalue', 'benchmark']].resample('YE').last() - data[['net_value', 'exvalue', 'benchmark']].resample('Y').first())
             else:
-                year = (data['net_value'].resample('Y').last() - data['net_value'].resample('Y').first())
-            month = (data['net_value'].resample('M').last() - data['net_value'].resample('M').first())
+                year = (data['net_value'].resample('YE').last() - data['net_value'].resample('YE').first())
+            month = (data['net_value'].resample('ME').last() - data['net_value'].resample('ME').first())
             year.index = year.index.year
             year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45, colormap='Paired')
             ax[0, 2].bar(month.index, month.values, width=20)
