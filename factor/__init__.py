@@ -11,8 +11,9 @@ from .deraprice import DeraPriceFactor
 from .voldist import VolDistFactor
 from .volatile import VolatileFactor
 from .capflow import CapFlowFactor
+from .evaluation import EvaluationFactor
 
-class Factor(MarketSizeFactor, RetDistFactor, DeraPriceFactor, VolDistFactor, VolatileFactor, CapFlowFactor):
+class Factor(MarketSizeFactor, RetDistFactor, DeraPriceFactor, VolDistFactor, VolatileFactor, CapFlowFactor, EvaluationFactor):
 
     pass
     
