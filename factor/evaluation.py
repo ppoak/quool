@@ -77,3 +77,55 @@ class EvaluationFactor(BaseFactor):
         res = sgro + egro
         res.name = date
         return res
+
+    def get_mlev(self, date: str | pd.Timestamp) -> pd.Series:
+        rollback = fqtd.get_trading_days_rollback(date, rollback=252)
+        trading_days = fqtd.get_trading_days(start=rollback, stop=date)
+        pe = ffin.read('equity_preferred_stock', start=rollback, stop=date)
+        pe = pe.reindex(trading_days).ffill()
+        pe = pe.loc[date].fillna(0)
+        ld = ffin.read('non_current_liabilities', start=rollback, stop=date)
+        ld = ld.reindex(trading_days).ffill()
+        ld = ld.loc[date].fillna(0)
+        price = fqtd.read('close', start=date, stop=date).loc[date]
+        adjfactor = fqtd.read('adjfactor', start=date, stop=date).loc[date]
+        shares = fqtd.read('circulation_a', start=date, stop=date).loc[date]
+        me = price * adjfactor * shares
+        res = (me + ld + pe)/ me
+        return res * 0.38
+
+    def get_dtoa(self, date: str | pd.Timestamp) -> pd.Series:
+        rollback = fqtd.get_trading_days_rollback(date, rollback=252)
+        trading_days = fqtd.get_trading_days(start=rollback, stop=date)
+        ta = ffin.read('total_assets', start=rollback, stop=date)
+        ta = ta.reindex(trading_days).ffill()
+        ta = ta.loc[date].fillna(0)
+        td = ffin.read('total_liabilities', start=rollback, stop=date)
+        td = td.reindex(trading_days).ffill()
+        td = td.loc[date].fillna(0)
+        res = td / ta
+        return res * 0.35
+    
+    def get_blev(self, date: str | pd.Timestamp) -> pd.Series:
+        rollback = fqtd.get_trading_days_rollback(date, rollback=252)
+        trading_days = fqtd.get_trading_days(start=rollback, stop=date)
+        pe = ffin.read('equity_preferred_stock', start=rollback, stop=date)
+        pe = pe.reindex(trading_days).ffill()
+        pe = pe.loc[date].fillna(0)
+        ld = ffin.read('non_current_liabilities', start=rollback, stop=date)
+        ld = ld.reindex(trading_days).ffill()
+        ld = ld.loc[date].fillna(0)
+        total_equity = ffin.read('non_current_liabilities', start=rollback, stop=date)
+        total_equity = total_equity.reindex(trading_days).ffill()
+        total_equity = total_equity.loc[date].fillna(0)
+        shares = fqtd.read('circulation_a', start=date, stop=date).loc[date]
+        be = (total_equity - pe) / shares
+        res = (be + ld + pe) / be
+        return res * 0.27
+
+    def get_barra_leverage(self, date: str | pd.Timestamp) -> pd.Series:
+        mlev = self.get_mlev(date)
+        blev = self.get_blev(date)
+        dtoa = self.get_dtoa(date)
+        res = mlev + blev + dtoa
+        return res
