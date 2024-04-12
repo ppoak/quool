@@ -35,3 +35,41 @@ class DeraPriceFactor(BaseFactor):
         arrp.name = date
         return arrp
 
+
+    def get_liquidity(self, date: pd.Timestamp) -> pd.DataFrame:
+        stom = self.get_stom(date)
+        stoq = self.get_stoq(date)
+        stoa = self.get_stoa(date)
+        res = stom + stoq + stoa
+        res.name = date
+        return res
+
+    def get_stom(self, date: str | pd.Timestamp) -> pd.Series:
+        rollback = fqtd.get_trading_days_rollback(date, 21)
+        volume = fqtd.read("volume", start=rollback, stop=date)
+        shares = fqtd.read("circulation_a", start=rollback, stop=date)
+        res = np.log(np.sum(volume/shares))
+        return res*0.35
+    
+    def get_stoq(self, date: str | pd.Timestamp) -> pd.Series:
+        current_date = pd.Timestamp(date)
+        res = pd.Series()
+        for _ in range(3):  
+            stom = np.exp(self.get_stom(current_date))
+            current_date -= pd.DateOffset(days=21)
+            res = pd.concat([res, stom])
+        res = res.groupby(res.index).sum()
+        res = np.log(res)
+        return res * 0.35 
+    
+    def get_stoa(self, date: str | pd.Timestamp) -> pd.Series:
+        current_date = pd.Timestamp(date)
+        res = pd.Series()
+        for _ in range(12):  
+            stom = np.exp(self.get_stom(current_date))
+            current_date -= pd.DateOffset(days=21)
+            res = pd.concat([res, stom])
+        res = res.groupby(res.index).sum()
+        res = np.log(res)
+        return res * 0.3 
+
