@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 from .base import (
-    fqtd, ffin, BaseFactor
+    fqtd, ffin,fidxwgt, BaseFactor
 )
 
 class EvaluationFactor(BaseFactor):
@@ -124,8 +124,15 @@ class EvaluationFactor(BaseFactor):
         return res * 0.27
 
     def get_barra_leverage(self, date: str | pd.Timestamp) -> pd.Series:
-        mlev = self.get_mlev(date)
-        blev = self.get_blev(date)
-        dtoa = self.get_dtoa(date)
+        mlev = self.standardize(self.get_mlev(date),date).fillna(0)
+        blev = self.standardize(self.get_blev(date),date).fillna(0)
+        dtoa = self.standardize(self.get_dtoa(date),date).fillna(0)
         res = mlev + blev + dtoa
+        return res
+    
+    def standardize(self, data: pd.Series ,date: pd.Timestamp) -> pd.Series:
+        weight = fidxwgt.read('000001.XSHG',start=date, stop=date).loc[date]
+        mean = np.sum(weight * data)
+        std = data.std()
+        res = (data - mean) / std
         return res
