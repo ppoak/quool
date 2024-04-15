@@ -83,7 +83,7 @@ class BaseFactor(q.Factor):
             delayed(getattr(self, "get_" + name))(date) for date in tqdm(list(trading_days))
         )
         if isinstance(result[0], pd.Series):
-            return pd.concat(result, axis=1).T.loc[start:stop]
+            return pd.concat(result, axis=1).T.sort_index().loc[start:stop]
         elif isinstance(result[0], pd.DataFrame):
             return pd.concat(result, axis=0).sort_index().loc(axis=0)[:, start:stop]
 
