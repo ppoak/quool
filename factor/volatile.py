@@ -47,7 +47,7 @@ class VolatileFactor(BaseFactor):
         zt = stock_ret.subtract(market_ret, axis=0).resample('21D').sum()
         zt_max = zt.loc[zt.sum(axis=1).idxmax(),:]
         zt_min = zt.loc[zt.sum(axis=1).idxmin(),:]
-        res = np.log(1 + zt_max) - np.log(1 + zt_min)
+        res = zt_max - zt_min
         return res * 0.16
     
     def get_hsigma(self, date: str):
