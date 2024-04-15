@@ -86,7 +86,7 @@ class PanelTable(Table):
         uri: str | Path,
         code_level: str | int = 0,
         date_level: str | int = 1,
-        freq: str = "M",
+        freq: str = "ME",
         format: str = r"%Y%m",
         create: bool = False,
     ):
