@@ -44,8 +44,10 @@ class VolatileFactor(BaseFactor):
         market_prices = fidxqtd.read('close',start=rollback, stop=date).loc[:,'000001.XSHG']
         stock_ret = np.log(1 + prices_adj.pct_change(fill_method=None))
         market_ret = np.log(1 + market_prices.pct_change(fill_method=None))
-        zt = stock_ret.subtract(market_ret, axis=0).rolling(window=21).sum()
-        res = zt.max() - zt.min()
+        zt = stock_ret.subtract(market_ret, axis=0).resample('21D').sum()
+        zt_max = zt.loc[zt.sum(axis=1).idxmax(),:]
+        zt_min = zt.loc[zt.sum(axis=1).idxmin(),:]
+        res = np.log(1 + zt_max) - np.log(1 + zt_min)
         return res * 0.16
     
     def get_hsigma(self, date: str):
