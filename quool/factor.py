@@ -83,7 +83,7 @@ class Factor(PanelTable):
         code_level = 'order_book_id' if isinstance(code_level, int) else code_level
         date_level = 'date' if isinstance(date_level, int) else date_level
         if isinstance(df, pd.DataFrame) and df.index.nlevels == 1:
-            df = df.stack(dropna=True).swaplevel()
+            df = df.stack(future_stack=True).swaplevel()
             df.index.names = [code_level, date_level]
         
         if isinstance(df, pd.Series):
