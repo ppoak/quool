@@ -79,7 +79,6 @@ class TradeRecorder(ItemTable):
         price: float = None,
         amount: float = None,
         commission: float = 0,
-        **kwargs,
     ):
         if size is None and price is None and amount is None:
             raise ValueError("two of size, price or amount must be specified")
@@ -91,14 +90,14 @@ class TradeRecorder(ItemTable):
             "datetime": pd.to_datetime(date),
             "code": code, "size": size,
             "price": price, "amount": amount,
-            "commission": commission, **kwargs
+            "commission": commission,
         }], index=[pd.to_datetime('now')])
         if code != "cash":
             cash = pd.DataFrame([{
                 "datetime": pd.to_datetime(date),
                 "code": "cash", "size": -size * price - commission,
                 "price": 1, "commission": 0,
-                "amount": -size * price - commission, **kwargs
+                "amount": -size * price - commission
             }], index=[pd.to_datetime('now')])
             trade = pd.concat([trade, cash], axis=0)
         
