@@ -114,7 +114,7 @@ class TradeRecorder(ItemTable):
         indexer = price.index.get_indexer_for(df.index)
         df["price"] = price.iloc[indexer[indexer != -1]]
         df["value"] = df["price"] * df["size"]
-        df["pnl"] = df["price"] / df["cost"] - 1
+        df['pnl'] = ((df['price'] - df['cost']) * df['size']).where(df['size'] != 0, -df['amount'])
         return df
         
     def report(
