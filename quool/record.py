@@ -106,7 +106,6 @@ class TradeRecorder(ItemTable):
     def peek(self, date: str | pd.Timestamp = None, price: pd.Series = None) -> pd.Series:
         df = self.read(filters=[("datetime", "<=", pd.to_datetime(date or 'now'))])
         df = df.groupby("code")[["size", "amount", "commission"]].sum()
-        df = df[df["size"] != 0]
         df["cost"] = (df["amount"] / df["size"]).replace([-np.inf, np.inf], 0)
         if price is None:
             return df
