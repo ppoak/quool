@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from lxml import etree
 from pathlib import Path
 from .table import ItemTable
+from .util import parse_commastr
 
 
 class RunRecorder(ItemTable):
@@ -70,6 +71,33 @@ class TradeRecorder(ItemTable):
     def prune(self):
         for frag in self.fragments:
             self._fragment_path(frag).unlink()
+
+    def read(
+        self, 
+        field: str | list = None,
+        start: str | list = None, 
+        stop: str = None,
+        code: str | list = None,
+        filters: list = None,
+    ) -> pd.Series | pd.DataFrame:
+        field = parse_commastr(field)
+        code = parse_commastr(code)
+        start = pd.to_datetime(start if start is not None else 0)
+        stop = pd.to_datetime(stop if stop is not None else 'now')
+        filters = filters or []
+        if not isinstance(start, pd.DatetimeIndex):
+            filters += [
+                ("datetime", ">=", start),
+                ("datetime", "<=", stop)
+            ]
+            if code is not None:
+                filters.append(["code", "in", code])
+        else:
+            filters += [("datetime", "in", start)]
+            if code is not None:
+                filters.append(("code", "in", code))
+        
+        return pd.read_parquet(self.path, columns=field, filters=filters)
 
     def trade(
         self, 
