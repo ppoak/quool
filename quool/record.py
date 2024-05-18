@@ -41,6 +41,8 @@ class RunRecorder(ItemTable):
 
 class TradeRecorder(ItemTable):
 
+    standard_columns = ["datetime", "code", "size", "price", "amount", "commission"]
+
     def __init__(
         self, 
         uri: str | Path, 
@@ -57,8 +59,8 @@ class TradeRecorder(ItemTable):
                 "price": 1.0, "amount": float(principle), "commission": 0.0
             }], index=[pd.to_datetime('now')]))
         
-        if not self.columns.isin(["datetime", "code", "size", "price", "amount", "commission"]).all():
-            raise ValueError("The table must have columns datetime, code, size, price, amount, commission")
+        if not self.columns.isin(self.standard_columns).all():
+            raise ValueError("The table must have standard columns")
     
     @property
     def spliter(self):
@@ -162,9 +164,8 @@ class TradeRecorder(ItemTable):
         dates = dates[dates >= data["datetime"].min()]
 
         data = data.groupby(["code", "datetime"]).sum()
-        data = data.groupby("code").apply(lambda x: x.droplevel('code').reindex(
-            dates.union(x.index.get_level_values('datetime').unique().sort_values())
-        ))
+        data = data.reindex(pd.MultiIndex.from_product(
+            [data.index.levels[0], dates], names=["code", "datetime"]))
         cash = data.loc["cash", "amount"]
         cash = cash.fillna(0).cumsum()
 
@@ -172,7 +173,7 @@ class TradeRecorder(ItemTable):
         noncash.index.names = price.index.names
         price = price.loc[noncash.index.intersection(price.index)]
         delta = (price * noncash["size"]).groupby(level=date_level).sum()
-        noncash = noncash.groupby(level=code_level, group_keys=False).apply(lambda x: x.fillna(0).cumsum())
+        noncash = noncash.fillna(0).groupby(level=code_level, group_keys=False).cumsum()
         market = (price * noncash["size"]).groupby(level=date_level).sum()
         market = market.reindex(cash.index).fillna(0)
         value = market + cash
@@ -195,7 +196,7 @@ class TradeRecorder(ItemTable):
             pd.Series(np.zeros(value.shape[0]), index=value.index)
         turnover = turnover.squeeze() if isinstance(turnover, (pd.Series, pd.DataFrame)) else \
             pd.Series(np.zeros(value.shape[0]), index=value.index)
-        benchmark = benchmark.droplevel(0) if isinstance(benchmark, (pd.Series, pd.DataFrame)) else \
+        benchmark = benchmark if isinstance(benchmark, (pd.Series, pd.DataFrame)) else \
             pd.Series(np.zeros(value.shape[0]), index=value.index)
         benchmark = benchmark.loc[value.index]
         net_value = value / value.iloc[0]
@@ -270,7 +271,7 @@ class TradeRecorder(ItemTable):
             ax00_twi.set_ylabel("Drawdown")
 
             if not (benchmark==0).all():
-                year = (data[['net_value', 'exvalue', 'benchmark']].resample('YE').last() - data[['net_value', 'exvalue', 'benchmark']].resample('Y').first())
+                year = (data[['net_value', 'exvalue', 'benchmark']].resample('YE').last() - data[['net_value', 'exvalue', 'benchmark']].resample('YE').first())
             else:
                 year = (data['net_value'].resample('YE').last() - data['net_value'].resample('YE').first())
             month = (data['net_value'].resample('ME').last() - data['net_value'].resample('ME').first())
@@ -278,7 +279,6 @@ class TradeRecorder(ItemTable):
             year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45, colormap='Paired')
             ax[0, 2].bar(month.index, month.values, width=20)
             ax[0, 2].set_title("Monthly Return")
-
 
             ax10 = data['exvalue'].plot(ax=ax[1,0], title='Extra Return', legend=True)
             ax10.legend(loc='lower left')
