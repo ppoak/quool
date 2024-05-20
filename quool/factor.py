@@ -92,12 +92,10 @@ class Factor(PanelTable):
             df.index.names = [code_level, date_level]
             df = df.to_frame(name)
         
-        update_data = df[df.columns[df.columns.isin(self.columns)]]
         add_data = df[df.columns[~df.columns.isin(self.columns)]]
-        if not update_data.empty:
-            self.update(df)
         if not add_data.empty:
-            self.add(df)
+            self.add(add_data.dtypes)
+        self.update(df)
     
     def perform_crosssection(
         self, name: str, 
