@@ -109,6 +109,7 @@ class TradeRecorder(ItemTable):
         price: float = None,
         amount: float = None,
         commission: float = 0,
+        **kwargs,
     ):
         if size is None and price is None and amount is None:
             raise ValueError("two of size, price or amount must be specified")
@@ -120,7 +121,7 @@ class TradeRecorder(ItemTable):
             "datetime": pd.to_datetime(date),
             "code": code, "size": size,
             "price": price, "amount": amount,
-            "commission": commission,
+            "commission": commission, **kwargs
         }], index=[pd.to_datetime('now')])
         if code != "cash":
             cash = pd.DataFrame([{
@@ -131,6 +132,8 @@ class TradeRecorder(ItemTable):
             }], index=[pd.to_datetime('now')])
             trade = pd.concat([trade, cash], axis=0)
         
+        if kwargs:
+            self.add(dict((k, type(v)) for k, v in kwargs.items()))
         self.update(trade)
 
     def peek(self, date: str | pd.Timestamp = None, price: pd.Series = None) -> pd.Series:

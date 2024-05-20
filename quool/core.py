@@ -97,22 +97,6 @@ class Table(abc.ABC):
             frag.reindex(columns=self.columns).astype(
                 self.dtypes).to_parquet(self._fragment_path(name))
     
-    def _add_frag(self, frag: pd.DataFrame):
-        # in case of empty dataframe
-        if frag.empty:
-            return
-        
-        name = self.namer(frag)
-        if name in self.fragments:
-            frag_dat = self._read_fragment(name)
-            # here we need to use outer join for inner join may delete data
-            frag_dat = pd.concat([frag_dat, frag], axis=1, join='outer')
-            frag_dat = frag_dat.astype(frag.dtypes)
-            frag_dat.to_parquet(self._fragment_path(name))
-        else:
-            frag.reindex(columns=self.columns.union(frag.columns)
-                ).to_parquet(self._fragment_path(name))
-    
     def _read_fragment(
         self,
         fragment: list | str = None,
@@ -147,24 +131,14 @@ class Table(abc.ABC):
 
         df.groupby(self.spliter).apply(self._update_frag)
 
-    def add(self, df: pd.Series | pd.DataFrame):
-        if isinstance(df, pd.Series):
-            df = df.to_frame()
-        
-        if not (df.columns == df.columns.astype('str')).all():
-            raise TypeError("all columns or name should be string type")
-        
-        if not df.columns.intersection(self.columns).empty:
+    def add(self, column: dict):
+        if not self.columns.intersection(column.keys()).empty:
             raise ValueError("existing field found, please update it")
         
-        df.groupby(self.spliter).apply(self._add_frag)
-        related_fragment = self._related_frag(df)
-        dtypes = self._read_fragment(related_fragment[0]).dtypes
-        columns = df.columns if isinstance(df, pd.DataFrame) else [df.name]
-        for frag in set(self.fragments) - set(related_fragment):
+        for frag in self.fragments:
             d = self._read_fragment(frag)
-            d[columns] = np.nan
-            d = d.astype(dtypes)
+            d[list(column.keys())] = np.nan
+            d = d.astype(column)
             d.to_parquet(self._fragment_path(frag))
     
     def delete(self, index: pd.Index):
