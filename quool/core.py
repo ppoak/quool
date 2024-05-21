@@ -142,7 +142,7 @@ class Table(abc.ABC):
             d.to_parquet(self._fragment_path(frag))
     
     def delete(self, index: pd.Index):
-        related_fragment = self._related_frag(pd.DataFrame(index=index))
+        related_fragment = self._related_frag(pd.Series(np.ones(len(index)), index=index))
         for frag in related_fragment:
             df = self._read_fragment(frag)
             df = df.drop(index=index.intersection(df.index))
