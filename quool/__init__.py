@@ -6,7 +6,7 @@ from .table import (
     PanelTable,
 )
 
-from .extension import (
+from .contrib import (
     Proxy,
     Broker,
     Factor,
@@ -27,4 +27,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.2.1"
+__version__ = "5.2.2"
