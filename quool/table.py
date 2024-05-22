@@ -11,18 +11,20 @@ class ItemTable(Table):
         column: str | list = None,
         start: str | list = None,
         stop: str = None,
+        datecol: str = None,
         filters: list[list[tuple]] = None,
     ):
         filters = filters or []
-        index_name = self.get_levelname(0)
-        index_name = '__index_level_0__' if isinstance(index_name, int) else index_name
+        if datecol is None:
+            datecol = self.get_levelname(0)
+            datecol = '__index_level_0__' if isinstance(datecol, int) else datecol
 
-        if isinstance(start, list):
-            filters.append((index_name, "in", start))
-        elif isinstance(start, str):
-            filters.append((index_name, ">=", start))
+        if isinstance(start, (list, pd.DatetimeIndex)):
+            filters.append((datecol, "in", pd.to_datetime(start)))
+        elif isinstance(start, (str, pd.Timestamp)):
+            filters.append((datecol, ">=", pd.to_datetime(start)))
         if isinstance(stop, str) and not isinstance(start, list):
-            filters.append((index_name, "<=", stop))
+            filters.append((datecol, "<=", pd.to_datetime(stop)))
         
         if not len(filters):
             filters = None

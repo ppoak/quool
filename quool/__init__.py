@@ -6,20 +6,18 @@ from .table import (
     PanelTable,
 )
 
-from .record import (
-    RunRecorder,
-    TradeRecorder,
-    ProxyRecorder,
+from .extension import (
+    Proxy,
+    Broker,
+    Factor,
 )
 
-from .factor import (
-    Factor
-)
 
 from .util import (
     Logger,
     parse_commastr,
     reduce_mem_usage,
+    evaluate,
 )
 
 
@@ -29,4 +27,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.1.2"
+__version__ = "5.2.0"
