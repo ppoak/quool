@@ -80,7 +80,7 @@ class Table(abc.ABC):
             return
         
         name = self.namer(frag)
-        if name in self.fragments:
+        if self.fragments and name in self.fragments:
             frag_dat = self._read_fragment(name)
             common_idx = frag.index.intersection(frag_dat.index)
             new_idx = frag.index.difference(frag_dat.index)
@@ -93,6 +93,8 @@ class Table(abc.ABC):
                     new_dat.reindex(columns=frag_dat.columns).astype(self.dtypes)
                 ], axis=0)
             frag_dat.to_parquet(self._fragment_path(name))
+        elif not self.fragments:
+            frag.to_parquet(self._fragment_path(name))
         else:
             frag.reindex(columns=self.columns).astype(
                 self.dtypes).to_parquet(self._fragment_path(name))
@@ -126,7 +128,7 @@ class Table(abc.ABC):
         if isinstance(df, pd.Series):
             df = df.to_frame()
         
-        if not df.columns.difference(self.columns).empty:
+        if not df.columns.difference(self.columns).empty and self.fragments:
             raise ValueError("new field found, please add first")
 
         df.groupby(self.spliter).apply(self._update_frag)
