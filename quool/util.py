@@ -132,13 +132,13 @@ def reduce_mem_usage(df: pd.DataFrame):
     return df
 
 def evaluate(
-        value: pd.Series, 
-        cash: pd.Series = None,
-        turnover: pd.Series = None,
-        benchmark: pd.Series = None,
-        image: str = None,
-        result: str = None,
-    ):
+    value: pd.Series, 
+    cash: pd.Series = None,
+    turnover: pd.Series = None,
+    benchmark: pd.Series = None,
+    image: str = None,
+    result: str = None,
+):
         cash = cash.squeeze() if isinstance(cash, (pd.Series, pd.DataFrame)) else \
             pd.Series(np.zeros(value.shape[0]), index=value.index)
         turnover = turnover.squeeze() if isinstance(turnover, (pd.Series, pd.DataFrame)) else \

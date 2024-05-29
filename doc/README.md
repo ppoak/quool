@@ -7,28 +7,21 @@
 - `Table`: 基本表格类，可能用于存储和操作数据。
 - `ItemTable`, `DatetimeTable`, `PanelTable`: 特定类型的表格类，用于处理不同类型的数据，如项目、日期时间和面板数据。
 
-### 记录器
+### 扩展
 
-- `RunRecorder`, `TradeRecorder`, `ProxyRecorder`: 用于记录和跟踪策略运行、交易和代理的信息，可能用于回测或实时监控。
-
-### 因子投资
-
-- `Factor`: 用于定义和操作因子，这在因子投资策略中至关重要。
+- `Broker`, `Factor`, `Proxy`: 用于记录和跟踪策略运行、交易和代理的信息，可能用于回测或实时监控。
 
 ### 工具和实用程序
 
 - `Logger`: 日志记录工具，用于跟踪程序运行时的信息和错误。
 - `parse_commastr`, `reduce_mem_usage`: 功能性工具，分别用于解析逗号分隔的字符串和减少内存使用。
+- `evaluate`：用于评估策略的函数，用于回测或实时监控。
 
 ### 日志级别
 
 - 定义了不同的日志级别（DEBUG, INFO, WARNING, CRITICAL），这有助于过滤和控制日志输出的详细程度。
 
-### 版本信息
-
-- 包的版本被定义为`5.0.7`。
-
-总的来说，`quool`似乎提供了一套完整的工具和框架，用于量化投资领域的研究和实践。它涵盖了从数据处理和存储、策略记录和回测到因子投资等多个方面，旨在提升研究和实践的效率和便捷性。
+总的来说，`quool`提供了一套完整的工具和框架，用于量化投资领域的研究和实践。它涵盖了从数据处理和存储、策略记录和回测到因子投资等多个方面，旨在提升研究和实践的效率和便捷性。
 
 `Table`类在`quool`框架中扮演着数据管理和操作的核心角色，专为处理、存储、和查询量化投资数据设计。这个类通过对Parquet文件格式的操作，提供了一种高效和灵活的方式来处理大规模的金融数据集。
 
@@ -51,6 +44,7 @@ Table(uri: str | Path, create: bool = False)
 - `create`：如果为`True`，当路径不存在时会创建该路径。
 
 #### 属性
+
 - `minfrag`：获取最小的数据片段。
 - `fragments`：获取所有数据片段的列表。
 - `columns`：获取表的所有列名。
@@ -61,7 +55,7 @@ Table(uri: str | Path, create: bool = False)
 
 - `read(columns: str | list[str] | None = None, filters: list[list[tuple]] = None) -> pd.DataFrame | pd.Series`：读取数据，可以指定列和过滤条件。
 - `update(df: pd.DataFrame | pd.Series)`：更新表中的数据。
-- `add(df: pd.Series | pd.DataFrame)`：向表中添加新的数据。
+- `add(column: dict)`：向表中添加新的数据。
 - `delete(index: pd.Index)`：删除指定索引的数据。
 - `remove(fragment: str | list = None)`：删除指定的数据片段。
 - `sub(column: str | list)`：删除指定的列。
@@ -83,7 +77,8 @@ data = table.read()
 table.update(df=pd.DataFrame({"new_column": [1, 2, 3]}))
 
 # 向表中添加新数据
-table.add(df=pd.DataFrame({"another_column": [4, 5, 6]}))
+table.add({"another_column": "int"})
+table.update(df=pd.DataFrame({"another_column": [4, 5, 6]}))
 
 # 删除指定索引的数据
 table.delete(index=pd.Index([0, 1]))
@@ -379,6 +374,7 @@ evaluate(value: pd.Series, cash: pd.Series = None, turnover: pd.Series = None, b
 假设你正在运行一个量化策略，并希望记录策略执行的交易信息及其性能评估：
 
 ```python
+from quool import evaluate
 from pathlib import Path
 
 # 实例化TradeRecorder，指定数据存储路径、起始资金和开始日期
@@ -395,7 +391,7 @@ price_series = pd.Series({...})  # 假设这是最新的价格序列
 report = trade_recorder.report(price=price_series)
 
 # 评估交易性能
-trade_recorder.evaluate(value=report['value'], cash=report['cash'], turnover=report['turnover'], image="performance.png", result="performance.xlsx")
+evaluate(value=report['value'], cash=report['cash'], turnover=report['turnover'], image="performance.png", result="performance.xlsx")
 ```
 
 通过使用`TradeRecorder`，量化交易者可以轻松地记录、管理和评估其交易策略的执行情况，从而优化策略表现和风险控制。
