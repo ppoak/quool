@@ -204,8 +204,7 @@ class Proxy(ItemTable):
             else:
                 self.add(results)
 
-
-class Broker(ItemTable):
+class Transaction(ItemTable):
 
     def __init__(
         self, 
@@ -217,19 +216,24 @@ class Broker(ItemTable):
         if not self.fragments:
             if principle is None or start is None:
                 raise ValueError("principle and start must be specified when initiating")
-            self.add({
-                "datetime": "datetime64[ns]",
-                "code": "str",
-                "size": "int",
-                "price": "float",
-                "amount": "float",
-                "commission": "float",
-            })
             init = pd.DataFrame([{
-                "datetime": pd.to_datetime(start), 
-                "code": "cash", "size": float(principle), 
-                "price": 1.0, "amount": float(principle), "commission": 0.0
-            }], index=[pd.to_datetime('now')])
+                "code": "cash",
+                "notify_time": pd.to_datetime(start), 
+                'type': "transfer",
+                'status': "Completed",
+                'created_time': start,
+                'created_price': 1,
+                'created_size': principle,
+                'executed_time': start,
+                'executed_price': 1,
+                'executed_size': principle,
+                'price_limit': np.nan,
+                'trail_amount': np.nan,
+                'trail_percent': np.nan,
+                'execute_type': 'Market',
+                "commission": 0.0,
+                "amount": float(principle), 
+            }], index=pd.Index([0], name="reference"))
             self.update(init)
     
     @property
@@ -261,30 +265,25 @@ class Broker(ItemTable):
         self, 
         date: str | pd.Timestamp,
         code: str,
+        ref: int,
         size: float = None,
         price: float = None,
-        amount: float = None,
         commission: float = 0,
         **kwargs,
     ):
-        if size is None and price is None and amount is None:
-            raise ValueError("two of size, price or amount must be specified")
-        size = size if size is not None else (amount / price)
-        price = price if price is not None else (amount / size)
-        amount = amount if amount is not None else (size * price)
+        size = size
+        price = price
 
         trade = pd.DataFrame([{
-            "datetime": pd.to_datetime(date),
+            "notify_time": pd.to_datetime(date),
             "code": code, "size": size,
-            "price": price, "amount": amount,
-            "commission": commission, **kwargs
+            "price": price, "commission": commission, **kwargs
         }], index=[pd.to_datetime('now')])
         if code != "cash":
             cash = pd.DataFrame([{
-                "datetime": pd.to_datetime(date),
+                "notify_time": pd.to_datetime(date),
                 "code": "cash", "size": -size * price - commission,
                 "price": 1, "commission": 0,
-                "amount": -size * price - commission
             }], index=[pd.to_datetime('now')])
             trade = pd.concat([trade, cash], axis=0)
         

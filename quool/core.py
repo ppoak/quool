@@ -92,12 +92,12 @@ class Table(abc.ABC):
                 frag_dat = pd.concat([frag_dat, 
                     new_dat.reindex(columns=frag_dat.columns).astype(self.dtypes)
                 ], axis=0)
-            frag_dat.to_parquet(self._fragment_path(name))
+            frag_dat.sort_index().to_parquet(self._fragment_path(name))
         elif not self.fragments:
-            frag.to_parquet(self._fragment_path(name))
+            frag.sort_index().to_parquet(self._fragment_path(name))
         else:
             frag.reindex(columns=self.columns).astype(
-                self.dtypes).to_parquet(self._fragment_path(name))
+                self.dtypes).sort_index().to_parquet(self._fragment_path(name))
     
     def _read_fragment(
         self,
@@ -141,14 +141,14 @@ class Table(abc.ABC):
             d = self._read_fragment(frag)
             d[list(column.keys())] = np.nan
             d = d.astype(column)
-            d.to_parquet(self._fragment_path(frag))
+            d.sort_index().to_parquet(self._fragment_path(frag))
     
     def delete(self, index: pd.Index):
         related_fragment = self._related_frag(pd.Series(np.ones(len(index)), index=index))
         for frag in related_fragment:
             df = self._read_fragment(frag)
             df = df.drop(index=index.intersection(df.index))
-            df.to_parquet(self._fragment_path(frag))
+            df.sort_index().to_parquet(self._fragment_path(frag))
 
     def remove(self, fragment: str | list = None):
         fragment = fragment or self.fragments
@@ -161,14 +161,14 @@ class Table(abc.ABC):
         for frag in self.fragments:
             df = self._read_fragment(frag)
             df = df.drop(column, axis=1)
-            df.to_parquet(self._fragment_path(frag))
+            df.sort_index().to_parquet(self._fragment_path(frag))
 
     def rename(self, column: dict):
         column = parse_commastr(column)
         for frag in self.fragments:
             df = self._read_fragment(frag)
             df = df.rename(columns=column)
-            df.to_parquet(self._fragment_path(frag))
+            df.sort_index().to_parquet(self._fragment_path(frag))
     
     def __str__(self) -> str:
         return (f'Table at <{self.path.absolute()}>\n' + 
