@@ -275,9 +275,7 @@ class TradeOrderRecorder(bt.Analyzer):
 
 
 class CashValueRecorder(bt.Analyzer):
-    params = (
-        ("date_level", "date"),
-    )
+    
     def __init__(self):
         self.cashvalue = []
 
@@ -419,8 +417,8 @@ class Cerebro:
         
         # add analyzers
         analyzers = analyzers if isinstance(analyzers, list) else [analyzers]
-        cerebro.addanalyzer(TradeOrderRecorder, date_level=self._date_level, code_level=self._code_level)
-        cerebro.addanalyzer(CashValueRecorder, date_level=self._date_level)
+        cerebro.addanalyzer(TradeOrderRecorder)
+        cerebro.addanalyzer(CashValueRecorder)
         for analyzer in analyzers:
             if isinstance(analyzer, tuple):
                 cerebro.addanalyzer(analyzer[0], **analyzer[1])
