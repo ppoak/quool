@@ -212,14 +212,14 @@ class TradeOrderRecorder(bt.Analyzer):
                     'trail_amount': order.trailamount,
                     'trail_percent': order.trailpercent,
                     'execute_type': order.getordername(),
-                    'commission': order.comm,
+                    'commission': order.executed.comm,
                     **order.info
                 })
             
             if not order.alive():
                 self.trade_order.append({
-                    self.params.date_level: order.data.datetime.date(0),
-                    self.params.code_level: order.data._name,
+                    "notify_time": order.data.datetime.date(0),
+                    "code": order.data._name,
                     'reference': order.ref,
                     'type': order.ordtypename(),
                     'status': order.getstatusname(),
@@ -233,7 +233,7 @@ class TradeOrderRecorder(bt.Analyzer):
                     'trail_amount': order.trailamount,
                     'trail_percent': order.trailpercent,
                     'execute_type': order.getordername(),
-                    'commission': order.comm,
+                    'commission': order.executed.comm,
                     **order.info
                 })
     
@@ -241,8 +241,8 @@ class TradeOrderRecorder(bt.Analyzer):
         if self.params.with_trade:
             if not trade.isclosed and not self.params.only_trade_close:
                 self.trade_order.append({
-                    self.params.date_level: trade.data.datetime.date(0),
-                    self.params.code_level: trade.data._name,
+                    "notify_time": trade.data.datetime.date(0),
+                    "code": trade.data._name,
                     'reference': trade.ref,
                     'type': 'Trade',
                     'status': trade.status_names[trade.status],
@@ -254,8 +254,8 @@ class TradeOrderRecorder(bt.Analyzer):
             
             if trade.isclosed:
                 self.trade_order.append({
-                    self.params.date_level: trade.data.datetime.date(0),
-                    self.params.code_level: trade.data._name,
+                    "notify_time": trade.data.datetime.date(0),
+                    "code": trade.data._name,
                     'reference': trade.ref,
                     'type': 'Trade',
                     'status': trade.status_names[trade.status],
@@ -269,8 +269,10 @@ class TradeOrderRecorder(bt.Analyzer):
     def get_analysis(self):
         self.rets = pd.DataFrame(self.trade_order)
         if not self.rets.empty:
-            self.rets[self.params.date_level] = pd.to_datetime(self.rets[self.params.date_level])
-            self.rets = self.rets.set_index([self.params.date_level, self.params.code_level])
+            self.rets["notify_time"] = pd.to_datetime(self.rets["notify_time"])
+            self.rets["created_time"] = pd.to_datetime(self.rets["created_time"])
+            self.rets["executed_time"] = pd.to_datetime(self.rets["executed_time"])
+            self.rets = self.rets.set_index(["notify_time", "code"])
         return self.rets
 
 
@@ -281,16 +283,16 @@ class CashValueRecorder(bt.Analyzer):
 
     def next(self):
         self.cashvalue.append({
-            self.params.date_level: self.data.datetime.date(0),
+            'datetime': self.data.datetime.date(0),
             'cash': self.strategy.broker.get_cash(),
             'value': self.strategy.broker.get_value(),
         })
 
     def get_analysis(self):
         self.rets = pd.DataFrame(self.cashvalue)
-        self.rets[self.params.date_level] = pd.to_datetime(self.rets[self.params.date_level])
-        self.rets = self.rets.set_index(self.params.date_level)
-        self.rets.index.name = self.params.date_level
+        self.rets["datetime"] = pd.to_datetime(self.rets["datetime"])
+        self.rets = self.rets.set_index("datetime")
+        self.rets.index.name = "datetime"
         return self.rets
 
 
@@ -606,7 +608,7 @@ def evaluate(
             pd.Series(np.zeros(value.shape[0]), index=value.index)
         benchmark = benchmark if isinstance(benchmark, (pd.Series, pd.DataFrame)) else \
             pd.Series(np.zeros(value.shape[0]), index=value.index)
-        benchmark = benchmark.loc[value.index]
+        benchmark = benchmark.loc[value.index.intersection(benchmark.index)]
         net_value = value / value.iloc[0]
         net_cash = cash / cash.iloc[0]
         returns = value.pct_change(fill_method=None).fillna(0)
@@ -636,7 +638,7 @@ def evaluate(
             if evaluation['max_drawdown(%)'] != 0 else np.nan
 
         if not (benchmark==0).all():
-            exreturns = returns - benchmark_returns.loc[returns.index]
+            exreturns = returns - benchmark_returns.loc[returns.index.intersection(benchmark_returns.index)]
             benchmark_volatility = (benchmark_returns.std() * np.sqrt(252)) * 100
             exvalue = (1 + exreturns).cumprod()
             cum_benchmark_return = (1 + benchmark_returns).cumprod()
