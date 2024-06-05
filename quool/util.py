@@ -366,16 +366,10 @@ class Cerebro:
         cash: float = 1e6,
         coc: bool = False,
         commission: float = 0.005,
-        verbose: bool = True,
-        benchmark: pd.Series = None,
         indicators: 'bt.Indicator | list' = None,
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
         n_jobs: int = None,
-        param_format: str = None,
-        oldimg: str | Path = None,
-        image: str | Path = None,
-        result: str | Path = None,
         preload: bool = True,
         runonce: bool = True,
         exactbars: bool = False,
@@ -459,10 +453,22 @@ class Cerebro:
             # support multiple strategies in optstrategy mode
             strats = [strat[0] for strat in strats]
         
+        self.strats = strats
+        self.kwargs = kwargs
+        self.cerebro = cerebro
+    
+    def evaluate(
+        self,
+        *,
+        verbose: bool = True,
+        benchmark: pd.Series = None,
+        param_format: str = None,
+        result: str | Path = None,
+    ):
         if param_format is None:
-            param_format = f"_".join([f"{key}{{{key}}}" for key in kwargs.keys()])
-        params = [param_format.format(**strat.params._getkwargs()) for strat in strats]
-        cashvalue = [strat.analyzers.cashvaluerecorder.get_analysis() for strat in strats]
+            param_format = f"_".join([f"{key}{{{key}}}" for key in self.kwargs.keys()])
+        params = [param_format.format(**strat.params._getkwargs()) for strat in self.strats]
+        cashvalue = [strat.analyzers.cashvaluerecorder.get_analysis() for strat in self.strats]
 
         # add benchmark if available
         if benchmark is not None:
@@ -472,20 +478,20 @@ class Cerebro:
             
             benchmark = benchmark.copy().ffill()
             benchmark.name = benchmark.name or 'benchmark'
-            benchmark = benchmark / benchmark.dropna().iloc[0] * cash
+            benchmark = benchmark / benchmark.dropna().iloc[0]
             cashvalue_ = []
             for cv in cashvalue:
-                cvb = pd.concat([cv, benchmark, (
+                cvb = pd.concat([cv / cv.iloc[0], benchmark, (
                     (cv["value"].pct_change() - benchmark.pct_change())
                     .fillna(0) + 1).cumprod().to_frame(benchmark.name)
-                    .add_prefix("ex(").add_suffix(')') * cash
+                    .add_prefix("ex(").add_suffix(')')
                 ], axis=1).ffill()
                 cvb.index.name = 'datetime'
                 cashvalue_.append(cvb)
             cashvalue = cashvalue_
             
         abstract = []
-        for i, strat in enumerate(strats):
+        for i, strat in enumerate(self.strats):
             # basic parameters
             _abstract = strat.params._getkwargs()
             # add return to abstract
@@ -513,43 +519,22 @@ class Cerebro:
             # append result
             abstract.append(_abstract)
         abstract = pd.DataFrame(abstract)
-        if kwargs:
-            abstract = abstract.set_index(keys=list(kwargs.keys()))
+
+        if self.kwargs:
+            abstract = abstract.set_index(keys=list(self.kwargs.keys()))
         
         if verbose:
             self.logger.info(abstract)
         
-        if oldimg is not None and n_jobs is None:
-            if len(datanames) > 3:
-                self.logger.warning(f"There are {len(datanames)} stocks, the image "
-                      "may be nested and takes a long time to draw")
-            figs = cerebro.plot(style='candel')
-            fig = figs[0][0]
-            fig.set_size_inches(18, 3 + 6 * len(datanames))
-            if not isinstance(oldimg, bool):
-                fig.savefig(oldimg, dpi=300)
-
-        if image is not None:
-            fig, axes = plt.subplots(nrows=len(params), figsize=(20, 10 * len(params)))
-            axes = [axes] if len(params) == 1 else axes
-            for i, (name, cv) in enumerate(zip(params, cashvalue)):
-                cv.plot(ax=axes[i], title=name)
-            if not isinstance(image, bool):
-                fig.tight_layout()
-                fig.savefig(image)
-            else:
-                fig.show()
-        
         if result is not None:
             with pd.ExcelWriter(result) as writer:
                 abstract.reset_index().to_excel(writer, sheet_name='ABSTRACT', index=False)
-                for name, cv, strat in zip(params, cashvalue, strats):
+                for name, cv, strat in zip(params, cashvalue, self.strats):
                     cv.to_excel(writer, sheet_name='CV_' + name)
                     strat.analyzers.tradeorderrecorder.rets.reset_index().to_excel(
                         writer, sheet_name='TO_' + name, index=False)
-    
-        return strats
 
+        return abstract
 
 def parse_commastr(
     commastr: 'str | list',
@@ -595,120 +580,99 @@ def reduce_mem_usage(df: pd.DataFrame):
     return df
 
 def evaluate(
-        value: pd.Series, 
-        cash: pd.Series = None,
-        turnover: pd.Series = None,
-        benchmark: pd.Series = None,
-        image: str = None,
-        result: str = None,
-    ):
-        cash = cash.squeeze() if isinstance(cash, (pd.Series, pd.DataFrame)) else \
-            pd.Series(np.zeros(value.shape[0]), index=value.index)
-        turnover = turnover.squeeze() if isinstance(turnover, (pd.Series, pd.DataFrame)) else \
-            pd.Series(np.zeros(value.shape[0]), index=value.index)
-        benchmark = benchmark if isinstance(benchmark, (pd.Series, pd.DataFrame)) else \
-            pd.Series(np.zeros(value.shape[0]), index=value.index)
-        benchmark = benchmark.loc[value.index.intersection(benchmark.index)]
-        net_value = value / value.iloc[0]
-        net_cash = cash / cash.iloc[0]
-        returns = value.pct_change(fill_method=None).fillna(0)
-        benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)
-        benchmark_returns = benchmark_returns if not benchmark_returns.isna().all() else pd.Series(np.zeros(benchmark_returns.shape[0]), index=benchmark.index)
-        drawdown = net_value / net_value.cummax() - 1
+    value: pd.Series, 
+    cash: pd.Series = None,
+    turnover: pd.Series = None,
+    benchmark: pd.Series = None,
+    image: str = None,
+):
+    cash = cash.squeeze() if isinstance(cash, (pd.Series, pd.DataFrame)) else \
+        pd.Series(np.zeros(value.shape[0]), index=value.index)
+    turnover = turnover.squeeze() if isinstance(turnover, (pd.Series, pd.DataFrame)) else \
+        pd.Series(np.zeros(value.shape[0]), index=value.index)
+    benchmark = benchmark if isinstance(benchmark, (pd.Series, pd.DataFrame)) else \
+        pd.Series(np.zeros(value.shape[0]), index=value.index)
+    benchmark = benchmark.loc[value.index.intersection(benchmark.index)]
+    net_value = value / value.iloc[0]
+    net_cash = cash / cash.iloc[0]
+    returns = value.pct_change(fill_method=None).fillna(0)
+    benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)
+    benchmark_returns = benchmark_returns if not benchmark_returns.isna().all() else pd.Series(np.zeros(benchmark_returns.shape[0]), index=benchmark.index)
+    drawdown = net_value / net_value.cummax() - 1
 
-        # evaluation indicators
-        evaluation = pd.Series(name='evaluation')
-        evaluation['total_return(%)'] = (net_value.iloc[-1] / net_value.iloc[0] - 1) * 100
-        evaluation['annual_return(%)'] = ((evaluation['total_return(%)'] / 100 + 1) ** (
-            365 / (value.index.max() - value.index.min()).days) - 1) * 100
-        evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
-        down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
-        enddate = drawdown.idxmin()
-        startdate = drawdown.loc[:enddate][drawdown.loc[:enddate] == 0].index[-1]
-        evaluation['max_drawdown(%)'] = (-drawdown.min()) * 100
-        evaluation['max_drawdown_period(days)'] = enddate - startdate
-        evaluation['max_drawdown_start'] = startdate
-        evaluation['max_drawdown_stop'] = enddate
-        evaluation['daily_turnover(%)'] = turnover.mean() * 100
-        evaluation['sharpe_ratio'] = evaluation['annual_return(%)'] / evaluation['annual_volatility(%)'] \
-            if evaluation['annual_volatility(%)'] != 0 else np.nan
-        evaluation['sortino_ratio'] = evaluation['annual_return(%)'] / down_volatility \
-            if down_volatility != 0 else np.nan
-        evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)'] \
-            if evaluation['max_drawdown(%)'] != 0 else np.nan
+    # evaluation indicators
+    evaluation = pd.Series(name='evaluation')
+    evaluation['total_return(%)'] = (net_value.iloc[-1] / net_value.iloc[0] - 1) * 100
+    evaluation['annual_return(%)'] = ((evaluation['total_return(%)'] / 100 + 1) ** (
+        365 / (value.index.max() - value.index.min()).days) - 1) * 100
+    evaluation['annual_volatility(%)'] = (returns.std() * np.sqrt(252)) * 100
+    down_volatility = (returns[returns < 0].std() * np.sqrt(252)) * 100
+    enddate = drawdown.idxmin()
+    startdate = drawdown.loc[:enddate][drawdown.loc[:enddate] == 0].index[-1]
+    evaluation['max_drawdown(%)'] = (-drawdown.min()) * 100
+    evaluation['max_drawdown_period(days)'] = enddate - startdate
+    evaluation['max_drawdown_start'] = startdate
+    evaluation['max_drawdown_stop'] = enddate
+    evaluation['daily_turnover(%)'] = turnover.mean() * 100
+    evaluation['sharpe_ratio'] = evaluation['annual_return(%)'] / evaluation['annual_volatility(%)'] \
+        if evaluation['annual_volatility(%)'] != 0 else np.nan
+    evaluation['sortino_ratio'] = evaluation['annual_return(%)'] / down_volatility \
+        if down_volatility != 0 else np.nan
+    evaluation['calmar_ratio'] = evaluation['annual_return(%)'] / evaluation['max_drawdown(%)'] \
+        if evaluation['max_drawdown(%)'] != 0 else np.nan
 
-        if not (benchmark==0).all():
-            exreturns = returns - benchmark_returns.loc[returns.index.intersection(benchmark_returns.index)]
-            benchmark_volatility = (benchmark_returns.std() * np.sqrt(252)) * 100
-            exvalue = (1 + exreturns).cumprod()
-            cum_benchmark_return = (1 + benchmark_returns).cumprod()
-            exdrawdown = exvalue / exvalue.cummax() - 1
-            evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - exvalue.iloc[0]) * 100
-            evaluation['annual_exreturn(%)'] = ((evaluation['total_exreturn(%)'] / 100 + 1
-                ) ** (365 / (exvalue.index.max() - exvalue.index.min()).days) - 1) * 100
-            evaluation['annual_exvolatility(%)'] = (exreturns.std() * np.sqrt(252)) * 100
-            enddate = exdrawdown.idxmin()
-            startdate = exdrawdown.loc[:enddate][exdrawdown.loc[:enddate] == 0].index[-1]
-            evaluation['ext_max_drawdown(%)'] = (exdrawdown.min()) * 100
-            evaluation['ext_max_drawdown_period(days)'] = enddate - startdate
-            evaluation['ext_max_drawdown_start'] = startdate
-            evaluation['ext_max_drawdown_stop'] = enddate
-            evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
-            evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100
-            evaluation['treynor_ratio(%)'] = (evaluation['annual_exreturn(%)'] / evaluation['beta'])
-            evaluation['information_ratio'] = evaluation['annual_exreturn(%)'] / benchmark_volatility \
-                if benchmark_volatility != 0 else np.nan
+    if not (benchmark==0).all():
+        exreturns = returns - benchmark_returns.loc[returns.index.intersection(benchmark_returns.index)]
+        benchmark_volatility = (benchmark_returns.std() * np.sqrt(252)) * 100
+        exvalue = (1 + exreturns).cumprod()
+        cum_benchmark_return = (1 + benchmark_returns).cumprod()
+        exdrawdown = exvalue / exvalue.cummax() - 1
+        evaluation['total_exreturn(%)'] = (exvalue.iloc[-1] - exvalue.iloc[0]) * 100
+        evaluation['annual_exreturn(%)'] = ((evaluation['total_exreturn(%)'] / 100 + 1
+            ) ** (365 / (exvalue.index.max() - exvalue.index.min()).days) - 1) * 100
+        evaluation['annual_exvolatility(%)'] = (exreturns.std() * np.sqrt(252)) * 100
+        enddate = exdrawdown.idxmin()
+        startdate = exdrawdown.loc[:enddate][exdrawdown.loc[:enddate] == 0].index[-1]
+        evaluation['ext_max_drawdown(%)'] = (exdrawdown.min()) * 100
+        evaluation['ext_max_drawdown_period(days)'] = enddate - startdate
+        evaluation['ext_max_drawdown_start'] = startdate
+        evaluation['ext_max_drawdown_stop'] = enddate
+        evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
+        evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100
+        evaluation['treynor_ratio(%)'] = (evaluation['annual_exreturn(%)'] / evaluation['beta'])
+        evaluation['information_ratio'] = evaluation['annual_exreturn(%)'] / benchmark_volatility \
+            if benchmark_volatility != 0 else np.nan
+    else:
+        exvalue = net_value
+        exdrawdown = drawdown
+        cum_benchmark_return = pd.Series(np.ones(returns.shape[0]), index=returns.index)
+        
+    data = pd.concat([value, net_value, exvalue, net_cash, returns, cum_benchmark_return, drawdown, exdrawdown, turnover], 
+            axis=1, keys=['value', 'net_value', 'exvalue', 'net_cash', 'returns', 'benchmark', 'drawdown', 'exdrawdown', 'turnover'])
+    
+    if image is not None:
+        fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(20, 10))
+        plt.subplots_adjust(wspace=0.3, hspace=0.5)
+
+        ax00 = data["net_value"].plot(ax=ax[0, 0], title="Net Value Curve", color=['#1C1C1C'], legend=True)
+        ax00 = data['net_cash'].plot.area(ax=ax[0, 0], color=['#1C1C1C'], alpha=0.7, legend=True)
+        ax00 = data["benchmark"].plot(ax=ax[0, 0], color=['#009100'], legend=True)
+        ax00.set_ylabel("Cumulative Return")
+        ax00.legend(loc='lower left')
+        ax00_twi = ax[0, 0].twinx()
+        ax00_twi.fill_between(data.index, 0, data['drawdown'], color='#009100', alpha=0.3)
+        ax00_twi.set_ylabel("Drawdown")
+
+        month = data['net_value'].resample('ME').last() / data['net_value'].resample('ME').first() - 1
+        ax[0, 1].bar(month.index, month.values, width=20)
+        ax[0, 1].set_title("Monthly Return")
+
+        data["turnover"].plot(ax=ax[0, 2], title="Turnover", color=['#1C1C1C'], legend=True)
+
+        fig.tight_layout()
+        if isinstance(image, (str, Path)):
+            fig.savefig(image)
         else:
-            exvalue = net_value
-            exdrawdown = drawdown
-            cum_benchmark_return = pd.Series(np.ones(returns.shape[0]), index=returns.index)
-            
-        data = pd.concat([value, net_value, exvalue, net_cash, returns, cum_benchmark_return, drawdown, exdrawdown, turnover], 
-                axis=1, keys=['value', 'net_value', 'exvalue', 'net_cash', 'returns', 'benchmark', 'drawdown', 'exdrawdown', 'turnover'])
-        
-        if result is not None:
-            data.to_excel(result, sheet_name="performances")
-        
-        if image is not None:
-            fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(20, 10))
-            plt.subplots_adjust(wspace=0.3, hspace=0.5)
+            fig.show()
 
-            ax00 = data["net_value"].plot(ax=ax[0,0], title="Fund Return", color=['#1C1C1C'], legend=True)
-            ax00.legend(loc='lower left')
-            ax00.set_ylabel("Cumulative Return")
-            ax00_twi = ax[0,0].twinx()
-            ax00_twi.fill_between(data.index, 0, data['drawdown'], color='#009100', alpha=0.3)
-            ax00_twi.set_ylabel("Drawdown")
-
-            if not (benchmark==0).all():
-                year = (data[['net_value', 'exvalue', 'benchmark']].resample('YE').last() - data[['net_value', 'exvalue', 'benchmark']].resample('YE').first())
-            else:
-                year = (data['net_value'].resample('YE').last() - data['net_value'].resample('YE').first())
-            month = (data['net_value'].resample('ME').last() - data['net_value'].resample('ME').first())
-            year.index = year.index.year
-            year.plot(ax=ax[0,1], kind='bar', title="Yearly Return", rot=45, colormap='Paired')
-            ax[0, 2].bar(month.index, month.values, width=20)
-            ax[0, 2].set_title("Monthly Return")
-
-            ax10 = data['exvalue'].plot(ax=ax[1,0], title='Extra Return', legend=True)
-            ax10.legend(loc='lower left')
-            ax10.set_ylabel("Cumulative Return")
-            ax10_twi = ax[1,0].twinx()
-            ax10_twi.fill_between(data.index, 0, data['exdrawdown'], color='#009100', alpha=0.3)
-            ax10_twi.set_ylabel("Drawdown")
-
-            data[['net_value', 'benchmark']].plot(ax=ax[1,1], title="Fund Return")
-
-            ax12 = data['net_cash'].plot(ax=ax[1,2], title="Turnover")
-            ax12.set_ylabel('net_cash')
-            ax12_twi = ax[1,2].twinx()
-            ax12_twi.set_ylabel('turnover')
-            ax12_twi.plot(data.index, data['turnover'], color='red')
-
-            fig.tight_layout()
-            if isinstance(image, (str, Path)):
-                fig.savefig(image)
-            else:
-                fig.show()
-
-        return evaluation
+    return evaluation
