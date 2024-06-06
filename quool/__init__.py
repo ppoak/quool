@@ -8,13 +8,18 @@ from .table import (
 
 from .contrib import (
     Proxy,
-    Broker,
+    Transaction,
     Factor,
 )
 
 
 from .util import (
     Logger,
+    CBroker,
+    Cerebro,
+    Strategy,
+    CashValueRecorder,
+    TradeOrderRecorder,
     parse_commastr,
     reduce_mem_usage,
     evaluate,
@@ -27,4 +32,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.2.2"
+__version__ = "5.3.1"
