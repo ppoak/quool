@@ -351,6 +351,7 @@ class Cerebro:
         ))
         self._data.loc[:, base_col] = self._data.groupby(
             level=self._code_level)[base_col].ffill().fillna(0)
+        self._data = self._data.sort_index()
         
         return self
 
@@ -481,9 +482,9 @@ class Cerebro:
             benchmark = benchmark / benchmark.dropna().iloc[0]
             cashvalue_ = []
             for cv in cashvalue:
-                cvb = pd.concat([cv / cv.iloc[0], benchmark, (
-                    (cv["value"].pct_change() - benchmark.pct_change())
-                    .fillna(0) + 1).cumprod().to_frame(benchmark.name)
+                cvb = pd.concat([cv, benchmark * cv.iloc[0, 0], (
+                    ((cv["value"].pct_change() - benchmark.pct_change())
+                    .fillna(0) + 1).cumprod() * cv.iloc[0, 0]).to_frame(benchmark.name)
                     .add_prefix("ex(").add_suffix(')')
                 ], axis=1).ffill()
                 cvb.index.name = 'datetime'
