@@ -1,13 +1,13 @@
 import re
 import time
+import uuid
+import backtrader as bt
 import random
 import requests
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from lxml import etree
 from pathlib import Path
-from joblib import Parallel, delayed
 from .table import ItemTable, PanelTable
 from .util import parse_commastr, evaluate
 
@@ -206,43 +206,13 @@ class Proxy(ItemTable):
 
 class Transaction(ItemTable):
 
-    def __init__(
-        self, 
-        uri: str | Path, 
-        principle: float = 1_000_000.00,
-        start: str | pd.Timestamp = None,
-    ):
-        super().__init__(uri, True)
-        if not self.fragments:
-            if principle is None or start is None:
-                raise ValueError("principle and start must be specified when initiating")
-            init = pd.DataFrame([{
-                "code": "cash",
-                "notify_time": pd.to_datetime(start), 
-                'type': "transfer",
-                'status': "Completed",
-                'created_time': start,
-                'created_price': 1,
-                'created_size': principle,
-                'executed_time': start,
-                'executed_price': 1,
-                'executed_size': principle,
-                'price_limit': np.nan,
-                'trail_amount': np.nan,
-                'trail_percent': np.nan,
-                'execute_type': 'Market',
-                "commission": 0.0,
-                "amount": float(principle), 
-            }], index=pd.Index([0], name="reference"))
-            self.update(init)
-    
     @property
     def spliter(self):
-        return pd.Grouper(key='datetime', freq='ME')
+        return pd.Grouper(key='notify_time', freq='ME')
 
     @property
     def namer(self):
-        return lambda x: x['datetime'].iloc[0].strftime('%Y%m')
+        return lambda x: x['notify_time'].iloc[0].strftime('%Y%m')
 
     def read(
         self, 
@@ -250,12 +220,18 @@ class Transaction(ItemTable):
         start: str | list = None, 
         stop: str = None, 
         code: str | list[str] = None,
+        otype: str | list[str] = None,
+        status: str | list[str] = None,
         filters: list[list[tuple]] = None,
     ):
         filters = filters or []
         if code is not None:
             filters += [("code", "in", parse_commastr(code))]
-        return super().read(column, start, stop, "datetime", filters)
+        if otype is not None:
+            filters += [("type", "in", parse_commastr(otype))]
+        if status is not None:
+            filters += [("status", "in", parse_commastr(status))]
+        return super().read(column, start, stop, "notify_time", filters)
 
     def prune(self):
         for frag in self.fragments:
@@ -263,94 +239,113 @@ class Transaction(ItemTable):
         
     def trade(
         self, 
-        date: str | pd.Timestamp,
+        time: str | pd.Timestamp,
         code: str,
-        ref: int,
-        size: float = None,
-        price: float = None,
-        commission: float = 0,
+        price: float,
+        size: float,
+        commission: float,
         **kwargs,
     ):
-        size = size
-        price = price
-
         trade = pd.DataFrame([{
-            "notify_time": pd.to_datetime(date),
-            "code": code, "size": size,
-            "price": price, "commission": commission, **kwargs
+            "notify_time": time,
+            "code": code,
+            # 'reference': uuid.uuid4().hex,
+            'reference': next(bt.Order.refbasis),
+            'type': "Buy" if size > 0 else "Sell",
+            'status': "Completed",
+            'created_time': time,
+            'created_price': price,
+            'created_size': size,
+            'executed_time': time,
+            'executed_price': price,
+            'executed_size': size,
+            'execute_type': "Market",
+            'commission': commission,
+            **kwargs
         }], index=[pd.to_datetime('now')])
-        if code != "cash":
-            cash = pd.DataFrame([{
-                "notify_time": pd.to_datetime(date),
-                "code": "cash", "size": -size * price - commission,
-                "price": 1, "commission": 0,
-            }], index=[pd.to_datetime('now')])
-            trade = pd.concat([trade, cash], axis=0)
         
         if kwargs:
             self.add(dict((k, type(v)) for k, v in kwargs.items()))
         self.update(trade)
 
-    def peek(self, date: str | pd.Timestamp = None, price: pd.Series = None) -> pd.Series:
-        df = self.read(filters=[("datetime", "<=", pd.to_datetime(date or 'now'))])
-        df = df.groupby("code")[["size", "amount", "commission"]].sum()
-        df["cost"] = (df["amount"] / df["size"]).replace([-np.inf, np.inf], 0)
+    def summary(
+        self, 
+        start: str | pd.Timestamp = None, 
+        stop: str | pd.Timestamp = None,
+        price: pd.Series = None
+    ) -> pd.Series:
+        trans = self.read(
+            "code, executed_size, executed_price, commission", 
+            start=start, stop=stop, status="Completed"
+        )
+        trans["executed_amount"] = trans["executed_size"] * trans["executed_price"]
+        stat = trans.groupby("code").agg(
+            size=("executed_size", "sum"),
+            avgcost=("executed_size", lambda x: (
+                trans.loc[x.index, "executed_amount"].sum() + trans.loc[x.index, "commission"].sum()
+            ) / trans.loc[x.index, "executed_size"].sum() if 
+            trans.loc[x.index, "executed_size"].sum() > 0 else np.nan
+            )
+        )
         if price is None:
-            return df
+            return stat
+        
         price = price.copy()
-        price.loc["cash"] = 1
-        indexer = price.index.get_indexer_for(df.index)
-        df["price"] = price.iloc[indexer[indexer != -1]]
-        df["value"] = df["price"] * df["size"]
-        df['pnl'] = ((df['price'] - df['cost']) * df['size']).where(df['size'] != 0, -df['amount'])
-        return df
+        price.loc["Cash"] = 1
+        indexer = price.index.get_indexer_for(stat.index)
+        stat["current"] = price.iloc[indexer[indexer != -1]]
+        return stat
         
     def report(
         self, 
         price: pd.Series, 
+        principle: float,
+        start: str | pd.Timestamp = None,
+        stop: str | pd.Timestamp = None,
         benchmark: pd.Series = None,
         code_level: int | str = 0,
         date_level: int | str = 1,
         image: str | bool = True,
-        result: str = None,
     ) -> pd.DataFrame:
-        data = self.read(["datetime", "code", "size", "amount", "commission"])
+        code_level = code_level if not isinstance(code_level, int) else "code"
+        date_level = date_level if not isinstance(date_level, int) else "datetime"
+
+        data = self.read(
+            ["code", "executed_time", "executed_size", "executed_price", "commission"],
+            start=start, stop=stop, status="Completed",
+        )
+        data["executed_amount"] = data["executed_size"] * data["executed_price"] + data["commission"]
+        data = data.groupby(["executed_time", "code"]).sum()
+        # this is for `get_level_values(code_level)`
+        data.index.names = [date_level, code_level]
+
         if isinstance(price, pd.DataFrame) and price.index.nlevels == 1:
-            code_level = code_level if not isinstance(code_level, int) else "code"
-            date_level = date_level if not isinstance(date_level, int) else "datetime"
             price = price.stack().sort_index().to_frame("price")
             price.index.names = [date_level, code_level]
-        price = price.squeeze().sort_index()
+        price = price.reorder_levels([date_level, code_level])
+        
+        codes = data.index.get_level_values(code_level).unique()
         dates = price.index.get_level_values(date_level).unique()
-        dates = dates[dates >= data["datetime"].min()]
-
-        data = data.groupby(["code", "datetime"]).sum()
-        data = data.reindex(pd.MultiIndex.from_product(
-            [data.index.levels[0], dates], names=["code", "datetime"]))
-        cash = data.loc["cash", "amount"]
-        cash = cash.fillna(0).cumsum()
-
-        noncash = data.drop(labels="cash", axis=0)
-        noncash.index.names = price.index.names
-        price = price.loc[noncash.index.intersection(price.index)]
-        delta = (price * noncash["size"]).groupby(level=date_level).sum()
-        noncash = noncash.fillna(0).groupby(level=code_level, group_keys=False).cumsum()
-        market = (price * noncash["size"]).groupby(level=date_level).sum()
-        market = market.reindex(cash.index).fillna(0)
+        cashp = pd.Series(np.ones(dates.size), index=pd.MultiIndex.from_product(
+            [dates, ["Cash"]], names=[date_level, code_level]
+        ))
+        price = pd.concat([price, cashp], axis=0)
+        price = price.squeeze().loc(axis=0)[:, codes]
+        
+        data = data.reindex(price.index)
+        # for ensurance
+        data.index.names = [date_level, code_level]
+        
+        _rev = pd.Series(np.ones(data.index.size), index=data.index)
+        _rev = _rev.where(data.index.get_level_values(code_level) == "Cash", -1)
+        cash = (data["executed_amount"] * _rev).groupby(level=date_level).sum().cumsum()
+        cash += principle
+        size = data["executed_size"].drop(index="Cash", level=code_level).fillna(0).groupby(level=code_level).cumsum()
+        market = (size * price).groupby(level=date_level).sum()
         value = market + cash
-        turnover = (delta / value.shift(1)).fillna(0)
+        turnover = market.diff() / value
 
-        data = pd.concat([value, cash, turnover], axis=1, keys=["value", "cash", "turnover"])
-        if image or result:
-            return evaluate(
-                data["value"], 
-                data["cash"],
-                data["turnover"],
-                benchmark=benchmark,
-                image=image,
-                result=result
-            )
-        return data
+        return evaluate(value, cash, turnover, benchmark=benchmark, image=image)
 
 class Factor(PanelTable):
 

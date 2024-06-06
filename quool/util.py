@@ -123,10 +123,11 @@ class Strategy(bt.Strategy):
 class CBroker(bt.BackBroker):
 
     params = (
-        ("minstake", 1), 
+        ("minstake", 100), 
         ("minshare", 100), 
         ("divfactor", "divfactor"), 
         ("splitfactor", "splitfactor"),
+        ("split_div_recorder", "tradeorderrecorder")
     )
     logger = Logger("CBroker", level=logging.DEBUG, display_time=False, display_name=False)
 
@@ -137,16 +138,51 @@ class CBroker(bt.BackBroker):
             divfactor = divline[0] if divline else np.nan
             splitfactor = splitline[0] if splitline else np.nan
             size = pos.size
+            
             # hold the stock which has dividend
             if size and not np.isnan(divfactor):
                 dividend = divfactor * size
-                self.logger.debug(f"[{data.datetime.date(0)}] {data._name} dividend cash: {dividend:.2f}")
                 self.add_cash(dividend)
+                analyzer = getattr(self.cerebro.runningstrats[0].analyzers, self.params.split_div_recorder, None)
+                if analyzer:
+                    info = {
+                        "notify_time": data.datetime.date(0),
+                        "code": "Cash",
+                        'reference': next(bt.Order.refbasis),
+                        'status': "Completed",
+                        'created_time': data.datetime.date(0),
+                        'created_price': 1,
+                        'created_size': dividend,
+                        'executed_time': data.datetime.date(0),
+                        'executed_price': 1,
+                        'executed_size': dividend,
+                        'commission': 0,
+                    }
+                    analyzer.trade_order.append(info)
+                self.logger.debug(f"[{data.datetime.date(0)}] {data._name} ref.{info['reference']} dividend cash: {dividend:.2f}")
+
             # hold the stock which has split
             if size and not np.isnan(splitfactor):
                 splitsize = int(size * splitfactor)
-                self.logger.debug(f"[{data.datetime.date(0)}] {data._name} split size: {splitsize:.0f}")
                 pos.update(size=splitsize, price=data.close[0])
+                analyzer = getattr(self.cerebro.runningstrats[0].analyzers, self.params.split_div_recorder, None)
+                if analyzer:
+                    info = {
+                        "notify_time": data.datetime.date(0),
+                        "code": data._name,
+                        'reference': next(bt.Order.refbasis),
+                        'type': "Split",
+                        'status': "Completed",
+                        'created_time': data.datetime.date(0),
+                        'created_price': data.close[0],
+                        'created_size': splitsize,
+                        'executed_time': data.datetime.date(0),
+                        'executed_price': data.close[0],
+                        'executed_size': splitsize,
+                        'commission': 0,
+                    }
+                    analyzer.trade_order.append(info)
+                self.logger.debug(f"[{data.datetime.date(0)}] {data._name} ref.{info['reference']} split size: {splitsize:.0f}")
     
     def resize(self, size: int):
         minstake = self.params._getkwargs().get("minstake", 1)
@@ -272,7 +308,7 @@ class TradeOrderRecorder(bt.Analyzer):
             self.rets["notify_time"] = pd.to_datetime(self.rets["notify_time"])
             self.rets["created_time"] = pd.to_datetime(self.rets["created_time"])
             self.rets["executed_time"] = pd.to_datetime(self.rets["executed_time"])
-            self.rets = self.rets.set_index(["notify_time", "code"])
+            self.rets = self.rets.set_index(["reference"])
         return self.rets
 
 
@@ -360,16 +396,12 @@ class Cerebro:
         strategy: Strategy | list[Strategy], 
         *,
         broker: bt.BrokerBase = None,
-        minstake: int = 1,
-        minshare: int = 100,
-        divfactor: str = "divfactor",
-        splitfactor: str = "splitfactor",
         cash: float = 1e6,
-        coc: bool = False,
-        commission: float = 0.005,
+        commission: float = 0.00025,
         indicators: 'bt.Indicator | list' = None,
         analyzers: 'bt.Analyzer | list' = None,
         observers: 'bt.Observer | list' = None,
+        coc: bool = False,
         n_jobs: int = None,
         preload: bool = True,
         runonce: bool = True,
@@ -379,15 +411,18 @@ class Cerebro:
         **kwargs
     ):
         cerebro = bt.Cerebro(stdstats=False)
+
         if broker is None:
-            broker = CBroker(
-                minstake=minstake, minshare=minshare,
-                divfactor=divfactor, splitfactor=splitfactor,
-            )
+            broker = CBroker()
+        elif isinstance(broker, tuple):
+            broker = broker[0](**broker[1])
+        else:
+            raise ValueError("Broker should be a tuple of (class, kwargs)")
         cerebro.setbroker(broker)
+        
         cerebro.broker.set_cash(cash)
         if coc:
-            self.cerebro.broker.set_coc(True)
+            cerebro.broker.set_coc(True)
         cerebro.broker.setcommission(commission=commission)
         start = self._data.index.get_level_values(self._date_level).min()
         stop = self._data.index.get_level_values(self._date_level).max()
@@ -455,8 +490,6 @@ class Cerebro:
             strats = [strat[0] for strat in strats]
         
         self.strats = strats
-        self.kwargs = kwargs
-        self.cerebro = cerebro
     
     def evaluate(
         self,
@@ -467,7 +500,7 @@ class Cerebro:
         result: str | Path = None,
     ):
         if param_format is None:
-            param_format = f"_".join([f"{key}{{{key}}}" for key in self.kwargs.keys()])
+            param_format = f"_".join([f"{key}{{{key}}}" for key in self.strats.kwargs.keys()])
         params = [param_format.format(**strat.params._getkwargs()) for strat in self.strats]
         cashvalue = [strat.analyzers.cashvaluerecorder.get_analysis() for strat in self.strats]
 
@@ -521,8 +554,8 @@ class Cerebro:
             abstract.append(_abstract)
         abstract = pd.DataFrame(abstract)
 
-        if self.kwargs:
-            abstract = abstract.set_index(keys=list(self.kwargs.keys()))
+        if self.strats[0].params._getkwargs():
+            abstract = abstract.set_index(keys=list(self.strats[0].params._getkwargs()))
         
         if verbose:
             self.logger.info(abstract)
@@ -652,23 +685,23 @@ def evaluate(
             axis=1, keys=['value', 'net_value', 'exvalue', 'net_cash', 'returns', 'benchmark', 'drawdown', 'exdrawdown', 'turnover'])
     
     if image is not None:
-        fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(20, 10))
+        fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(40, 10))
         plt.subplots_adjust(wspace=0.3, hspace=0.5)
 
-        ax00 = data["net_value"].plot(ax=ax[0, 0], title="Net Value Curve", color=['#1C1C1C'], legend=True)
-        ax00 = data['net_cash'].plot.area(ax=ax[0, 0], color=['#1C1C1C'], alpha=0.7, legend=True)
-        ax00 = data["benchmark"].plot(ax=ax[0, 0], color=['#009100'], legend=True)
+        ax00 = data["net_value"].plot(ax=ax[0], title="Net Value Curve", color=['#1C1C1C'], legend=True)
+        ax00 = data['net_cash'].plot.area(ax=ax[0], color=['#FFFF99'], alpha=0.5, legend=True)
+        ax00 = data["benchmark"].plot(ax=ax[0], color=['#009100'], legend=True)
         ax00.set_ylabel("Cumulative Return")
         ax00.legend(loc='lower left')
-        ax00_twi = ax[0, 0].twinx()
+        ax00_twi = ax[0].twinx()
         ax00_twi.fill_between(data.index, 0, data['drawdown'], color='#009100', alpha=0.3)
         ax00_twi.set_ylabel("Drawdown")
 
         month = data['net_value'].resample('ME').last() / data['net_value'].resample('ME').first() - 1
-        ax[0, 1].bar(month.index, month.values, width=20)
-        ax[0, 1].set_title("Monthly Return")
+        ax[1].bar(month.index, month.values, width=20)
+        ax[1].set_title("Monthly Return")
 
-        data["turnover"].plot(ax=ax[0, 2], title="Turnover", color=['#1C1C1C'], legend=True)
+        data["turnover"].plot(ax=ax[2], title="Turnover", color=['#1C1C1C'], legend=True)
 
         fig.tight_layout()
         if isinstance(image, (str, Path)):
