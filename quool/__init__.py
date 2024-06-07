@@ -2,19 +2,24 @@ from .table import (
     ItemTable,
     DatetimeTable,
     PanelTable,
-    Transaction,
-    Proxy,
-    Factor,
 )
 
-
-from .tool import (
-    Logger,
+from .btrader import (
     CBroker,
     Cerebro,
     Strategy,
     CashValueRecorder,
     TradeOrderRecorder,
+)
+
+from .contrib import (
+    Transaction,
+    Proxy,
+    Factor,
+)
+
+from .tool import (
+    Logger,
     parse_commastr,
     reduce_mem_usage,
     evaluate,
@@ -27,4 +32,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.6.0"
+__version__ = "6.0.0"
