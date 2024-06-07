@@ -1,6 +1,6 @@
-from .core import Table
 
-from .table import (
+
+from .base import (
     ItemTable,
     DatetimeTable,
     PanelTable,
@@ -32,4 +32,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.3.2"
+__version__ = "5.4.0"
