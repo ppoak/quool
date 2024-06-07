@@ -1,14 +1,9 @@
-
-
 from .table import (
     ItemTable,
     DatetimeTable,
     PanelTable,
-)
-
-from .contrib import (
-    Proxy,
     Transaction,
+    Proxy,
     Factor,
 )
 
@@ -32,4 +27,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.4.1"
+__version__ = "5.5.0"
