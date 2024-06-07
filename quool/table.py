@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from lxml import etree
 from pathlib import Path
-from .util import parse_commastr, evaluate
+from .tool import parse_commastr, evaluate
 
 
 class Table(abc.ABC):

@@ -8,7 +8,7 @@ from .table import (
 )
 
 
-from .util import (
+from .tool import (
     Logger,
     CBroker,
     Cerebro,
@@ -27,4 +27,4 @@ WARNING = 30
 CRITICAL = 40
 
 
-__version__ = "5.5.0"
+__version__ = "5.6.0"
