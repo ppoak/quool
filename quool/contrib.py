@@ -1,9 +1,8 @@
 import re
 import time
-import uuid
-import backtrader as bt
 import random
 import requests
+import itertools
 import numpy as np
 import pandas as pd
 from lxml import etree
@@ -206,6 +205,15 @@ class Proxy(ItemTable):
 
 class Transaction(ItemTable):
 
+    def __init__(
+        self, uri: str | Path, 
+        create: bool = False
+    ):
+        super().__init__(uri, create)
+        self._id = itertools.count(
+            self.read("reference", status="Completed").iloc[:, 0].max()
+        )
+
     @property
     def spliter(self):
         return pd.Grouper(key='notify_time', freq='ME')
@@ -249,8 +257,7 @@ class Transaction(ItemTable):
         trade = pd.DataFrame([{
             "notify_time": time,
             "code": code,
-            # 'reference': uuid.uuid4().hex,
-            'reference': next(bt.Order.refbasis),
+            'reference': next(self._id),
             'type': "Buy" if size > 0 else "Sell",
             'status': "Completed",
             'created_time': time,
