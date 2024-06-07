@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from lxml import etree
 from pathlib import Path
-from .base import ItemTable, PanelTable
+from .table import ItemTable, PanelTable
 from .util import parse_commastr, evaluate
 
 
