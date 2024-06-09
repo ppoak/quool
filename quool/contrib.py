@@ -675,8 +675,6 @@ class Factor(PanelTable):
         return eva
 
     def get(self, name: str, trading_days: pd.DatetimeIndex, n_jobs: int = -1):
-        start = start or pd.to_datetime('now').strftime(r"%Y-%m-%d")
-        stop = stop or pd.to_datetime('now').strftime(r"%Y-%m-%d")
         result = Parallel(n_jobs=n_jobs, backend='loky')(
             delayed(getattr(self, "get_" + name))(date) for date in tqdm(list(trading_days))
         )
