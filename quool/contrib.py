@@ -414,14 +414,12 @@ class Factor(PanelTable):
     
     def get_future(
         self, 
-        ptype: str,
+        price: pd.DataFrame,
         period: int = 1, 
-        start: str | pd.Timestamp = None,
-        stop: str | pd.Timestamp = None,
         skip_nonperiod_day: bool = False,
         nonrealizable: pd.DataFrame = None,
-    ):       
-        price = ptype.where(~nonrealizable.astype(bool), other=np.nan)
+    ):
+        price = price.where(~nonrealizable.astype(bool), other=np.nan)
         future = price.shift(-1 - period) / price.shift(-1) - 1
         future = future.dropna(axis=0, how='all')
 
