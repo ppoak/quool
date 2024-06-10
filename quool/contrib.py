@@ -422,9 +422,8 @@ class Factor(PanelTable):
         nonrealizable: pd.DataFrame = None,
     ):
         if stop is not None:
-            stop = self.get_trading_days_rollback(stop, -period - 1)
-        price = self.read(ptype, start=start, stop=stop)
-        price = price.where(~nonrealizable, other=np.nan)
+            stop = self.get_trading_days_rollback(stop, -period - 1)        
+        price = ptype.where(~nonrealizable.astype(bool), other=np.nan)
         future = price.shift(-1 - period) / price.shift(-1) - 1
         future = future.dropna(axis=0, how='all')
 
