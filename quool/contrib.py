@@ -23,6 +23,7 @@ class Transaction(ItemTable):
         super().__init__(uri, create)
         self._id = itertools.count(
             self.read("reference", status="Completed").iloc[:, 0].max()
+            if self.fragments else 1
         )
 
     @property
@@ -92,6 +93,8 @@ class Transaction(ItemTable):
         stop: str | pd.Timestamp = None,
         price: pd.Series = None
     ) -> pd.Series:
+        if not self.fragments:
+            return pd.DataFrame()
         trans = self.read(
             "code, executed_size, executed_price, commission", 
             start=start, stop=stop, status="Completed"

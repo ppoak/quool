@@ -192,7 +192,7 @@ def evaluate(
         evaluation['ext_max_drawdown_stop'] = enddate
         evaluation['beta'] = returns.cov(benchmark_returns) / benchmark_returns.var()
         evaluation['alpha(%)'] = (returns.mean() - (evaluation['beta'] * (benchmark_returns.mean()))) * 100
-        evaluation['treynor_ratio(%)'] = (evaluation['annual_exreturn(%)'] / evaluation['beta'])
+        evaluation['treynor_ratio(%)'] = (evaluation['annual_exreturn(%)'] / evaluation['beta']) if evaluation["beta"] != 0 else np.nan
         evaluation['information_ratio'] = evaluation['annual_exreturn(%)'] / benchmark_volatility \
             if benchmark_volatility != 0 else np.nan
     else:
