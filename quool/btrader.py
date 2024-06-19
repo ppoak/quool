@@ -1,10 +1,12 @@
 import numpy as np
 import pandas as pd
 from uuid import uuid4
+from .tool import Logger
 from collections import deque, defaultdict
+from abc import ABC, abstractmethod
 
 
-class Order:
+class Order(ABC):
 
     def __init__(self, code: str, side: str, time: str, size: float, price: float, otype: str = "Market"):
         self.code = code
@@ -32,25 +34,12 @@ class Order:
     
     def __repr__(self) -> str:
         return self.__str__()
-    
+
+
 class MarketBuyOrder(Order):
 
     def __init__(self, code: str, time: str, size: float, price: float):
         super().__init__(code, 'Buy', time, size, price, "Market")
-    
-    def execute(self, time: str, popen: float, phigh: float, plow: float, pclose: float, volume: float):
-        if not self.alive:
-            return self
-        self.executed = pd.to_datetime(time)
-        self.eprice = popen # slippage needs to be complemented
-        self.esize = min(self.csize, volume)
-        self.rsize = self.csize - self.esize
-        self.comm = max(self.esize * 0.0002, 5) # commission should be computed more flexibly
-        if not self.rsize:
-            self.status = "Completed"
-        else:
-            self.status = "Partial"
-        return self
 
 
 class MarketSellOrder(Order):
@@ -58,19 +47,31 @@ class MarketSellOrder(Order):
     def __init__(self, code: str, time: str, size: float, price: float):
         super().__init__(code, 'Sell', time, -size, price, "Market")
 
-    def execute(self, time: str, popen: float, phigh: float, plow: float, pclose: float, volume: float):
-        if not self.alive:
-            return self
-        self.executed = pd.to_datetime(time)
-        self.eprice = popen # slippage needs to be complemented
-        self.esize = max(self.csize, -volume)
-        self.rsize = self.esize - self.csize
-        self.comm = -self.esize * 0.0002 # commission should be computed more flexibly
-        if not self.rsize:
-            self.status = "Completed"
+
+class Exchange(ABC):
+
+    def __init__(self):
+        self.current = pd.to_datetime(np.nan)
+        self.cdata = pd.DataFrame()
+
+    def load(self, since: str = None):
+        raise NotImplementedError
+    
+    def match_marketorder(self, market_order: Order):
+        market_order.executed = pd.to_datetime(self.current)
+        market_order.eprice = self.cdata.loc[market_order.code, "open"] # slippage needs to be complemented
+        market_order.esize = min(market_order.csize, self.cdata.loc[market_order.code, "volume"])
+        market_order.comm = max(market_order.esize * 0.0002, 5) # here, commission should be handled by broker
+        market_order.status = "Completed" # when partial executed, more things need to be done
+        return market_order
+    
+    def match(self, order: Order) -> Order:
+        if not order.alive:
+            return order
+        if order.otype == "Market":
+            return self.match_marketorder(order)
         else:
-            self.status = "Partial"
-        return self
+            raise TypeError(f"{order.otype} order is not supported")
 
 
 class Position:
@@ -84,33 +85,85 @@ class Position:
         self.size += size
 
 
-class Broker:
+class Broker(ABC):
+    
+    def __init__(self):
+        self._pending = deque()
+        self._completed = deque()
+        self._cash = 0
+        self._freecash = 0
+        self.position = defaultdict(Position)
+        self.current = pd.to_datetime(np.nan)
+        self.logger = Logger("Broker", display_name=False)
+    
+    @property
+    def cash(self):
+        return self._cash
+    
+    @property
+    def freecash(self):
+        return self._freecash
+
+    @property
+    def pending(self):
+        return self._pending
+
+    @property
+    def completed(self):
+        return self._completed
+
+    def log(self, text: str, level: int = 10):
+        self.logger.log(level=level, msg=text)
+    
+
+class BackBroker(Broker):
 
     def __init__(self):
-        self.pending = deque()
-        self.completed = deque()
-        self.position = defaultdict(Position)
+        super().__init__()
+        self.commfee = 0.0002
+        self.curve = deque()
+    
+    def transfer(self, amount: float):
+        self._cash += amount
+        self._freecash += amount
     
     def marketbuy(self, code: str, time: str, size: float, price: float):
         order = MarketBuyOrder(code, time, size, price, "Market")
-        self.pending.append(order)
-        return order
+        cash = size * price
+        if self.freecash < cash:
+            order.status = "Rejected"
+            self.completed.append(order)
+            self.log(f"[{time}] {order}")
+            return order
+        else:
+            self._freecash -= cash
+            self.pending.append(order)
+            self.log(f"[{time}] {order}")
+            return order
     
     def marketsell(self, code: str, time: str, size: float, price: float):
         order = MarketSellOrder(code, time, size, price, "Market")
-        self.pending.append(order)
-        return order
+        if size <= self.position[code].size:
+            self.pending.append(order)
+            self.log(f"[{time}] {order}")
+            return order
+        else:
+            order.status = "Reject"
+            self.completed.append(order)
+            self.log(f"[{time}] {order}")
+            return order
 
-    def execute(self, time: str, bars: pd.DataFrame):
+    def submit(self, exchange: Exchange):
         self.pending.append(None)
         while True:
             order = self.pending.popleft()
             if order is None:
                 break
-            order = order.execute(time, **bars.loc[order.code]) # bars should be open, high, low, close, volume
+            order = exchange.match(order)
             if order.alive:
                 self.pending.append(order)
             else:
+                order.comm = max(order.esize * self.commfee, 5)
                 self.completed.append(order)
                 self.position[order.code].update(order.esize, order.eprice)
 
