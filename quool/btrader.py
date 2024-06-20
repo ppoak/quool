@@ -65,6 +65,7 @@ class CBroker(bt.BackBroker):
                     info = {
                         "notify_time": data.datetime.date(0),
                         "code": "Cash",
+                        'type': "Dividend",
                         'reference': next(bt.Order.refbasis),
                         'status': "Completed",
                         'created_time': data.datetime.date(0),
@@ -81,7 +82,7 @@ class CBroker(bt.BackBroker):
             # hold the stock which has split
             if size and not np.isnan(splitfactor):
                 splitsize = int(size * splitfactor)
-                pos.update(size=splitsize, price=data.close[0])
+                pos.update(size=splitsize, price=0)
                 analyzer = getattr(self.cerebro.runningstrats[0].analyzers, self.params.split_div_recorder, None)
                 if analyzer:
                     info = {
@@ -91,10 +92,10 @@ class CBroker(bt.BackBroker):
                         'type': "Split",
                         'status': "Completed",
                         'created_time': data.datetime.date(0),
-                        'created_price': data.close[0],
+                        'created_price': 0,
                         'created_size': splitsize,
                         'executed_time': data.datetime.date(0),
-                        'executed_price': data.close[0],
+                        'executed_price': 0,
                         'executed_size': splitsize,
                         'commission': 0,
                     }
