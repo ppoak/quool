@@ -558,7 +558,7 @@ class Factor(PanelTable):
             factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor)
         
         # ngroup test
-        try:
+        try: 
             groups = factor.apply(lambda x: pd.qcut(x, q=ngroup, labels=False), axis=1) + 1
         except:
             for date in factor.index:
@@ -671,6 +671,94 @@ class Factor(PanelTable):
             pd.concat([eva, val, turnover], axis=1).to_excel(result)
 
         return eva
+    
+    def perform_optimizer(
+        self, 
+        df: str | pd.DataFrame,
+        *,
+        correlation: bool = False, 
+        heatmap_image: str | bool = None, 
+        tscorr_image: str | bool = None, 
+        orthogonalization : str = None, 
+        factor_compound: str = None, 
+        method: str = None, 
+    ):
+        if not correlation and (tscorr_image is not None or heatmap_image is not None):
+            print("correlation needs to be accessed before heatmap_image or tscorr_image.")
+        
+        correlation_matrix = None
+        if correlation:
+            correlations = {}  
+            for date, group in df.groupby('date'):
+                corr_matrix = group.corr()
+                correlations[date] = corr_matrix
+            correlation_matrix = sum(correlations.values())/ len(correlations)
+
+            if heatmap_image is not None and heatmap_image != False:
+                fig, ax = plt.subplots(figsize=(12, 8))
+                sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap='RdBu', center=0,
+                            vmin=-1, vmax=1, cbar=True, ax=ax)
+                ax.set_title('Heatmap for Correlation')
+                if not isinstance(heatmap_image, bool):
+                    plt.savefig(heatmap_image)
+                    plt.close(fig)
+                else:
+                    fig.show()
+
+            if tscorr_image is not None and tscorr_image!=False:
+                correlation_ts = pd.DataFrame()
+
+                for date, matrix in correlations.items():
+                    flat_matrix = matrix.unstack().rename_axis(['Feature1', 'Feature2']).reset_index()
+                    flat_matrix['Correlation'] = flat_matrix[0]
+                    flat_matrix['Date'] = pd.to_datetime(date)
+                    correlation_ts = pd.concat([correlation_ts, flat_matrix[['Date', 'Feature1', 'Feature2', 'Correlation']]], axis=0)
+
+                correlation_ts = correlation_ts[correlation_ts['Feature1'] != correlation_ts['Feature2']]
+                correlation_ts['sorted_features'] = correlation_ts.apply(lambda x: tuple(sorted([x['Feature1'], x['Feature2']])), axis=1)
+                correlation_ts = correlation_ts.drop_duplicates(subset=['Date', 'sorted_features'])
+                correlation_ts.set_index(['Date', 'sorted_features'], inplace=True)
+                correlation_ts = correlation_ts['Correlation'].unstack()
+
+                num_pairs = len(correlation_ts.columns)
+                num_cols = 3  
+                num_rows = (num_pairs + num_cols - 1) // num_cols  
+
+                fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, num_rows * 5))
+                axes = axes.flatten()  
+                for ax, ((feature1, feature2), series) in zip(axes, correlation_ts.items()):
+                    ax.plot(series.index, series, marker='', linestyle='-')
+                    ax.set_title(f'{feature1} and {feature2}')
+                    ax.grid(True)
+                    for label in ax.get_xticklabels():
+                        label.set_rotation(45)  
+                    ax.tick_params(axis='x', which='major', labelsize=10)  
+
+                # 隐藏多余的子图
+                for i in range(num_pairs, len(axes)):
+                    axes[i].set_visible(False)
+                fig.supxlabel('Date', fontsize=12) 
+                fig.supylabel('Correlation', fontsize=12)
+                fig.tight_layout()
+                if not isinstance(tscorr_image, bool):
+                    plt.savefig(tscorr_image)
+                    plt.close(fig)
+                else:
+                    fig.show()
+
+        df_orth = None
+        if orthogonalization == 'symmetric_orthogonal':
+            def orthogonalize(group):
+                X = group.values
+                C = np.cov(X.T)
+                D, U = np.linalg.eigh(C)
+                D_sqrt_inv = np.diag(1 / np.sqrt(D))
+                S = U @ D_sqrt_inv @ U.T
+                F_hat = X @ S
+                return pd.DataFrame(F_hat, index=group.index, columns=group.columns)
+            df_orth = df.groupby('date', as_index=False).apply(orthogonalize).reset_index(level=0, drop=True).sort_index()
+        
+        return correlation_matrix, df_orth
 
     def get(self, name: str, trading_days: pd.DatetimeIndex, n_jobs: int = -1, start: str = None, stop: str = None):
         result = Parallel(n_jobs=n_jobs, backend='loky')(
