@@ -503,19 +503,33 @@ class Factor(PanelTable):
         ptype: str = "volume_weighted_price",
         processor: list = None,
         rolling: int = 20, 
-        method: str = 'pearson', 
+        method: str = 'pearson', #spearman, pearson, weighted
         skip_nonperiod_day: bool = False,
         image: str | bool = True, 
         result: str = None
     ):
         future = self.get_future(ptype, period, start, stop)
-        
         if skip_nonperiod_day:
             factor = self._prepare_factor(factor, future.index, None, processor)
         else:
             factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor)
 
-        if method == 'pearson':
+        if method =='weighted':
+            def calculate_weighted_ic(x, r):
+                x_ranked = x.rank(ascending=False)
+                n = len(x)
+                lambda_value = -np.log(0.5) / (n / 2 - 1)
+                w = np.exp(-lambda_value * (x_ranked - 1))
+                w /= w.sum()
+
+                wx = w * x
+                wr = w * r
+                wxr = w * x * r
+                numerator = wxr.sum() - (wx.sum() * wr.sum())
+                denominator = np.sqrt((w * (x ** 2)).sum() - wx.sum()**2) * np.sqrt((w * (r ** 2)).sum() - wr.sum()**2)
+                return numerator / denominator if denominator != 0 else np.nan
+            inforcoef = factor.apply(lambda row: calculate_weighted_ic(row.dropna(), future.loc[row.name, row.dropna().index]), axis=1)
+        else:
             inforcoef = factor.corrwith(future, axis=1, method=method).dropna()
         inforcoef.name = f"infocoef"
 
