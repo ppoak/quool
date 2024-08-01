@@ -431,21 +431,32 @@ class Factor(PanelTable):
             return future.iloc[::period].squeeze()
         return future.squeeze()
     
+    def filter_factor(
+        self, 
+        factor: str | pd.DataFrame | pd.Series,
+        nonrealizable: pd.DataFrame = None,
+    ):
+        return factor.where(~nonrealizable.astype(bool), other=np.nan)
+
     def _prepare_factor(
         self, 
         factor: str | pd.DataFrame | pd.Series,
         start: str | pd.Timestamp = None,
         stop: str | pd.Timestamp = None,
-        processor: list = None
+        processor: list = None,
+        benchmark: str = '000985.XSHG',
     ):
         if isinstance(factor, pd.Series) and factor.index.nlevels == 2:
             factor = factor.unstack(self._code_level)
+            factor = self.filter_factor(factor,benchmark)
 
         elif isinstance(factor, pd.DataFrame):
             factor = factor.loc[start:stop]
+            factor = self.filter_factor(factor,benchmark)
 
         elif isinstance(factor, str):
             factor = self.read(factor, start=start, stop=stop)
+            factor = self.filter_factor(factor,benchmark)
         
         else:
             ValueError("Invalid factor type")
@@ -472,11 +483,12 @@ class Factor(PanelTable):
         processor: list = None,
         period: int = 1,
         ptype: str = "volume_weighted_price",
+        benchmark: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
     ):
         future = self.get_future(ptype, period, date, date)
-        factor = self._prepare_factor(factor, future.name, future.name, processor)
+        factor = self._prepare_factor(factor, future.name, future.name, processor, benchmark)
         data = pd.concat([factor.squeeze(), future], axis=1, keys=["Factor", future.name])
 
         if image is not None:
@@ -505,21 +517,22 @@ class Factor(PanelTable):
         rolling: int = 20, 
         method: str = 'pearson', #spearman, pearson, weighted
         skip_nonperiod_day: bool = False,
+        benchmark: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, start, stop)
+        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day)
         if skip_nonperiod_day:
-            factor = self._prepare_factor(factor, future.index, None, processor)
+            factor = self._prepare_factor(factor, future.index, None, processor, benchmark)
         else:
-            factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor)
+            factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, benchmark=benchmark)
 
         if method =='weighted':
             def calculate_weighted_ic(x, r):
                 x_ranked = x.rank(ascending=False)
                 n = len(x)
-                lambda_value = -np.log(0.5) / (n / 2 - 1)
-                w = np.exp(-lambda_value * (x_ranked - 1))
+                a = -np.log(0.5) / (n / 2 - 1)
+                w = np.exp(-a * (x_ranked - 1))
                 w /= w.sum()
 
                 wx = w * x
@@ -561,17 +574,18 @@ class Factor(PanelTable):
         ptype: str = "volume_weighted_price",
         ngroup: int = 5, 
         commission: float = 0.002, 
-        skip_nonperiod_day: bool = True,
+        skip_nonperiod_day: bool = False,
+        benchmark: str = '000985.XSHG',
         n_jobs: int = 1,
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, start, stop)
+        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day)
         
         if skip_nonperiod_day:
-            factor = self._prepare_factor(factor, start=future.index, processor=processor)
+            factor = self._prepare_factor(factor, start=future.index, processor=processor, benchmark=benchmark)
         else:
-            factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor)
+            factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, benchmark=benchmark)
         
         # ngroup test
         try: 
@@ -648,16 +662,17 @@ class Factor(PanelTable):
         processor: list = None,
         topk: int = 100, 
         commission: float = 0.002, 
-        skip_nonperiod_day: bool = True,
+        skip_nonperiod_day: bool = False,
+        benchmark: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, start, stop)
+        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day)
 
         if skip_nonperiod_day:
-            factor = self._prepare_factor(factor, start=future.index, processor=processor)
+            factor = self._prepare_factor(factor, start=future.index, processor=processor, benchmark=benchmark)
         else:
-            factor = self._prepare_factor(factor, start, stop, processor)
+            factor = self._prepare_factor(factor, start, stop, processor, benchmark)
             
         topks = factor.rank(ascending=False, axis=1) < topk
         topks = factor.where(topks)
@@ -690,12 +705,17 @@ class Factor(PanelTable):
     
     def perform_optimizer(
         self, 
-        df: str | pd.DataFrame,
+        factor: pd.DataFrame,
         *,
         corr_method: str = None, # factor:因子相关性， ic:因子IC相关性
         heatmap_image: str | bool = None, 
         tscorr_image: str | bool = None, 
         orthogonalization : str = None, 
+        period: int = 1,
+        ptype: str = "volume_weighted_price",
+        skip_nonperiod_day: bool = False,
+        benchmark: str = '000985.XSHG',
+        processor: list = None,
         factor_compound: str = None, 
     ):
         if not corr_method and (tscorr_image or heatmap_image):
@@ -704,6 +724,13 @@ class Factor(PanelTable):
         if corr_method =='ic' and tscorr_image:
             raise ValueError('The tscorr_image is only used for corr_method factor.')
         
+        future = self.get_future(ptype, period, factor.index[0], factor.index[-1])
+
+        if skip_nonperiod_day:
+            factor = self._prepare_factor(factor, start=future.index, processor=processor, benchmark=benchmark)
+        else:
+            factor = self._prepare_factor(factor, factor.index[0], factor.index[-1], processor, benchmark)
+            
         def plot_heatmap(correlation_matrix, heatmap_image):
             fig, ax = plt.subplots(figsize=(12, 8))
             sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap='RdBu', center=0, vmin=-1, vmax=1, cbar=True, ax=ax)
@@ -767,12 +794,12 @@ class Factor(PanelTable):
         correlation_matrix, df_orth = None, None
 
         if corr_method == 'ic':
-            correlation_matrix = self.ic_corr(df)
+            correlation_matrix = self.perform_inforcoef(factor, start=start, stop=stop, period=period, image=False)
             if heatmap_image:
                 plot_heatmap(correlation_matrix, heatmap_image)
 
         elif corr_method == 'factor':
-            correlations = {date: group.corr() for date, group in df.groupby('date') if not group.fillna(0).corr().isnull().values.any()}
+            correlations = {date: group.corr() for date, group in factor.groupby('date') if not group.fillna(0).corr().isnull().values.any()}
             correlation_matrix = sum(correlations.values())/ len(correlations)
 
             if heatmap_image:
@@ -782,8 +809,8 @@ class Factor(PanelTable):
                 correlation_ts = prepare_correlation_ts(correlations)
                 plot_ts_correlation(correlation_ts, tscorr_image)
 
-        if orthogonalization == 'symmetric_orthogonal':
-            df_orth = df.groupby('date', as_index=False).apply(orthogonalize).reset_index(level=0, drop=True).sort_index()
+        if orthogonalization == 'symmetric':
+            df_orth = factor.groupby('date', as_index=False).apply(orthogonalize).reset_index(level=0, drop=True).sort_index()
 
         return correlation_matrix, df_orth
 
