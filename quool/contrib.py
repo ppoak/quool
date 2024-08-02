@@ -448,19 +448,18 @@ class Factor(PanelTable):
     ):
         if isinstance(factor, pd.Series) and factor.index.nlevels == 2:
             factor = factor.unstack(self._code_level)
-            factor = self.filter_factor(factor,benchmark)
 
         elif isinstance(factor, pd.DataFrame):
             factor = factor.loc[start:stop]
-            factor = self.filter_factor(factor,benchmark)
 
         elif isinstance(factor, str):
             factor = self.read(factor, start=start, stop=stop)
-            factor = self.filter_factor(factor,benchmark)
         
         else:
             ValueError("Invalid factor type")
-        
+            
+        factor = self.filter_factor(factor, benchmark=benchmark)
+
         processor = processor or []
         for proc in processor:
             kwargs = {}
@@ -666,7 +665,7 @@ class Factor(PanelTable):
         benchmark: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
-    ):
+    ):  
         future = self.get_future(ptype, period, start, stop, skip_nonperiod_day)
 
         if skip_nonperiod_day:
@@ -707,7 +706,9 @@ class Factor(PanelTable):
         self, 
         factor: pd.DataFrame,
         *,
-        corr_method: str = None, # factor:因子相关性， ic:因子IC相关性
+        correlation: str | bool = True,  # factor:因子相关性， ic:因子IC相关性
+        corr_method: str = 'pearson', #spearman, pearson
+        ic_method: str = 'pearson', #spearman, pearson, weighted
         heatmap_image: str | bool = None, 
         tscorr_image: str | bool = None, 
         orthogonalization : str = None, 
@@ -718,18 +719,16 @@ class Factor(PanelTable):
         processor: list = None,
         factor_compound: str = None, 
     ):
-        if not corr_method and (tscorr_image or heatmap_image):
-            raise ValueError('Correlation needs to be accessed before heatmap_image or tscorr_image.')
-        
-        if corr_method =='ic' and tscorr_image:
-            raise ValueError('The tscorr_image is only used for corr_method factor.')
-        
-        future = self.get_future(ptype, period, factor.index[0], factor.index[-1])
+        if correlation =='ic' and tscorr_image:
+            raise ValueError('The tscorr_image is only used for factor correlation.')
+
+        start, stop = factor.index.get_level_values(self._date_level).unique()[[0, -1]]
+        future = self.get_future(ptype, period, start,stop)
 
         if skip_nonperiod_day:
-            factor = self._prepare_factor(factor, start=future.index, processor=processor, benchmark=benchmark)
+            factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start=future.index, processor=processor, benchmark=benchmark).unstack())
         else:
-            factor = self._prepare_factor(factor, factor.index[0], factor.index[-1], processor, benchmark)
+            factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start, stop, processor, benchmark).unstack())
             
         def plot_heatmap(correlation_matrix, heatmap_image):
             fig, ax = plt.subplots(figsize=(12, 8))
@@ -791,15 +790,15 @@ class Factor(PanelTable):
             F_hat = X @ S
             return pd.DataFrame(F_hat, index=group.index, columns=group.columns)
         
-        correlation_matrix, df_orth = None, None
+        correlation_matrix, orthogonal = None, None
 
-        if corr_method == 'ic':
-            correlation_matrix = self.perform_inforcoef(factor, start=start, stop=stop, period=period, image=False)
+        if correlation == 'ic':
+            correlation_matrix = factor.apply(lambda x: self.perform_inforcoef(x.unstack(self._code_level), start=start, stop=stop, period=period, method=ic_method, image=False)).corr(method=corr_method)
             if heatmap_image:
                 plot_heatmap(correlation_matrix, heatmap_image)
 
-        elif corr_method == 'factor':
-            correlations = {date: group.corr() for date, group in factor.groupby('date') if not group.fillna(0).corr().isnull().values.any()}
+        if correlation == 'factor' or correlation == True:
+            correlations = {date: group.corr(method=corr_method) for date, group in factor.groupby('date') if not group.fillna(0).corr(method=corr_method).isnull().values.any()}
             correlation_matrix = sum(correlations.values())/ len(correlations)
 
             if heatmap_image:
@@ -810,9 +809,9 @@ class Factor(PanelTable):
                 plot_ts_correlation(correlation_ts, tscorr_image)
 
         if orthogonalization == 'symmetric':
-            df_orth = factor.groupby('date', as_index=False).apply(orthogonalize).reset_index(level=0, drop=True).sort_index()
+            orthogonal = factor.groupby('date', as_index=False).apply(orthogonalize).reset_index(level=0, drop=True).sort_index()
 
-        return correlation_matrix, df_orth
+        return correlation_matrix, orthogonal
 
     def get(self, name: str, trading_days: pd.DatetimeIndex, n_jobs: int = -1, start: str = None, stop: str = None):
         result = Parallel(n_jobs=n_jobs, backend='loky')(
