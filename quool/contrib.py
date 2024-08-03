@@ -372,6 +372,7 @@ class Factor(PanelTable):
         start: str | list = None, 
         stop: str = None, 
         processor: list = None,
+        benchmark: str = None,
     ) -> pd.Series | pd.DataFrame:
         processor = processor or []
         if not isinstance(processor, list):
@@ -381,7 +382,13 @@ class Factor(PanelTable):
         
         if df.columns.size == 1:
             df = df.squeeze().unstack(level=self._code_level)
-        
+
+        if benchmark is not None:
+            if isinstance(df.index, pd.MultiIndex):
+                df = df.apply(lambda x: self.filter_factor(x.unstack(self._code_level)).unstack())
+            else:
+                df = self.filter_factor(df, benchmark=benchmark)
+
         for proc in processor:
             kwargs = {}
             if isinstance(proc, tuple):
@@ -433,10 +440,10 @@ class Factor(PanelTable):
     
     def filter_factor(
         self, 
-        factor: str | pd.DataFrame | pd.Series,
+        factor: pd.DataFrame,
         nonrealizable: pd.DataFrame = None,
     ):
-        return factor.where(~nonrealizable.astype(bool), other=np.nan)
+        return factor.where(~nonrealizable.astype(bool), other=np.nan).dropna(how='all',axis=1)
 
     def _prepare_factor(
         self, 
@@ -457,7 +464,7 @@ class Factor(PanelTable):
         
         else:
             ValueError("Invalid factor type")
-            
+
         factor = self.filter_factor(factor, benchmark=benchmark)
 
         processor = processor or []
@@ -706,24 +713,20 @@ class Factor(PanelTable):
         self, 
         factor: pd.DataFrame,
         *,
-        correlation: str | bool = True,  # factor:因子相关性， ic:因子IC相关性
-        corr_method: str = 'pearson', #spearman, pearson
-        ic_method: str = 'pearson', #spearman, pearson, weighted
-        heatmap_image: str | bool = None, 
+        correlation: str | bool = False, #'ic', 'factor'
+        corr_method: str = 'pearson',
+        ic_method: str = 'pearson', #'spearman', 'pearson', 'weighted'
+        heatmap_image: str | bool = None,
         tscorr_image: str | bool = None, 
-        orthogonalization : str = None, 
+        orthogonalization : bool = False, 
         period: int = 1,
         ptype: str = "volume_weighted_price",
         skip_nonperiod_day: bool = False,
         benchmark: str = '000985.XSHG',
         processor: list = None,
-        factor_compound: str = None, 
-    ):
-        if correlation =='ic' and tscorr_image:
-            raise ValueError('The tscorr_image is only used for factor correlation.')
-
+        compound_method: str = None, 
+    )-> dict:
         start, stop = factor.index.get_level_values(self._date_level).unique()[[0, -1]]
-        future = self.get_future(ptype, period, start,stop)
 
         if skip_nonperiod_day:
             factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start=future.index, processor=processor, benchmark=benchmark).unstack())
@@ -785,33 +788,78 @@ class Factor(PanelTable):
             X = group.values
             C = np.cov(X.T)
             D, U = np.linalg.eigh(C)
-            D_sqrt_inv = np.diag(1 / np.sqrt(D))
+            epsilon = 1e-11
+            D_sqrt_inv = np.diag(1 / np.sqrt(D + epsilon))
             S = U @ D_sqrt_inv @ U.T
             F_hat = X @ S
             return pd.DataFrame(F_hat, index=group.index, columns=group.columns)
         
-        correlation_matrix, orthogonal = None, None
+        def get_ic(factor, method=ic_method):
+            if method =='weighted':
+                def calculate_weighted_ic(x, r):
+                    x_ranked = x.rank(ascending=False)
+                    n = len(x)
+                    a = -np.log(0.5) / (n / 2 - 1)
+                    w = np.exp(-a * (x_ranked - 1))
+                    w /= w.sum()
 
-        if correlation == 'ic':
-            correlation_matrix = factor.apply(lambda x: self.perform_inforcoef(x.unstack(self._code_level), start=start, stop=stop, period=period, method=ic_method, image=False)).corr(method=corr_method)
+                    wx = w * x
+                    wr = w * r
+                    wxr = w * x * r
+                    numerator = wxr.sum() - (wx.sum() * wr.sum())
+                    denominator = np.sqrt((w * (x ** 2)).sum() - wx.sum()**2) * np.sqrt((w * (r ** 2)).sum() - wr.sum()**2)
+                    return numerator / denominator if denominator != 0 else np.nan
+                inforcoef = factor.apply(lambda row: calculate_weighted_ic(row.dropna(), future.loc[row.name, row.dropna().index]), axis=1)
+            else:
+                inforcoef = factor.corrwith(future, axis=1, method=method).dropna()
+            return inforcoef
+        
+        def get_metrics(series):
+            ic_mean = round(series.mean(), 4)
+            ic_std = round(series.std(), 4)
+            rolling_abs_mean = series.rolling(20).mean().abs()
+            return pd.Series({
+                'IC mean': ic_mean,
+                'IC std': ic_std,
+                'IR': round(ic_mean /ic_std, 4),
+                'IR_ly': round(series[-252:].mean() / series[-252:].std(), 4),
+                'IC>0': round(len(series[series > 0]) / len(series), 4),
+                'ROLLING20_ABS_IC>3%': round(len(rolling_abs_mean[rolling_abs_mean > 0.03]) / len(rolling_abs_mean), 4)
+            })
+        
+        result = {'factor': factor}
+
+        if orthogonalization:
+            factor = factor.groupby(level='date', as_index=False).apply(lambda x: orthogonalize(x.fillna(0))).reset_index(level=0, drop=True).sort_index()
+            result['symmetric_orthogonal'] = factor
+
+        if correlation =='factor' or correlation == True:
+            correlations = {date: group.corr(method=corr_method) for date, group in factor.groupby('date') 
+                if not group.fillna(0).corr(method=corr_method).isnull().values.any()
+            }
+            factor_correlation_matrix = sum(correlations.values())/ len(correlations)
+            result['factor_correlation_matrix'] = factor_correlation_matrix
             if heatmap_image:
-                plot_heatmap(correlation_matrix, heatmap_image)
-
-        if correlation == 'factor' or correlation == True:
-            correlations = {date: group.corr(method=corr_method) for date, group in factor.groupby('date') if not group.fillna(0).corr(method=corr_method).isnull().values.any()}
-            correlation_matrix = sum(correlations.values())/ len(correlations)
-
-            if heatmap_image:
-                plot_heatmap(correlation_matrix, heatmap_image)
+                plot_heatmap(factor_correlation_matrix, heatmap_image)
 
             if tscorr_image:
                 correlation_ts = prepare_correlation_ts(correlations)
                 plot_ts_correlation(correlation_ts, tscorr_image)
 
-        if orthogonalization == 'symmetric':
-            orthogonal = factor.groupby('date', as_index=False).apply(orthogonalize).reset_index(level=0, drop=True).sort_index()
+        if compound_method or correlation == 'ic':
+            future = self.get_future(ptype, period, start,stop)
+            IC = factor.apply(lambda x: get_ic(x.unstack(self._code_level), method=ic_method))
+            metrics = IC.apply(get_metrics).T
+            result['inforcoef'] = IC
+            result['metrics'] = metrics
 
-        return correlation_matrix, orthogonal
+            if correlation =='ic':
+                ic_correlation_matrix = IC.corr(method=corr_method)
+                result['ic_correlation_matrix'] = ic_correlation_matrix
+                if heatmap_image:
+                    plot_heatmap(factor_correlation_matrix, heatmap_image)
+
+        return result
 
     def get(self, name: str, trading_days: pd.DatetimeIndex, n_jobs: int = -1, start: str = None, stop: str = None):
         result = Parallel(n_jobs=n_jobs, backend='loky')(
