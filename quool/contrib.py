@@ -451,13 +451,13 @@ class Factor(PanelTable):
         start: str | pd.Timestamp = None,
         stop: str | pd.Timestamp = None,
         processor: list = None,
-        benchmark: str = '000985.XSHG',
+        benchmark: str = None,
     ):
         if isinstance(factor, pd.Series) and factor.index.nlevels == 2:
             factor = factor.unstack(self._code_level)
 
         elif isinstance(factor, pd.DataFrame):
-            factor = factor.loc[start:stop]
+            factor = factor.loc[start:stop] if stop is not None else factor.loc[start]
 
         elif isinstance(factor, str):
             factor = self.read(factor, start=start, stop=stop)
@@ -465,7 +465,8 @@ class Factor(PanelTable):
         else:
             ValueError("Invalid factor type")
 
-        factor = self.filter_factor(factor, benchmark=benchmark)
+        if benchmark:
+            factor = self.filter_factor(factor, benchmark=benchmark)
 
         processor = processor or []
         for proc in processor:
@@ -493,7 +494,7 @@ class Factor(PanelTable):
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, date, date)
+        future = self.get_future(ptype=ptype, period=period, start=date, stop=date, benchmark=benchmark)
         factor = self._prepare_factor(factor, future.name, future.name, processor, benchmark)
         data = pd.concat([factor.squeeze(), future], axis=1, keys=["Factor", future.name])
 
@@ -527,7 +528,7 @@ class Factor(PanelTable):
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day)
+        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day, benchmark)
         if skip_nonperiod_day:
             factor = self._prepare_factor(factor, future.index, None, processor, benchmark)
         else:
@@ -580,13 +581,13 @@ class Factor(PanelTable):
         ptype: str = "volume_weighted_price",
         ngroup: int = 5, 
         commission: float = 0.002, 
-        skip_nonperiod_day: bool = False,
+        skip_nonperiod_day: bool = True,
         benchmark: str = '000985.XSHG',
         n_jobs: int = 1,
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day)
+        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day, benchmark)
         
         if skip_nonperiod_day:
             factor = self._prepare_factor(factor, start=future.index, processor=processor, benchmark=benchmark)
@@ -608,7 +609,7 @@ class Factor(PanelTable):
             weight = (group / group).fillna(0)
             weight = weight.div(weight.sum(axis=1), axis=0)
             _period = period if skip_nonperiod_day else 1
-            delta = weight.diff(periods=_period).fillna(0)
+            delta = weight.diff(periods=1).fillna(0)
             turnover = delta.abs().sum(axis=1) / 2 / _period
             ret = (future * weight).sum(axis=1).shift(1) / _period
             ret -= commission * turnover
@@ -668,12 +669,12 @@ class Factor(PanelTable):
         processor: list = None,
         topk: int = 100, 
         commission: float = 0.002, 
-        skip_nonperiod_day: bool = False,
+        skip_nonperiod_day: bool = True,
         benchmark: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
     ):  
-        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day)
+        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day, benchmark)
 
         if skip_nonperiod_day:
             factor = self._prepare_factor(factor, start=future.index, processor=processor, benchmark=benchmark)
@@ -684,7 +685,7 @@ class Factor(PanelTable):
         topks = factor.where(topks)
         topks = (topks / topks).div(topks.count(axis=1), axis=0).fillna(0)
         _period = period if skip_nonperiod_day else 1
-        turnover = topks.diff(periods=_period).fillna(0).abs().sum(axis=1) / 2 / _period
+        turnover = topks.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 / _period
         ret = (topks * future).sum(axis=1).shift(1).fillna(0) - turnover * commission
         ret = ret.fillna(0) / _period
         val = (1 + ret).cumprod()
@@ -711,11 +712,13 @@ class Factor(PanelTable):
     
     def perform_optimizer(
         self, 
-        factor: pd.DataFrame,
+        factor: pd.DataFrame | list,
         *,
-        correlation: str | bool = False, #'ic', 'factor'
+        start: str = None,
+        stop: str = None,
+        correlation: str | bool = False, # 'ic', 'factor'
         corr_method: str = 'pearson',
-        ic_method: str = 'pearson', #'spearman', 'pearson', 'weighted'
+        ic_method: str = 'pearson', # 'spearman', 'pearson', 'weighted'
         heatmap_image: str | bool = None,
         tscorr_image: str | bool = None, 
         orthogonalization : bool = False, 
@@ -724,16 +727,22 @@ class Factor(PanelTable):
         skip_nonperiod_day: bool = False,
         benchmark: str = '000985.XSHG',
         processor: list = None,
-        compound_method: str = None, 
+        compound_method: str = None,  # 'equal_weighted', 'ic_weighted', 'ir_weighted', 'sharpe_weighted', 'optimize_ir', 'optimize_ic'
+        commission: float = 0.002, 
+        portfolio_optimization: bool = False,
     )-> dict:
-        start, stop = factor.index.get_level_values(self._date_level).unique()[[0, -1]]
-
-        if skip_nonperiod_day:
-            factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start=future.index, processor=processor, benchmark=benchmark).unstack())
+        if isinstance(factor, pd.DataFrame):
+            start, stop = factor.index.get_level_values(self._date_level).unique()[[0, -1]]
         else:
-            factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start, stop, processor, benchmark).unstack())
-            
-        def plot_heatmap(correlation_matrix, heatmap_image):
+            factor = self.read(factor, start=start, stop=stop)
+
+        future = self.get_future(ptype=ptype, period=period, start=start, stop=stop, skip_nonperiod_day=False, benchmark=benchmark)
+        factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start, stop, processor, benchmark).unstack())
+        
+        if compound_method=='optimize_ic':
+            correlation = 'factor'
+
+        def plot_heatmap(correlation_matrix):
             fig, ax = plt.subplots(figsize=(12, 8))
             sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap='RdBu', center=0, vmin=-1, vmax=1, cbar=True, ax=ax)
             ax.set_title('Heatmap for Correlation')
@@ -755,9 +764,8 @@ class Factor(PanelTable):
             correlation_ts = correlation_ts.drop_duplicates(subset=['Date', 'sorted_features'])
             correlation_ts.set_index(['Date', 'sorted_features'], inplace=True)
             return correlation_ts['Correlation'].unstack()
-
         
-        def plot_ts_correlation(correlation_ts, tscorr_image):
+        def plot_ts_correlation(correlation_ts):
             num_pairs = len(correlation_ts.columns)
             num_cols = 3  
             num_rows = (num_pairs + num_cols - 1) // num_cols  
@@ -794,8 +802,8 @@ class Factor(PanelTable):
             F_hat = X @ S
             return pd.DataFrame(F_hat, index=group.index, columns=group.columns)
         
-        def get_ic(factor, method=ic_method):
-            if method =='weighted':
+        def get_metrics(factor):
+            if ic_method =='weighted':
                 def calculate_weighted_ic(x, r):
                     x_ranked = x.rank(ascending=False)
                     n = len(x)
@@ -811,21 +819,67 @@ class Factor(PanelTable):
                     return numerator / denominator if denominator != 0 else np.nan
                 inforcoef = factor.apply(lambda row: calculate_weighted_ic(row.dropna(), future.loc[row.name, row.dropna().index]), axis=1)
             else:
-                inforcoef = factor.corrwith(future, axis=1, method=method).dropna()
-            return inforcoef
-        
-        def get_metrics(series):
-            ic_mean = round(series.mean(), 4)
-            ic_std = round(series.std(), 4)
-            rolling_abs_mean = series.rolling(20).mean().abs()
-            return pd.Series({
+                inforcoef = factor.corrwith(future, axis=1, method=ic_method).dropna()
+
+            _adj = 1
+            if inforcoef.mean() < 0:
+                _adj = -1
+                factor = factor * _adj
+                inforcoef = inforcoef * _adj
+                
+            ic_mean = round(inforcoef.mean(), 4)
+            ic_std = round(inforcoef.std(), 4)
+            rolling_abs_mean = inforcoef.rolling(20).mean().abs()
+
+            if skip_nonperiod_day:
+                _future = future.iloc[::period].squeeze()
+                _factor = factor.loc[_future.index]
+            else:
+                _factor = factor
+                _future = future
+
+            topk = int(_factor.shape[1] * 0.1)
+            topk = _factor.rank(ascending=False, axis=1) <= topk
+            topk = _factor.where(topk)
+            weight = (topk / topk).div(topk.count(axis=1), axis=0).fillna(0)
+            _period = period if skip_nonperiod_day else 1
+
+            turnover = weight.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 / _period
+            ret = (weight * _future).sum(axis=1).shift(1).fillna(0) - turnover * commission
+            ret = ret.fillna(0) / _period
+            value = (1 + ret).cumprod()
+            net_value = value / value.iloc[0]
+            returns = value.pct_change(fill_method=None).fillna(0)
+            total_return = (net_value.iloc[-1] / net_value.iloc[0] - 1) * 100
+            annual_return = ((total_return / 100 + 1) ** (365 / (value.index.max() - value.index.min()).days) - 1) * 100
+            annual_volatility = (returns.std() * np.sqrt(252)) * 100
+            annual_sharpe = annual_return / annual_volatility if annual_volatility != 0 else np.nan
+    
+            metrics = pd.Series({
                 'IC mean': ic_mean,
-                'IC std': ic_std,
+                # 'IC std': ic_std,
                 'IR': round(ic_mean /ic_std, 4),
-                'IR_ly': round(series[-252:].mean() / series[-252:].std(), 4),
-                'IC>0': round(len(series[series > 0]) / len(series), 4),
-                'ROLLING20_ABS_IC>3%': round(len(rolling_abs_mean[rolling_abs_mean > 0.03]) / len(rolling_abs_mean), 4)
+                # 'IR_ly': round(inforcoef[-252:].mean() / inforcoef[-252:].std(), 4),
+                # 'IC>0': round(len(inforcoef[inforcoef > 0]) / len(inforcoef), 4),
+                'ROLLING20_ABS_IC>3%': round(len(rolling_abs_mean[rolling_abs_mean > 0.03]) / len(rolling_abs_mean), 4),
+                'Top Annual Return': round(total_return, 4),
+                'Top Annual sharpe': round(annual_sharpe, 4),
+                'Daily Turnover': round(turnover.mean()*100, 4),
             })
+            return inforcoef, metrics, _adj
+        
+        def optimize_weights(method):
+            if method == 'optimize_ir':
+                cov_val = np.array(result['inforcoef'].cov())
+            elif method == 'optimize_ic':
+                _adj_matrix = np.diag(metrics.apply(lambda x: x[2]))
+                _adj_correlation_matrix = _adj_matrix @ factor_correlation_matrix.values @ _adj_matrix
+                cov_val = np.array(_adj_correlation_matrix)  # 因子标准化后的协方差矩阵=相关性矩阵
+            inv_cov = np.linalg.inv(cov_val)
+            ic_vector = np.mat(result['inforcoef'].mean())
+            w = inv_cov * ic_vector.T
+            w = pd.Series(np.array(w/w.sum()).flatten(), index=result['inforcoef'].columns)
+            return w
         
         result = {'factor': factor}
 
@@ -840,26 +894,45 @@ class Factor(PanelTable):
             factor_correlation_matrix = sum(correlations.values())/ len(correlations)
             result['factor_correlation_matrix'] = factor_correlation_matrix
             if heatmap_image:
-                plot_heatmap(factor_correlation_matrix, heatmap_image)
+                plot_heatmap(factor_correlation_matrix)
 
             if tscorr_image:
                 correlation_ts = prepare_correlation_ts(correlations)
-                plot_ts_correlation(correlation_ts, tscorr_image)
+                plot_ts_correlation(correlation_ts)
 
         if compound_method or correlation == 'ic':
-            future = self.get_future(ptype, period, start,stop)
-            IC = factor.apply(lambda x: get_ic(x.unstack(self._code_level), method=ic_method))
-            metrics = IC.apply(get_metrics).T
-            result['inforcoef'] = IC
-            result['metrics'] = metrics
+            metrics = factor.apply(lambda x: get_metrics(x.unstack(self._code_level)))
+            result['inforcoef'] = metrics.apply(lambda x: x[0])
+            result['metrics'] = metrics.apply(lambda x: x[1]).T
+            factor = factor * metrics.apply(lambda x: x[2])
 
             if correlation =='ic':
-                ic_correlation_matrix = IC.corr(method=corr_method)
+                ic_correlation_matrix = result['inforcoef'].corr(method=corr_method)
                 result['ic_correlation_matrix'] = ic_correlation_matrix
                 if heatmap_image:
-                    plot_heatmap(factor_correlation_matrix, heatmap_image)
+                    plot_heatmap(ic_correlation_matrix)
 
-        return result
+            if compound_method == 'ic_weighted':
+                compound_weight = result['metrics']['IC mean'].abs() / result['metrics']['IC mean'].abs().sum()
+            elif compound_method == 'ir_weighted':
+                compound_weight = result['metrics']['IR'].abs() / result['metrics']['IR'].abs().sum()
+            elif compound_method == 'sharpe_weighted':
+                compound_weight = result['metrics']['Top Annual sharpe'] / result['metrics']['Top Annual sharpe'].sum()
+            elif compound_method == 'equal_weighted':
+                compound_weight = pd.Series(1, index=result['metrics'].index) / len(result['metrics'].index)
+            elif compound_method == 'optimize_ir':
+                compound_weight = optimize_weights('optimize_ir')
+            elif compound_method == 'optimize_ic':
+                compound_weight = optimize_weights('optimize_ic')
+            else:
+                compound_weight = None
+
+            if compound_weight is not None:
+                result['compound_factor'] = (factor * compound_weight).sum(axis=1).to_frame(name='compound_factor')
+                res = get_metrics(result['compound_factor'].unstack(self._code_level))[1].to_frame(name='compound_factor').T
+                result['metrics'] = pd.concat([result['metrics'], res])
+
+        return result 
 
     def get(self, name: str, trading_days: pd.DatetimeIndex, n_jobs: int = -1, start: str = None, stop: str = None):
         result = Parallel(n_jobs=n_jobs, backend='loky')(
