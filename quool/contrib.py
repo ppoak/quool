@@ -427,15 +427,11 @@ class Factor(PanelTable):
         self, 
         price: pd.DataFrame,
         period: int = 1, 
-        skip_nonperiod_day: bool = False,
         nonrealizable: pd.DataFrame = None,
     ):
         price = price.where(~nonrealizable.astype(bool), other=np.nan)
         future = price.shift(-1 - period) / price.shift(-1) - 1
         future = future.dropna(axis=0, how='all')
-
-        if skip_nonperiod_day:
-            return future.iloc[::period].squeeze()
         return future.squeeze()
     
     def filter_factor(
@@ -457,7 +453,7 @@ class Factor(PanelTable):
             factor = factor.unstack(self._code_level)
 
         elif isinstance(factor, pd.DataFrame):
-            factor = factor.loc[start:stop] if stop is not None else factor.loc[start]
+            factor = factor.loc[start:stop]
 
         elif isinstance(factor, str):
             factor = self.read(factor, start=start, stop=stop)
@@ -474,12 +470,6 @@ class Factor(PanelTable):
             if isinstance(proc, tuple):
                 proc, kwargs = proc
             factor = proc(factor, **kwargs)
-        
-        if isinstance(start, (list, pd.DatetimeIndex)):
-            factor = factor.loc[start]
-        else:
-            factor = factor.loc[start:stop]
-
         return factor
     
     def perform_crosssection(
@@ -523,16 +513,12 @@ class Factor(PanelTable):
         processor: list = None,
         rolling: int = 20, 
         method: str = 'pearson', #spearman, pearson, weighted
-        skip_nonperiod_day: bool = False,
         benchmark: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day, benchmark)
-        if skip_nonperiod_day:
-            factor = self._prepare_factor(factor, future.index, None, processor, benchmark)
-        else:
-            factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, benchmark=benchmark)
+        future = self.get_future(ptype, period, start, stop, benchmark)
+        factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, benchmark=benchmark)
 
         if method =='weighted':
             def calculate_weighted_ic(x, r):
@@ -581,18 +567,13 @@ class Factor(PanelTable):
         ptype: str = "volume_weighted_price",
         ngroup: int = 5, 
         commission: float = 0.002, 
-        skip_nonperiod_day: bool = True,
         benchmark: str = '000985.XSHG',
         n_jobs: int = 1,
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day, benchmark)
-        
-        if skip_nonperiod_day:
-            factor = self._prepare_factor(factor, start=future.index, processor=processor, benchmark=benchmark)
-        else:
-            factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, benchmark=benchmark)
+        future = self.get_future(ptype, 1, start, stop, benchmark)
+        factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, benchmark=benchmark)
         
         # ngroup test
         try: 
@@ -606,15 +587,13 @@ class Factor(PanelTable):
         
         def _grouping(x):
             group = groups.where(groups == x)
-            weight = (group / group).fillna(0)
-            weight = weight.div(weight.sum(axis=1), axis=0)
-            _period = period if skip_nonperiod_day else 1
-            delta = weight.diff(periods=1).fillna(0)
-            turnover = delta.abs().sum(axis=1) / 2 / _period
-            ret = (future * weight).sum(axis=1).shift(1) / _period
+            weight = (group / group).div(weight.count(axis=1), axis=0).fillna(0) # 等权
+            weight = weight[::period]
+            turnover = weight.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 
+            turnover = turnover.reindex(future.index).ffill() / period
+            ret = (weight.reindex(future.index).ffill() * future).sum(axis=1).shift(1).fillna(0)
             ret -= commission * turnover
-            ret = ret.fillna(0)
-            val = (ret + 1).cumprod()
+            val = (1 + ret).cumprod()
             return {
                 'evaluation': evaluate(val, turnover=turnover, image=False),
                 'value': val, 'turnover': turnover,
@@ -669,25 +648,22 @@ class Factor(PanelTable):
         processor: list = None,
         topk: int = 100, 
         commission: float = 0.002, 
-        skip_nonperiod_day: bool = True,
         benchmark: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
     ):  
-        future = self.get_future(ptype, period, start, stop, skip_nonperiod_day, benchmark)
-
-        if skip_nonperiod_day:
-            factor = self._prepare_factor(factor, start=future.index, processor=processor, benchmark=benchmark)
-        else:
-            factor = self._prepare_factor(factor, start, stop, processor, benchmark)
-            
+        future = self.get_future(ptype, 1, start, stop, benchmark)
+        factor = self._prepare_factor(factor, start, stop, processor, benchmark)
+        
         topks = factor.rank(ascending=False, axis=1) < topk
         topks = factor.where(topks)
-        topks = (topks / topks).div(topks.count(axis=1), axis=0).fillna(0)
-        _period = period if skip_nonperiod_day else 1
-        turnover = topks.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 / _period
-        ret = (topks * future).sum(axis=1).shift(1).fillna(0) - turnover * commission
-        ret = ret.fillna(0) / _period
+        topks = (topks/topks).div(topks.count(axis=1), axis=0).fillna(0)
+        topks = topks[::period]
+
+        turnover = topks.diff(periods=1).fillna(0).abs().sum(axis=1) / 2
+        turnover = turnover.reindex(future.index).ffill() / period
+        ret = (topks.reindex(future.index).ffill() * future).sum(axis=1).shift(1).fillna(0)
+        ret -= commission * turnover
         val = (1 + ret).cumprod()
         eva = evaluate(val, turnover=turnover, image=False)
 
@@ -724,19 +700,20 @@ class Factor(PanelTable):
         orthogonalization : bool = False, 
         period: int = 1,
         ptype: str = "volume_weighted_price",
-        skip_nonperiod_day: bool = False,
         benchmark: str = '000985.XSHG',
         processor: list = None,
         compound_method: str = None,  # 'equal_weighted', 'ic_weighted', 'ir_weighted', 'sharpe_weighted', 'optimize_ir', 'optimize_ic'
         commission: float = 0.002, 
-        portfolio_optimization: bool = False,
+        objective: str = None,
+        cons: list = None,
     )-> dict:
         if isinstance(factor, pd.DataFrame):
             start, stop = factor.index.get_level_values(self._date_level).unique()[[0, -1]]
         else:
             factor = self.read(factor, start=start, stop=stop)
 
-        future = self.get_future(ptype=ptype, period=period, start=start, stop=stop, skip_nonperiod_day=False, benchmark=benchmark)
+        future = self.get_future(ptype=ptype, period=period, start=start, stop=stop, benchmark=benchmark)
+        _future = self.get_future(ptype=ptype, period=1, start=start, stop=stop, benchmark=benchmark)
         factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start, stop, processor, benchmark).unstack())
         
         if compound_method=='optimize_ic':
@@ -831,27 +808,22 @@ class Factor(PanelTable):
             ic_std = round(inforcoef.std(), 4)
             rolling_abs_mean = inforcoef.rolling(20).mean().abs()
 
-            if skip_nonperiod_day:
-                _future = future.iloc[::period].squeeze()
-                _factor = factor.loc[_future.index]
-            else:
-                _factor = factor
-                _future = future
+            topks = int(factor.shape[1] * 0.1)
+            topks = factor.rank(ascending=False, axis=1) <= topks
+            topks = factor.where(topks)
+            topks = (topks / topks).div(topks.count(axis=1), axis=0).fillna(0)
+            topks = topks[::period]
 
-            topk = int(_factor.shape[1] * 0.1)
-            topk = _factor.rank(ascending=False, axis=1) <= topk
-            topk = _factor.where(topk)
-            weight = (topk / topk).div(topk.count(axis=1), axis=0).fillna(0)
-            _period = period if skip_nonperiod_day else 1
-
-            turnover = weight.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 / _period
-            ret = (weight * _future).sum(axis=1).shift(1).fillna(0) - turnover * commission
-            ret = ret.fillna(0) / _period
-            value = (1 + ret).cumprod()
-            net_value = value / value.iloc[0]
-            returns = value.pct_change(fill_method=None).fillna(0)
-            total_return = (net_value.iloc[-1] / net_value.iloc[0] - 1) * 100
-            annual_return = ((total_return / 100 + 1) ** (365 / (value.index.max() - value.index.min()).days) - 1) * 100
+            turnover = topks.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 
+            turnover = turnover.reindex(_future.index).ffill() / period
+            ret = (topks * _future).sum(axis=1).shift(1).fillna(0)
+            ret -= commission * turnover
+            val = (1 + ret).cumprod()
+        
+            net_val = val / val.iloc[0]
+            returns = val.pct_change(fill_method=None).fillna(0)
+            total_return = (net_val.iloc[-1] / net_val.iloc[0] - 1) * 100
+            annual_return = ((total_return / 100 + 1) ** (365 / (val.index.max() - val.index.min()).days) - 1) * 100
             annual_volatility = (returns.std() * np.sqrt(252)) * 100
             annual_sharpe = annual_return / annual_volatility if annual_volatility != 0 else np.nan
     
