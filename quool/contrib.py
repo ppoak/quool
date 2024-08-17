@@ -372,7 +372,6 @@ class Factor(PanelTable):
         start: str | list = None, 
         stop: str = None, 
         processor: list = None,
-        benchmark: str = None,
     ) -> pd.Series | pd.DataFrame:
         processor = processor or []
         if not isinstance(processor, list):
@@ -382,12 +381,6 @@ class Factor(PanelTable):
         
         if df.columns.size == 1:
             df = df.squeeze().unstack(level=self._code_level)
-
-        if benchmark is not None:
-            if isinstance(df.index, pd.MultiIndex):
-                df = df.apply(lambda x: self.filter_factor(x.unstack(self._code_level)).unstack())
-            else:
-                df = self.filter_factor(df, benchmark=benchmark)
 
         for proc in processor:
             kwargs = {}
@@ -447,7 +440,7 @@ class Factor(PanelTable):
         start: str | pd.Timestamp = None,
         stop: str | pd.Timestamp = None,
         processor: list = None,
-        benchmark: str = None,
+        universe: str = None,
     ):
         if isinstance(factor, pd.Series) and factor.index.nlevels == 2:
             factor = factor.unstack(self._code_level)
@@ -461,8 +454,8 @@ class Factor(PanelTable):
         else:
             ValueError("Invalid factor type")
 
-        if benchmark:
-            factor = self.filter_factor(factor, benchmark=benchmark)
+        if universe:
+            factor = self.filter_factor(factor, universe=universe)
 
         processor = processor or []
         for proc in processor:
@@ -480,12 +473,12 @@ class Factor(PanelTable):
         processor: list = None,
         period: int = 1,
         ptype: str = "volume_weighted_price",
-        benchmark: str = '000985.XSHG',
+        universe: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype=ptype, period=period, start=date, stop=date, benchmark=benchmark)
-        factor = self._prepare_factor(factor, future.name, future.name, processor, benchmark)
+        future = self.get_future(ptype=ptype, period=period, start=date, stop=date, universe=universe)
+        factor = self._prepare_factor(factor, future.name, future.name, processor, universe)
         data = pd.concat([factor.squeeze(), future], axis=1, keys=["Factor", future.name])
 
         if image is not None:
@@ -513,12 +506,12 @@ class Factor(PanelTable):
         processor: list = None,
         rolling: int = 20, 
         method: str = 'pearson', #spearman, pearson, weighted
-        benchmark: str = '000985.XSHG',
+        universe: str = '000985.XSHG',
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, period, start, stop, benchmark)
-        factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, benchmark=benchmark)
+        future = self.get_future(ptype, period, start, stop, universe)
+        factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, universe=universe)
 
         if method =='weighted':
             def calculate_weighted_ic(x, r):
@@ -567,13 +560,14 @@ class Factor(PanelTable):
         ptype: str = "volume_weighted_price",
         ngroup: int = 5, 
         commission: float = 0.002, 
-        benchmark: str = '000985.XSHG',
+        universe: str = '000985.XSHG',
+        benchmark: pd.Series = None,
         n_jobs: int = 1,
         image: str | bool = True, 
         result: str = None
     ):
-        future = self.get_future(ptype, 1, start, stop, benchmark)
-        factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, benchmark=benchmark)
+        future = self.get_future(ptype, 1, start, stop, universe)
+        factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, universe=universe)
         
         # ngroup test
         try: 
@@ -595,7 +589,7 @@ class Factor(PanelTable):
             ret -= commission * turnover
             val = (1 + ret).cumprod()
             return {
-                'evaluation': evaluate(val, turnover=turnover, image=False),
+                'evaluation': evaluate(val, turnover=turnover, benchmark=benchmark, image=False),
                 'value': val, 'turnover': turnover,
             }
             
@@ -648,12 +642,13 @@ class Factor(PanelTable):
         processor: list = None,
         topk: int = 100, 
         commission: float = 0.002, 
-        benchmark: str = '000985.XSHG',
+        universe: str = '000985.XSHG',
+        benchmark: pd.Series = None,
         image: str | bool = True, 
         result: str = None
     ):  
-        future = self.get_future(ptype, 1, start, stop, benchmark)
-        factor = self._prepare_factor(factor, start, stop, processor, benchmark)
+        future = self.get_future(ptype, 1, start, stop, universe)
+        factor = self._prepare_factor(factor, start, stop, processor, universe)
         
         topks = factor.rank(ascending=False, axis=1) < topk
         topks = factor.where(topks)
@@ -665,7 +660,7 @@ class Factor(PanelTable):
         ret = (topks.reindex(future.index).ffill() * future).sum(axis=1).shift(1).fillna(0)
         ret -= commission * turnover
         val = (1 + ret).cumprod()
-        eva = evaluate(val, turnover=turnover, image=False)
+        eva = evaluate(val, turnover=turnover, benchmark=benchmark, image=False)
 
         val.name = "value"
         turnover.name = "turnover"
@@ -700,7 +695,7 @@ class Factor(PanelTable):
         orthogonalization : bool = False, 
         period: int = 1,
         ptype: str = "volume_weighted_price",
-        benchmark: str = '000985.XSHG',
+        universe: str = '000985.XSHG',
         processor: list = None,
         compound_method: str = None,  # 'equal_weighted', 'ic_weighted', 'ir_weighted', 'sharpe_weighted', 'optimize_ir', 'optimize_ic'
         commission: float = 0.002, 
@@ -712,12 +707,13 @@ class Factor(PanelTable):
         else:
             factor = self.read(factor, start=start, stop=stop)
 
-        future = self.get_future(ptype=ptype, period=period, start=start, stop=stop, benchmark=benchmark)
-        _future = self.get_future(ptype=ptype, period=1, start=start, stop=stop, benchmark=benchmark)
-        factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start, stop, processor, benchmark).unstack())
+        _future = self.get_future(ptype=ptype, period=1, start=start, stop=stop, universe=universe)
+        factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start, stop, processor, universe).unstack())
         
         if compound_method=='optimize_ic':
             correlation = 'factor'
+        if correlation:
+            future = self.get_future(ptype=ptype, period=period, start=start, stop=stop, universe=universe)
 
         def plot_heatmap(correlation_matrix):
             fig, ax = plt.subplots(figsize=(12, 8))
