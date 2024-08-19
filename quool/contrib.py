@@ -440,6 +440,7 @@ class Factor(PanelTable):
         ind: pd.DataFrame,
         factor: pd.DataFrame,
         future: pd.DataFrame,
+        method: str = 'pearson',
     ):
         rename_map = {
             '交通运输': 'Transportation',
@@ -473,11 +474,9 @@ class Factor(PanelTable):
             '非银行金融': 'NonBankFinancial',
             '食品饮料': 'FoodAndBeverage'
         }
-        df = pd.concat([factor.stack(), future.stack(), ind.stack()], axis=1).dropna()
+        df = pd.concat([factor.stack(), future.stack(), ind.stack()], axis=1)
         df.columns = ['factor', 'future', 'industry']
-        ind_inforcoef = df.groupby(['industry', df.index.get_level_values(0)]) \
-                            .apply(lambda x: np.corrcoef(x['factor'], x['future'])[0, 1] if len(x) > 1 else np.nan) \
-                             .unstack('industry').mean()
+        ind_inforcoef = df.groupby(['industry']).apply(lambda x: x['future'].unstack().corrwith(x['factor'].unstack(), method=method).mean())
         return ind_inforcoef.rename(index=rename_map)
 
     def _prepare_factor(
@@ -578,8 +577,9 @@ class Factor(PanelTable):
             inforcoef = factor.corrwith(future, axis=1, method=method).dropna()
         inforcoef.name = f"infocoef"
 
+        ind_inforcoef = None
         if industry:
-            ind_inforcoef = self.industry_inforcoef(start=start, stop=stop, factor=factor, future=future)
+            ind_inforcoef = self.industry_inforcoef(start=start, stop=stop, factor=factor, future=future, method=method)
 
         if image:
             # 第一张图
@@ -595,26 +595,26 @@ class Factor(PanelTable):
                 fig1.savefig(image + '_inforcoef.png')
             else:
                 fig1.show()
+            # 第二张图：行业信息系数
+            if ind_inforcoef is not None:
+                fig2, ax2 = plt.subplots(figsize=(20, 10))
+                bars = ind_inforcoef.plot(kind='bar', ax=ax2, color='#A52A2A', alpha=0.7, width=0.4)
+                ax2.set_facecolor('#EEDFCC')
+                ax2.spines['top'].set_visible(False)
+                ax2.spines['right'].set_visible(False)
+                ax2.grid(linewidth=1.2, color='white', alpha=0.7)
+                ax2.set_title('IC-Industry Distribution - P_1', loc='left', fontsize=16)
+                ax2.set_xlabel('')
+                for bar in bars.patches:
+                    bar.set_x(bar.get_x() + 0.5)
+                ax2.yaxis.set_minor_locator(plt.MaxNLocator(50))
+                plt.xticks(rotation=45, ha='right', fontsize=12) 
+                fig2.tight_layout()
 
-            # 第二张图
-            fig2, ax2 = plt.subplots(figsize=(20, 10))
-            bars = ind_inforcoef.plot(kind='bar', ax=ax2, color='#A52A2A', alpha=0.7, width=0.4)
-            ax2.set_facecolor('#EEDFCC')
-            ax2.spines['top'].set_visible(False)
-            ax2.spines['right'].set_visible(False)
-            ax2.grid(linewidth=1.2, color='white', alpha=0.7)
-            ax2.set_title('IC-Industry Distribution - P_1', loc='left', fontsize=16)
-            ax2.set_xlabel('')
-            for bar in bars.patches:
-                bar.set_x(bar.get_x() + 0.5)
-            ax2.yaxis.set_minor_locator(plt.MaxNLocator(50))
-            plt.xticks(rotation=45, ha='right', fontsize=12) 
-            fig2.tight_layout()
-
-            if not isinstance(image, bool):
-                fig2.savefig(image + '_industry.png')
-            else:
-                fig2.show()
+                if not isinstance(image, bool):
+                    fig2.savefig(image + '_industry.png')
+                else:
+                    fig2.show()
         return inforcoef
     
     def perform_grouping(
@@ -641,11 +641,12 @@ class Factor(PanelTable):
         try: 
             groups = factor.apply(lambda x: pd.qcut(x, q=ngroup, labels=False), axis=1) + 1
         except:
-            for date in factor.index:
-                try:
-                    pd.qcut(factor.loc[date], q=ngroup, labels=False)
-                except:
-                    raise ValueError(f"on date {date}, grouping failed")
+            groups = factor.apply(lambda x: pd.qcut(x.rank(method='first', ascending=True), q=ngroup, labels=False), axis=1) + 1
+            # for date in factor.index:
+            #     try:
+            #         pd.qcut(factor.loc[date], q=ngroup, labels=False)
+            #     except:
+            #         raise ValueError(f"on date {date}, grouping failed")
         
         def _grouping(x):
             group = groups.where(groups == x)
