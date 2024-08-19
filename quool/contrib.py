@@ -425,6 +425,7 @@ class Factor(PanelTable):
         price = price.where(~nonrealizable.astype(bool), other=np.nan)
         future = price.shift(-1 - period) / price.shift(-1) - 1
         future = future.dropna(axis=0, how='all')
+        future = future.replace([np.inf, -np.inf], np.nan)
         return future.squeeze()
     
     def filter_factor(
@@ -433,6 +434,51 @@ class Factor(PanelTable):
         nonrealizable: pd.DataFrame = None,
     ):
         return factor.where(~nonrealizable.astype(bool), other=np.nan).dropna(how='all',axis=1)
+
+    def industry_inforcoef(
+        self, 
+        ind: pd.DataFrame,
+        factor: pd.DataFrame,
+        future: pd.DataFrame,
+    ):
+        rename_map = {
+            '交通运输': 'Transportation',
+            '传媒': 'Media',
+            '农林牧渔': 'Agriculture',
+            '医药': 'Medicine',
+            '商贸零售': 'Retail',
+            '国防军工': 'Defense',
+            '基础化工': 'BasicChemical',
+            '家电': 'HouseholdAppliance',
+            '建材': 'BuildingMaterials',
+            '建筑': 'Construction',
+            '房地产': 'RealEstate',
+            '有色金属': 'NonferrousMetal',
+            '机械': 'Machinery',
+            '汽车': 'Automobile',
+            '消费者服务': 'ConsumerServices',
+            '煤炭': 'Coal',
+            '电力及公用事业': 'PowerAndUtilities',
+            '电力设备及新能源': 'PowerEquipmentAndNewEnergy',
+            '电子': 'Electronics',
+            '石油石化': 'PetroleumAndChemical',
+            '纺织服装': 'TextileAndApparel',
+            '综合': 'Comprehensive',
+            '计算机': 'Computer',
+            '轻工制造': 'LightManufacturing',
+            '通信': 'Communication',
+            '钢铁': 'Steel',
+            '银行': 'Bank',
+            '综合金融': 'ComprehensiveFinancial',
+            '非银行金融': 'NonBankFinancial',
+            '食品饮料': 'FoodAndBeverage'
+        }
+        df = pd.concat([factor.stack(), future.stack(), ind.stack()], axis=1).dropna()
+        df.columns = ['factor', 'future', 'industry']
+        ind_inforcoef = df.groupby(['industry', df.index.get_level_values(0)]) \
+                            .apply(lambda x: np.corrcoef(x['factor'], x['future'])[0, 1] if len(x) > 1 else np.nan) \
+                             .unstack('industry').mean()
+        return ind_inforcoef.rename(index=rename_map)
 
     def _prepare_factor(
         self, 
@@ -507,8 +553,8 @@ class Factor(PanelTable):
         rolling: int = 20, 
         method: str = 'pearson', #spearman, pearson, weighted
         universe: str = '000985.XSHG',
+        industry: bool = False, 
         image: str | bool = True, 
-        result: str = None
     ):
         future = self.get_future(ptype, period, start, stop, universe)
         factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, universe=universe)
@@ -532,21 +578,43 @@ class Factor(PanelTable):
             inforcoef = factor.corrwith(future, axis=1, method=method).dropna()
         inforcoef.name = f"infocoef"
 
+        if industry:
+            ind_inforcoef = self.industry_inforcoef(start=start, stop=stop, factor=factor, future=future)
+
         if image:
-            fig, ax = plt.subplots(1, 1, figsize=(20, 10))
-            inforcoef.plot(ax=ax, label='infor-coef', alpha=0.7, title='Information Coef')
-            inforcoef.rolling(rolling).mean().plot(linestyle='--', ax=ax, label='trend')
-            inforcoef.cumsum().plot(linestyle='-.', secondary_y=True, ax=ax, label='cumm-infor-coef')
-            pd.Series(np.zeros(inforcoef.shape[0]), index=inforcoef.index).plot(color='grey', ax=ax, alpha=0.5)
-            ax.legend()
-            fig.tight_layout()
+            # 第一张图
+            fig1, ax1 = plt.subplots(1, 1, figsize=(20, 10))
+            inforcoef.plot(ax=ax1, label='infor-coef', alpha=0.7, title='Information Coef')
+            inforcoef.rolling(rolling).mean().plot(linestyle='--', ax=ax1, label='trend')
+            inforcoef.cumsum().plot(linestyle='-.', secondary_y=True, ax=ax1, label='cumm-infor-coef')
+            pd.Series(np.zeros(inforcoef.shape[0]), index=inforcoef.index).plot(color='grey', ax=ax1, alpha=0.5)
+            ax1.legend()
+            fig1.tight_layout()
+
             if not isinstance(image, bool):
-                fig.savefig(image)
+                fig1.savefig(image + '_inforcoef.png')
             else:
-                fig.show()
-        
-        if result is not None:
-            inforcoef.to_excel(result)
+                fig1.show()
+
+            # 第二张图
+            fig2, ax2 = plt.subplots(figsize=(20, 10))
+            bars = ind_inforcoef.plot(kind='bar', ax=ax2, color='#A52A2A', alpha=0.7, width=0.4)
+            ax2.set_facecolor('#EEDFCC')
+            ax2.spines['top'].set_visible(False)
+            ax2.spines['right'].set_visible(False)
+            ax2.grid(linewidth=1.2, color='white', alpha=0.7)
+            ax2.set_title('IC-Industry Distribution - P_1', loc='left', fontsize=16)
+            ax2.set_xlabel('')
+            for bar in bars.patches:
+                bar.set_x(bar.get_x() + 0.5)
+            ax2.yaxis.set_minor_locator(plt.MaxNLocator(50))
+            plt.xticks(rotation=45, ha='right', fontsize=12) 
+            fig2.tight_layout()
+
+            if not isinstance(image, bool):
+                fig2.savefig(image + '_industry.png')
+            else:
+                fig2.show()
         return inforcoef
     
     def perform_grouping(
@@ -559,7 +627,7 @@ class Factor(PanelTable):
         processor: list = None,
         ptype: str = "volume_weighted_price",
         ngroup: int = 5, 
-        commission: float = 0.002, 
+        commission: float = 0.0005, 
         universe: str = '000985.XSHG',
         benchmark: pd.Series = None,
         n_jobs: int = 1,
@@ -581,7 +649,7 @@ class Factor(PanelTable):
         
         def _grouping(x):
             group = groups.where(groups == x)
-            weight = (group / group).div(weight.count(axis=1), axis=0).fillna(0) # 等权
+            weight = (group / group).div(group.count(axis=1), axis=0).fillna(0) # 等权
             weight = weight[::period]
             turnover = weight.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 
             turnover = turnover.reindex(future.index).ffill() / period
@@ -641,7 +709,7 @@ class Factor(PanelTable):
         ptype: str = "volume_weighted_price",
         processor: list = None,
         topk: int = 100, 
-        commission: float = 0.002, 
+        commission: float = 0.0005, 
         universe: str = '000985.XSHG',
         benchmark: pd.Series = None,
         image: str | bool = True, 
@@ -698,7 +766,7 @@ class Factor(PanelTable):
         universe: str = '000985.XSHG',
         processor: list = None,
         compound_method: str = None,  # 'equal_weighted', 'ic_weighted', 'ir_weighted', 'sharpe_weighted', 'optimize_ir', 'optimize_ic'
-        commission: float = 0.002, 
+        commission: float = 0.0005, 
         objective: str = None,
         cons: list = None,
     )-> dict:
