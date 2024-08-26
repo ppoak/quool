@@ -203,7 +203,7 @@ def evaluate(
     data = pd.concat([value, net_value, exvalue, net_cash, returns, cum_benchmark_return, drawdown, exdrawdown, turnover], 
             axis=1, keys=['value', 'net_value', 'exvalue', 'net_cash', 'returns', 'benchmark', 'drawdown', 'exdrawdown', 'turnover'])
     
-    if image is not None:
+    if image:
         fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(40, 10))
         plt.subplots_adjust(wspace=0.3, hspace=0.5)
 
@@ -228,4 +228,4 @@ def evaluate(
         else:
             fig.show()
 
-    return evaluation
+    return evaluation, exvalue

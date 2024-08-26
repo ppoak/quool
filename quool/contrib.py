@@ -443,42 +443,56 @@ class Factor(PanelTable):
         method: str = 'pearson',
     ):
         rename_map = {
-            '交通运输': 'Transportation',
+            '交通运输': 'Transport',
             '传媒': 'Media',
             '农林牧渔': 'Agriculture',
             '医药': 'Medicine',
             '商贸零售': 'Retail',
             '国防军工': 'Defense',
-            '基础化工': 'BasicChemical',
-            '家电': 'HouseholdAppliance',
-            '建材': 'BuildingMaterials',
+            '基础化工': 'Chemicals',
+            '家电': 'Appliances',
+            '建材': 'Materials',
             '建筑': 'Construction',
             '房地产': 'RealEstate',
             '有色金属': 'NonferrousMetal',
             '机械': 'Machinery',
-            '汽车': 'Automobile',
-            '消费者服务': 'ConsumerServices',
+            '汽车': 'Auto',
+            '消费者服务': 'Services',
             '煤炭': 'Coal',
-            '电力及公用事业': 'PowerAndUtilities',
-            '电力设备及新能源': 'PowerEquipmentAndNewEnergy',
+            '电力及公用事业': 'Power&Utilities',
+            '电力设备及新能源': 'PowerEquip&NewEnergy',
             '电子': 'Electronics',
-            '石油石化': 'PetroleumAndChemical',
-            '纺织服装': 'TextileAndApparel',
+            '石油石化': 'Petroleum',
+            '纺织服装': 'Textile',
             '综合': 'Comprehensive',
-            '计算机': 'Computer',
-            '轻工制造': 'LightManufacturing',
+            '计算机': 'IT',
+            '轻工制造': 'Manufacturing',
             '通信': 'Communication',
             '钢铁': 'Steel',
             '银行': 'Bank',
-            '综合金融': 'ComprehensiveFinancial',
-            '非银行金融': 'NonBankFinancial',
-            '食品饮料': 'FoodAndBeverage'
+            '综合金融': 'Finance',
+            '非银行金融': 'NonBankFinance',
+            '食品饮料': 'Food'
         }
         df = pd.concat([factor.stack(), future.stack(), ind.stack()], axis=1)
         df.columns = ['factor', 'future', 'industry']
         ind_inforcoef = df.groupby(['industry']).apply(lambda x: x['future'].unstack().corrwith(x['factor'].unstack(), method=method).mean())
         return ind_inforcoef.rename(index=rename_map)
 
+    def style_exposure(
+        self, 
+        barra: pd.DataFrame,
+        weight: pd.DataFrame,
+        top_group: pd.DataFrame,
+    ):
+        style_exposure = barra.apply(lambda x: (x.unstack() * weight).sum(axis=1)).mean()
+        def _exposure(df: pd.DataFrame):
+            df = df.where(top_group.notna())
+            _weight = (df/df).div(df.count(axis=1),axis=0)
+            return (df * _weight).sum(axis=1).mean()
+        factor_exposure = barra.apply(lambda x: _exposure(x.unstack()))
+        return factor_exposure - style_exposure
+    
     def _prepare_factor(
         self, 
         factor: str | pd.DataFrame | pd.Series,
@@ -657,8 +671,10 @@ class Factor(PanelTable):
             ret = (weight.reindex(future.index).ffill() * future).sum(axis=1).shift(1).fillna(0)
             ret -= commission * turnover
             val = (1 + ret).cumprod()
+            evaluation, _ = evaluate(val, turnover=turnover, benchmark=benchmark, image=False)
+
             return {
-                'evaluation': evaluate(val, turnover=turnover, benchmark=benchmark, image=False),
+                'evaluation': evaluation,
                 'value': val, 'turnover': turnover,
             }
             
@@ -673,7 +689,7 @@ class Factor(PanelTable):
         ngroup_returns = ngroup_value.pct_change().fillna(0)
         longshort_returns = ngroup_returns[f"group{ngroup}"] - ngroup_returns["group1"]
         longshort_value = (longshort_returns + 1).cumprod()
-        longshort_evaluation = evaluate(longshort_value, image=False)
+        longshort_evaluation, _ = evaluate(longshort_value, image=False)
         
         # naming
         longshort_evaluation.name = "longshort"
@@ -729,7 +745,7 @@ class Factor(PanelTable):
         ret = (topks.reindex(future.index).ffill() * future).sum(axis=1).shift(1).fillna(0)
         ret -= commission * turnover
         val = (1 + ret).cumprod()
-        eva = evaluate(val, turnover=turnover, benchmark=benchmark, image=False)
+        eva, _ = evaluate(val, turnover=turnover, benchmark=benchmark, image=False)
 
         val.name = "value"
         turnover.name = "turnover"
@@ -871,7 +887,6 @@ class Factor(PanelTable):
                 
             ic_mean = round(inforcoef.mean(), 4)
             ic_std = round(inforcoef.std(), 4)
-            rolling_abs_mean = inforcoef.rolling(20).mean().abs()
 
             topks = int(factor.shape[1] * 0.1)
             topks = factor.rank(ascending=False, axis=1) <= topks
@@ -881,7 +896,7 @@ class Factor(PanelTable):
 
             turnover = topks.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 
             turnover = turnover.reindex(_future.index).ffill() / period
-            ret = (topks * _future).sum(axis=1).shift(1).fillna(0)
+            ret = (topks.reindex(_future.index).ffill() * _future).sum(axis=1).shift(1).fillna(0)
             ret -= commission * turnover
             val = (1 + ret).cumprod()
         
@@ -894,11 +909,7 @@ class Factor(PanelTable):
     
             metrics = pd.Series({
                 'IC mean': ic_mean,
-                # 'IC std': ic_std,
                 'IR': round(ic_mean /ic_std, 4),
-                # 'IR_ly': round(inforcoef[-252:].mean() / inforcoef[-252:].std(), 4),
-                # 'IC>0': round(len(inforcoef[inforcoef > 0]) / len(inforcoef), 4),
-                'ROLLING20_ABS_IC>3%': round(len(rolling_abs_mean[rolling_abs_mean > 0.03]) / len(rolling_abs_mean), 4),
                 'Top Annual Return': round(total_return, 4),
                 'Top Annual sharpe': round(annual_sharpe, 4),
                 'Daily Turnover': round(turnover.mean()*100, 4),
@@ -971,6 +982,203 @@ class Factor(PanelTable):
 
         return result 
 
+    def factor_analysis(
+        self,
+        factor: str | pd.DataFrame,
+        *,
+        period: int = 5,
+        start: str = None,
+        stop: str = None,
+        ptype: str = "head_weighted_price",
+        processor: list = None,
+        rolling: int = 20, 
+        method: str = 'spearman',
+        universe: str = '000985.XSHG',
+        industry_ic: bool = False, 
+        style_exposure: bool = False, 
+        n_jobs: int = 1,
+        benchmark: pd.Series = None,
+        commission: float = 0.0005, 
+        ngroup: int = 10, 
+        image: str | bool = True, 
+    ):
+        future = self.get_future(ptype, period, start, stop, universe)
+        _future = self.get_future(ptype, 1, start, stop, universe)
+        factor = self._prepare_factor(factor, start=start, stop=stop, processor=processor, universe=universe)
+        crosssection = pd.concat([factor.loc[factor.index[0]], future.loc[future.index[0]]], axis=1, keys=["Factor", future.index[0]])
+
+        if benchmark is None:
+            weight = (factor / factor).div(factor.count(axis=1), axis=0).fillna(0)
+            weight = weight[::period]
+            turnover = weight.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 
+            turnover = turnover.reindex(_future.index).ffill() / period
+            ret = (weight.reindex(_future.index).ffill() * _future).sum(axis=1).shift(1).fillna(0)
+            ret -= commission * turnover
+            benchmark = (1 + ret).cumprod()
+
+        if method =='weighted':
+            def calculate_weighted_ic(x, r):
+                x_ranked = x.rank(ascending=False)
+                n = len(x)
+                a = -np.log(0.5) / (n / 2 - 1)
+                w = np.exp(-a * (x_ranked - 1))
+                w /= w.sum()
+
+                wx = w * x
+                wr = w * r
+                wxr = w * x * r
+                numerator = wxr.sum() - (wx.sum() * wr.sum())
+                denominator = np.sqrt((w * (x ** 2)).sum() - wx.sum()**2) * np.sqrt((w * (r ** 2)).sum() - wr.sum()**2)
+                return numerator / denominator if denominator != 0 else np.nan
+            inforcoef = factor.apply(lambda row: calculate_weighted_ic(row.dropna(), future.loc[row.name, row.dropna().index]), axis=1)
+        else:
+            inforcoef = factor.corrwith(future, axis=1, method=method).dropna()
+        inforcoef.name = f"infocoef"
+
+        if industry_ic:
+            ind_inforcoef = self.industry_inforcoef(start=start, stop=stop, factor=factor, future=future, method=method)
+
+        try: 
+            groups = factor.apply(lambda x: pd.qcut(x, q=ngroup, labels=False), axis=1) + 1
+        except:
+            groups = factor.apply(lambda x: pd.qcut(x.rank(method='first', ascending=True), q=ngroup, labels=False), axis=1) + 1
+
+        def _grouping(x):
+            group = groups.where(groups == x)
+            weight = (group / group).div(group.count(axis=1), axis=0).fillna(0) # 等权
+            weight = weight[::period]
+            turnover = weight.diff(periods=1).fillna(0).abs().sum(axis=1) / 2 
+            turnover = turnover.reindex(_future.index).ffill() / period
+            ret = (weight.reindex(_future.index).ffill() * _future).sum(axis=1).shift(1).fillna(0)
+            ret -= commission * turnover
+            val = (1 + ret).cumprod()
+            evaluation, exvalue = evaluate(val, turnover=turnover, benchmark=benchmark, image=False)
+            return {
+                'evaluation': evaluation, 'exvalue': exvalue,
+                'turnover': turnover, 'value': val,
+            }
+        
+        ngroup_result = Parallel(n_jobs=n_jobs, backend='loky')(
+            delayed(_grouping)(i) for i in range(1, ngroup + 1))
+        ngroup_evaluation = pd.concat([res['evaluation'] for res in ngroup_result], 
+            axis=1, keys=range(1, ngroup + 1)).add_prefix('group')
+        ngroup_value = pd.concat([res['value'] for res in ngroup_result], 
+            axis=1, keys=range(1, ngroup + 1)).add_prefix('group')
+        ngroup_exvalue = pd.concat([res['exvalue'] for res in ngroup_result], 
+            axis=1, keys=range(1, ngroup + 1)).add_prefix('group')
+        ngroup_turnover = pd.concat([res['turnover'] for res in ngroup_result], 
+            axis=1, keys=range(1, ngroup + 1)).add_prefix('group')
+        ngroup_returns = ngroup_value.pct_change().fillna(0)
+        longshort_returns = ngroup_returns[f"group{ngroup}"] - ngroup_returns["group1"]
+        longshort_value = (longshort_returns + 1).cumprod()
+        longshort_evaluation, _ = evaluate(longshort_value, image=False)
+        
+        # naming
+        longshort_evaluation.name = "longshort"
+        longshort_value.name = "longshort value"
+        group = pd.concat([ngroup_evaluation, longshort_evaluation], axis=1)
+
+        year = ngroup_exvalue.apply(lambda x: x.resample('YE').last()/x.resample('YE').first() -1).T
+
+        if style_exposure:
+            x = 1 if inforcoef.mean() < 0 else 10
+            top_group = groups.where(groups == x)
+            exposure = self.style_exposure(start=start, stop=stop, top_group=top_group, universe=universe)
+
+        if image:
+            fig1, ax1 = plt.subplots(1, 1, figsize=(20, 10))
+            inforcoef.plot(ax=ax1, label='infor-coef', alpha=0.7, title='Information Coef')
+            inforcoef.rolling(rolling).mean().plot(linestyle='--', ax=ax1, label='trend')
+            inforcoef.cumsum().plot(linestyle='-.', secondary_y=True, ax=ax1, label='cumm-infor-coef')
+            pd.Series(np.zeros(inforcoef.shape[0]), index=inforcoef.index).plot(color='grey', ax=ax1, alpha=0.5)
+            ax1.legend()
+            fig1.tight_layout()
+
+            if not isinstance(image, bool):
+                fig1.savefig(image + '_inforcoef.png')
+            else:
+                fig1.show()
+
+            if industry_ic:
+                fig2, ax2 = plt.subplots(figsize=(20, 10))
+                bars = ind_inforcoef.plot(kind='bar', ax=ax2, color='#A52A2A', alpha=0.7, width=0.4)
+                ax2.set_facecolor('#EEDFCC')
+                ax2.spines['top'].set_visible(False)
+                ax2.spines['right'].set_visible(False)
+                ax2.grid(linewidth=1.2, color='white', alpha=0.7)
+                ax2.set_title('IC-Industry Distribution - P_1', loc='left', fontsize=16)
+                ax2.set_xlabel('')
+                for bar in bars.patches:
+                    bar.set_x(bar.get_x() + 0.5)
+                ax2.yaxis.set_minor_locator(plt.MaxNLocator(50))
+                plt.xticks(rotation=45, ha='right', fontsize=12) 
+                fig2.tight_layout()
+
+                if not isinstance(image, bool):
+                    fig2.savefig(image + '_industry.png')
+                else:
+                    fig2.show()
+
+            fig3, ax3 = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+            longshort_value.plot(ax=ax3, linestyle='--')
+            ngroup_value.plot(ax=ax3, alpha=0.8)
+            ngroup_turnover.plot(ax=ax3, secondary_y=True, alpha=0.2)
+            fig3.tight_layout()
+            if isinstance(image, (str, Path)):
+                fig3.savefig(image + f'_group{ngroup}.png')
+            else:
+                fig3.show()  
+
+            index = np.arange(len(year.index))
+            bar_width = 0.08
+            group_gap = 0.05 
+            bar_position_shift = (bar_width + group_gap / len(year.columns))
+            fig4, ax4 = plt.subplots(figsize=(24, 10))
+            for i, year_label in enumerate(year.columns):
+                ax4.bar(index + i * bar_position_shift, year[year_label], bar_width, alpha=0.8, label=year_label.strftime('%Y'))
+            ax4.set_title('Annualized EX-Returns by Group', fontsize=20) 
+            ax4.set_xticks(index + bar_position_shift * (len(year.columns) / 2))
+            ax4.set_xticklabels(year.index, rotation=0, fontsize=14)
+            ax4.yaxis.set_tick_params(labelsize=14)
+            ax4.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0%}'.format(y)))
+            ax4.grid(True, axis='y', linestyle='--', linewidth=0.5)
+            ax4.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=len(year.columns), fontsize=12, title_fontsize='13')
+            ax4.spines[['top', 'right', 'left', 'bottom']].set_visible(False)
+            ax4.tick_params(axis='both', which='both', length=0)
+            fig4.tight_layout()
+            if isinstance(image, (str, Path)):
+                fig4.savefig(f'{image}_Returns.png')
+            else:
+                fig4.show()
+
+            if style_exposure:
+                fig5, ax5 = plt.subplots(figsize=(20, 10))
+                exposure.plot(kind='bar', ax=ax5, color='steelblue', alpha=0.8)
+                ax5.grid(True, which='both', linestyle='--', linewidth=0.5)
+                ax5.axhline(0, color='black', linewidth=0.8)  # 添加 y=0 的线
+                plt.xticks(rotation=45, ha='right', fontsize=12) 
+                fig5.tight_layout()
+
+                if isinstance(image, (str, Path)):
+                    fig5.savefig(f'{image}_exposure.png')
+                else:
+                    fig5.show()
+
+            pd.plotting.scatter_matrix(crosssection, figsize=(20, 10), hist_kwds={'bins': 100}, alpha=0.8)
+            plt.tight_layout(pad=2.0)
+            
+            if isinstance(image, (str, Path)):
+                plt.savefig(f'{image}_crosssection.png')
+            else:
+                plt.show()
+
+        print({
+                'IC mean': round(inforcoef.mean(), 4),
+                'IR': round(inforcoef.mean() /inforcoef.std(), 4),
+                'ABS_IC>2%': round(len(inforcoef[abs(inforcoef) > 0.02].dropna())/len(inforcoef), 4),
+            })
+        return group
+
     def get(self, name: str, trading_days: pd.DatetimeIndex, n_jobs: int = -1, start: str = None, stop: str = None):
         result = Parallel(n_jobs=n_jobs, backend='loky')(
             delayed(getattr(self, "get_" + name))(date) for date in tqdm(list(trading_days))
@@ -979,4 +1187,6 @@ class Factor(PanelTable):
             return pd.concat(result, axis=1).T.sort_index().loc[start:stop]
         elif isinstance(result[0], pd.DataFrame):
             return pd.concat(result, axis=0).sort_index().loc(axis=0)[:, start:stop]
+
+
 
