@@ -766,26 +766,21 @@ class Factor(PanelTable):
 
         return eva
     
-    def perform_optimizer(
+    def perform_compound(
         self, 
         factor: pd.DataFrame | list,
         *,
         start: str = None,
         stop: str = None,
-        correlation: str | bool = False, # 'ic', 'factor'
         corr_method: str = 'pearson',
-        ic_method: str = 'pearson', # 'spearman', 'pearson', 'weighted'
-        heatmap_image: str | bool = None,
-        tscorr_image: str | bool = None, 
+        threshold: float = 0.7,
         orthogonalization : bool = False, 
         period: int = 1,
-        ptype: str = "volume_weighted_price",
+        ptype: str = "head_weighted_price",
         universe: str = '000985.XSHG',
         processor: list = None,
         compound_method: str = None,  # 'equal_weighted', 'ic_weighted', 'ir_weighted', 'sharpe_weighted', 'optimize_ir', 'optimize_ic'
         commission: float = 0.0005, 
-        objective: str = None,
-        cons: list = None,
     )-> dict:
         if isinstance(factor, pd.DataFrame):
             start, stop = factor.index.get_level_values(self._date_level).unique()[[0, -1]]
@@ -794,61 +789,7 @@ class Factor(PanelTable):
 
         _future = self.get_future(ptype=ptype, period=1, start=start, stop=stop, universe=universe)
         factor = factor.apply(lambda x: self._prepare_factor(x.unstack(self._code_level), start, stop, processor, universe).unstack())
-        
-        if compound_method=='optimize_ic':
-            correlation = 'factor'
-        if correlation:
-            future = self.get_future(ptype=ptype, period=period, start=start, stop=stop, universe=universe)
-
-        def plot_heatmap(correlation_matrix):
-            fig, ax = plt.subplots(figsize=(12, 8))
-            sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap='RdBu', center=0, vmin=-1, vmax=1, cbar=True, ax=ax)
-            ax.set_title('Heatmap for Correlation')
-            if not isinstance(heatmap_image, bool):
-                plt.savefig(heatmap_image)
-                plt.close(fig)
-            else:
-                fig.show()
-
-        def prepare_correlation_ts(correlations):
-            correlation_ts = pd.concat(
-                [matrix.unstack().rename_axis(['Feature1', 'Feature2']).reset_index().assign(Date=date) 
-                for date, matrix in correlations.items() if matrix is not None], 
-                axis=0
-            )
-            correlation_ts = correlation_ts[correlation_ts['Feature1'] != correlation_ts['Feature2']]
-            correlation_ts = correlation_ts.rename(columns={0: 'Correlation'})
-            correlation_ts['sorted_features'] = correlation_ts.apply(lambda x: tuple(sorted([x['Feature1'], x['Feature2']])), axis=1)
-            correlation_ts = correlation_ts.drop_duplicates(subset=['Date', 'sorted_features'])
-            correlation_ts.set_index(['Date', 'sorted_features'], inplace=True)
-            return correlation_ts['Correlation'].unstack()
-        
-        def plot_ts_correlation(correlation_ts):
-            num_pairs = len(correlation_ts.columns)
-            num_cols = 3  
-            num_rows = (num_pairs + num_cols - 1) // num_cols  
-
-            fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, num_rows * 5))
-            axes = axes.flatten()
-            
-            for ax, ((feature1, feature2), series) in zip(axes, correlation_ts.items()):
-                ax.plot(series.index, series, marker='', linestyle='-')
-                ax.set_title(f'{feature1} and {feature2}')
-                ax.grid(True)
-                ax.tick_params(axis='x', which='major', labelsize=10)
-                for label in ax.get_xticklabels():
-                    label.set_rotation(45)
-
-            for i in range(num_pairs, len(axes)):
-                axes[i].set_visible(False)
-            fig.supxlabel('Date', fontsize=12) 
-            fig.supylabel('Correlation', fontsize=12)
-            fig.tight_layout()
-            if not isinstance(tscorr_image, bool):
-                plt.savefig(tscorr_image)
-                plt.close(fig)
-            else:
-                fig.show()
+        future = self.get_future(ptype=ptype, period=period, start=start, stop=stop, universe=universe)
 
         def orthogonalize(group):
             X = group.values
@@ -861,24 +802,7 @@ class Factor(PanelTable):
             return pd.DataFrame(F_hat, index=group.index, columns=group.columns)
         
         def get_metrics(factor):
-            if ic_method =='weighted':
-                def calculate_weighted_ic(x, r):
-                    x_ranked = x.rank(ascending=False)
-                    n = len(x)
-                    a = -np.log(0.5) / (n / 2 - 1)
-                    w = np.exp(-a * (x_ranked - 1))
-                    w /= w.sum()
-
-                    wx = w * x
-                    wr = w * r
-                    wxr = w * x * r
-                    numerator = wxr.sum() - (wx.sum() * wr.sum())
-                    denominator = np.sqrt((w * (x ** 2)).sum() - wx.sum()**2) * np.sqrt((w * (r ** 2)).sum() - wr.sum()**2)
-                    return numerator / denominator if denominator != 0 else np.nan
-                inforcoef = factor.apply(lambda row: calculate_weighted_ic(row.dropna(), future.loc[row.name, row.dropna().index]), axis=1)
-            else:
-                inforcoef = factor.corrwith(future, axis=1, method=ic_method).dropna()
-
+            inforcoef = factor.corrwith(future, axis=1, method=corr_method).dropna()
             _adj = 1
             if inforcoef.mean() < 0:
                 _adj = -1
@@ -935,50 +859,38 @@ class Factor(PanelTable):
             factor = factor.groupby(level='date', as_index=False).apply(lambda x: orthogonalize(x.fillna(0))).reset_index(level=0, drop=True).sort_index()
             result['symmetric_orthogonal'] = factor
 
-        if correlation =='factor' or correlation == True:
-            correlations = {date: group.corr(method=corr_method) for date, group in factor.groupby('date') 
-                if not group.fillna(0).corr(method=corr_method).isnull().values.any()
-            }
-            factor_correlation_matrix = sum(correlations.values())/ len(correlations)
-            result['factor_correlation_matrix'] = factor_correlation_matrix
-            if heatmap_image:
-                plot_heatmap(factor_correlation_matrix)
+        correlations = {date: group.corr(method=corr_method) for date, group in factor.groupby('date') 
+            if not group.fillna(0).corr(method=corr_method).isnull().values.any()
+        }
+        factor_correlation_matrix = sum(correlations.values())/ len(correlations)
+        result['factor_correlation_matrix'] = factor_correlation_matrix
 
-            if tscorr_image:
-                correlation_ts = prepare_correlation_ts(correlations)
-                plot_ts_correlation(correlation_ts)
+        metrics = factor.apply(lambda x: get_metrics(x.unstack(self._code_level)))
+        result['inforcoef'] = metrics.apply(lambda x: x[0])
+        result['metrics'] = metrics.apply(lambda x: x[1]).T
+        factor = factor * metrics.apply(lambda x: x[2])
+        ic_correlation_matrix = result['inforcoef'].corr(method=corr_method)
+        result['ic_correlation_matrix'] = ic_correlation_matrix
 
-        if compound_method or correlation == 'ic':
-            metrics = factor.apply(lambda x: get_metrics(x.unstack(self._code_level)))
-            result['inforcoef'] = metrics.apply(lambda x: x[0])
-            result['metrics'] = metrics.apply(lambda x: x[1]).T
-            factor = factor * metrics.apply(lambda x: x[2])
+        if compound_method == 'ic_weighted':
+            compound_weight = result['metrics']['IC mean'].abs() / result['metrics']['IC mean'].abs().sum()
+        elif compound_method == 'ir_weighted':
+            compound_weight = result['metrics']['IR'].abs() / result['metrics']['IR'].abs().sum()
+        elif compound_method == 'sharpe_weighted':
+            compound_weight = result['metrics']['Top Annual sharpe'] / result['metrics']['Top Annual sharpe'].sum()
+        elif compound_method == 'equal_weighted':
+            compound_weight = pd.Series(1, index=result['metrics'].index) / len(result['metrics'].index)
+        elif compound_method == 'optimize_ir':
+            compound_weight = optimize_weights('optimize_ir')
+        elif compound_method == 'optimize_ic':
+            compound_weight = optimize_weights('optimize_ic')
+        else:
+            compound_weight = None
 
-            if correlation =='ic':
-                ic_correlation_matrix = result['inforcoef'].corr(method=corr_method)
-                result['ic_correlation_matrix'] = ic_correlation_matrix
-                if heatmap_image:
-                    plot_heatmap(ic_correlation_matrix)
-
-            if compound_method == 'ic_weighted':
-                compound_weight = result['metrics']['IC mean'].abs() / result['metrics']['IC mean'].abs().sum()
-            elif compound_method == 'ir_weighted':
-                compound_weight = result['metrics']['IR'].abs() / result['metrics']['IR'].abs().sum()
-            elif compound_method == 'sharpe_weighted':
-                compound_weight = result['metrics']['Top Annual sharpe'] / result['metrics']['Top Annual sharpe'].sum()
-            elif compound_method == 'equal_weighted':
-                compound_weight = pd.Series(1, index=result['metrics'].index) / len(result['metrics'].index)
-            elif compound_method == 'optimize_ir':
-                compound_weight = optimize_weights('optimize_ir')
-            elif compound_method == 'optimize_ic':
-                compound_weight = optimize_weights('optimize_ic')
-            else:
-                compound_weight = None
-
-            if compound_weight is not None:
-                result['compound_factor'] = (factor * compound_weight).sum(axis=1).to_frame(name='compound_factor')
-                res = get_metrics(result['compound_factor'].unstack(self._code_level))[1].to_frame(name='compound_factor').T
-                result['metrics'] = pd.concat([result['metrics'], res])
+        if compound_weight is not None:
+            result['compound_factor'] = (factor * compound_weight).sum(axis=1).to_frame(name='compound_factor')
+            res = get_metrics(result['compound_factor'].unstack(self._code_level))[1].to_frame(name='compound_factor').T
+            result['metrics'] = pd.concat([result['metrics'], res])
 
         return result 
 
