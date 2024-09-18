@@ -485,13 +485,35 @@ class Factor(PanelTable):
         weight: pd.DataFrame,
         top_group: pd.DataFrame,
     ):
-        style_exposure = barra.apply(lambda x: (x.unstack() * weight).sum(axis=1)).mean()
-        def _exposure(df: pd.DataFrame):
-            df = df.where(top_group.notna())
-            _weight = (df/df).div(df.count(axis=1),axis=0)
-            return (df * _weight).sum(axis=1).mean()
-        factor_exposure = barra.apply(lambda x: _exposure(x.unstack()))
-        return factor_exposure - style_exposure
+        start = top_group.index[0]
+        stop = top_group.index[-1]
+        start_year = start.year
+        stop_year = stop.year
+
+        exposure_by_year = pd.DataFrame()
+        for year in range(start_year, stop_year + 1):
+            year_start = pd.Timestamp(f'{year}-01-01')
+            year_stop = pd.Timestamp(f'{year}-12-31')
+
+            if year == start_year:
+                year_start = start
+            if year == stop_year:
+                year_stop = stop
+            
+            _top_group = top_group[year_start:year_stop]
+            _barra = barra[year_start:year_stop]
+            _weight = weight[year_start:year_stop]
+
+            style_exposure = _barra.apply(lambda x: (x.unstack() * _weight).sum(axis=1)).mean()
+            def _exposure(df: pd.DataFrame):
+                df = df.where(_top_group.notna())
+                w = (df/df).div(df.count(axis=1),axis=0)
+                return (df * w).sum(axis=1).mean()
+            
+            factor_exposure = barra.apply(lambda x: _exposure(x.unstack()))
+            exposure = factor_exposure - style_exposure
+            exposure_by_year = pd.concat([exposure_by_year, exposure.to_frame(name=year)], axis=1)
+        return exposure_by_year
     
     def _prepare_factor(
         self, 
