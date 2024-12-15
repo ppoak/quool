@@ -185,7 +185,7 @@ class ParquetManager:
         Renames specified columns or index columns in the Parquet database.
 
         Args:
-            columns (dict): Dictionary mapping old column names to new column names.
+            kwargs: Dictionary mapping old column names to new column names.
 
         Returns:
             None
@@ -210,8 +210,6 @@ class ParquetManager:
         data: pd.DataFrame,
         partition: str | pd.Series | pd.Index | list = None,
         on: str = None,
-        left_on: str = None,
-        right_on: str = None,
         njobs: int = 4
     ):
         """
@@ -256,7 +254,7 @@ class ParquetManager:
                 existing_data = pd.read_parquet(partition_path)
                 combined_data = pd.merge(
                     existing_data, data[data[self.partition] == partition_value], 
-                    on=on or self.index, left_on=left_on, right_on=right_on
+                    on=on or self.index
                 )
                 combined_data = combined_data.drop_duplicates(subset=self.index, keep='last')
             else:
@@ -279,7 +277,7 @@ class ParquetManager:
                 existing_data = pd.read_parquet(partition_path)
                 combined_data = pd.merge(
                     existing_data, data, 
-                    on=on or self.index, left_on=left_on, right_on=right_on
+                    on=on or self.index
                 )
                 combined_data = combined_data.drop_duplicates(subset=self.index, keep='last')
             else:

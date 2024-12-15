@@ -1,7 +1,7 @@
 from .tool import (
-    setup_logger,
-    Email,
+    Emailer,
     Evaluator,
+    setup_logger,
 )
 
 from .manager import (
@@ -14,4 +14,4 @@ from .trader import (
     Broker,
 )
 
-__version__ = "6.0.0"
+__version__ = "7.0.0"

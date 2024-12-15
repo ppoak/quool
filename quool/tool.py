@@ -103,7 +103,7 @@ def setup_logger(
     return logger
 
 
-class Email:
+class Emailer:
     """A class to create and send emails, supporting Markdown to HTML conversion and embedded images."""
 
     def __init__(
@@ -269,6 +269,37 @@ class Email:
             emails.append(email_data)
 
         return emails
+
+    def notify(
+        self,
+        task: callable,
+        subject: str,
+        reciever: str,
+        message: str,
+        cc: str = None,
+        **kwargs
+    ):
+        """
+        Send a notification email after executing a task.
+
+        Args:
+            task (callable): The task to execute.
+            subject (str): The subject of the notification email.
+            reciever (str): The recipient's email address.
+            message (str): The message to include in the notification email.
+            cc (str, optional): The CC recipient's email address. Defaults to None.
+        """
+        try:
+            result = task(**kwargs)
+        except Exception as e:
+            result = str(e)
+        finally:
+            self.send_email(
+                subject=subject,
+                markdown_body=result,
+                to_email=reciever,
+                cc_email=cc,
+            )
 
     def close_connection(self):
         """Closes the SMTP server connection."""
