@@ -3,8 +3,8 @@ import queue
 import logging
 import numpy as np
 import pandas as pd
-from .tool import setup_logger
 from .manager import ParquetManager
+from .tool import setup_logger, Evaluator
 
 
 class Order:
@@ -204,7 +204,7 @@ class Broker:
         """
         self.manager = manager
         self._time = None
-        self._balance = principle
+        self._balance = self.principle = principle
         self._positions = {}
         self.commission = commission
         self._pendings = queue.Queue()
@@ -485,6 +485,40 @@ class Broker:
             orders += self._orders
         trade_log = [order.to_dict() for order in orders]
         return pd.DataFrame(trade_log)
+    
+    def resume(self, orders: pd.DataFrame) -> None:
+        """
+        Resumes the broker's state based on a given transaction log.
+
+        Args:
+            orders (pd.DataFrame): A DataFrame containing cash and stock flow records, 
+                columns are "Code", "Time", "Cash", "Stock", 
+                if dividend is set, set "Code" column to "Cash".
+        """
+        pendings = order[order["Status"].isin([Order.CREATED, Order.PARTIAL, Order.SUBMITTED])]
+        orders = orders[~orders["Status"].isin([Order.CREATED, Order.PARTIAL, Order.SUBMITTED])].copy()
+        evaluator = Evaluator(orders=orders, prices=None, principle=self.principle)
+        positions = evaluator.positions.iloc[-1]
+        self._positions = positions[positions > 0].to_dict()
+        self._balance = evaluator.cash.iloc[-1]
+        for _, order_series in pendings.iterrow():
+            order = Order(
+                self, 
+                code=order_series["Code"],
+                quantity=order_series["Quantity"] - order_series["Filled"],
+                limit=order_series["Limit"],
+                trigger=order_series["Trigger"],
+                ordtype=order_series["OrdType"],
+                side=order_series["Side"],
+                time=pd.to_datetime(order_series["CreTime"]),
+                valid=pd.to_datetime(order_series["Valid"]),
+            )
+            order.status = order_series["Status"]
+            order.ordid = order_series["OrdId"]
+            order.exeprice = order_series["ExePrice"]
+            order.exetime = order_series["ExeTime"]
+            order.value = order_series["Value"]
+            self._pendings.put(order)
 
     def __str__(self) -> str:
         """

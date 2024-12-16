@@ -321,7 +321,7 @@ class Evaluator:
 
     def __init__(
         self,
-        flows: pd.DataFrame,
+        orders: pd.DataFrame,
         prices: pd.DataFrame,
         principle: float,
         benchmark: pd.Series = None,
@@ -330,55 +330,53 @@ class Evaluator:
         Initialize the Evaluator.
 
         Args:
-            flows (pd.DataFrame): A DataFrame containing cash and stock flow records, columns are "Code", "Time", "Cash", "Stock".
+            orders (pd.DataFrame): Standard order DataFrame made by the broker.
             transactions (pd.DataFrame): A DataFrame containing transaction records.
             prices (pd.DataFrame): A DataFrame with stock price data indexed by date and code.
             principle (float): Initial cash amount.
         """
-        self.flows = flows.copy()
+        orders = orders.copy()
+        self.orders = orders
+        orders["Time"] = pd.to_datetime(orders["ExeTime"])
+        orders["Cash"] = -orders["Side"] * orders["Value"] + orders["Commission"]
+        orders["Stock"] = orders["Side"] * orders["Filled"]
+        self.flows = order[["Time", "Code", "Cash", "Stock"]]
         self.principle = principle
-        self.prices = prices.copy()
+        self._process_flows()
+        self.prices = None
+        if prices is not None:
+            self.prices = prices.copy()
+            self._process_valuetrades()
         self.benchmark = benchmark.copy() if benchmark is not None else None
-        self._process_transactions()
 
-    def _process_transactions(self):
-        """
-        Process transactions to generate cash, market value, and total value time series.
+    def _process_flows(self):
+        cashflow = self.flows.loc[self.flows["Code"] == "Cash", "Cash"].groupby(self.flows["Time"]).sum()
+        self.flows = self.flows[self.flows["Code"] != "Cash"].copy()
+        
+        self.cash = self.flows.groupby("Time")["Cash"].sum().cumsum().add(cashflow, fill_value=0) + self.principle
+        self.positions = self.flows.groupby(["Time", "Code"])["Stock"].sum().unstack().fillna(0).cumsum()
 
-        Args:
-            transactions (pd.DataFrame): A DataFrame containing transaction records.
-            prices (pd.DataFrame): A DataFrame with stock price data indexed by date and code.
-        """
-        cum_cash_flow = self.flows.groupby("Time")["Cash"].sum().cumsum() + self.principle
-        cum_stock_flow = self.flows.groupby(["Time", "Code"])["Stock"].sum().unstack().fillna(0).cumsum()
-
-        cum_cash_flow = cum_cash_flow.reindex(self.prices.index).ffill().fillna(self.principle)
-        cum_stock_flow = cum_stock_flow.reindex(self.prices.index).ffill().fillna(0)
-        cum_stock_flow = cum_stock_flow.reindex(self.prices.index).ffill().fillna(0)
-        market_value = (cum_stock_flow * self.prices).sum(axis=1)
-
-        total_value = cum_cash_flow + market_value
+    def _process_valuetrades(self):
+        timepoints = self.prices.index.union(self.cash.index).union(self.positions.index)
+        cash = self.cash.reindex(timepoints).ffill().fillna(self.principle)
+        positions = self.positions.reindex(timepoints).ffill().fillna(0)
+        self.market_value = (positions * self.prices).sum(axis=1)
+        self.total_value = cash + self.market_value
 
         flows = self.flows.set_index(["Time", "Code"])
-        open_time = ((cum_stock_flow > 0) & (cum_stock_flow.shift() == 0)).stack()
+        open_time = ((positions > 0) & (positions.shift() == 0)).stack()
         open_time = open_time[open_time]
         open_cost = flows.loc[open_time.index, "Cash"].sort_index().reset_index()
-        close_time = ((cum_stock_flow == 0) & (cum_stock_flow.shift() > 0)).stack()
+        close_time = ((positions == 0) & (positions.shift() > 0)).stack()
         close_time = close_time[close_time]
         close_cost = (-flows.loc[close_time.index, "Cash"].sort_index()).reset_index()
-        trades = pd.merge_asof(
+        self.trades = pd.merge_asof(
             open_cost.rename(columns={"Time": "Open At", "Cash": "Open Cost"}), 
             close_cost.rename(columns={"Time": "Close At", "Cash": "Close Cost"}), 
             by="Code", 
             left_on="Open At", right_on="Close At", 
             direction='forward'
         )
-
-        self.cash = cum_cash_flow
-        self.positions = cum_stock_flow
-        self.market_value = market_value
-        self.total_value = total_value
-        self.trades = trades
 
     @staticmethod
     def _evaluate(
@@ -489,10 +487,14 @@ class Evaluator:
         Returns:
             pd.Series: Evaluation metrics.
         """
+        if self.prices is None:
+            raise ValueError("Price data is not provided.")
+        
         if self.benchmark is not None:
             benchmark = self.benchmark / self.benchmark.iloc[0]
             self.result = self._evaluate(value=self.total_value, cash=self.cash, trades=self.trades, benchmark=benchmark)
             return self.result
+        
         benchmark = pd.Series(np.ones_like(self.total_value), index=self.total_value.index)
         self.result = self._evaluate(value=self.total_value, cash=self.cash, trades=self.trades, benchmark=benchmark)
         return self.result
