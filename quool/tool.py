@@ -340,7 +340,7 @@ class Evaluator:
         orders["Time"] = pd.to_datetime(orders["ExeTime"])
         orders["Cash"] = -orders["Side"] * orders["Value"] + orders["Commission"]
         orders["Stock"] = orders["Side"] * orders["Filled"]
-        self.flows = order[["Time", "Code", "Cash", "Stock"]]
+        self.flows = orders[["Time", "Code", "Cash", "Stock"]]
         self.principle = principle
         self._process_flows()
         self.prices = None
