@@ -516,7 +516,7 @@ class Evaluator:
         else:
             raise ValueError("Invalid time format, please use pd.Timestamp or int.")
 
-    def plot(self, figsize: tuple = (20, 15), save_path: str | Path = None):
+    def plot(self, figsize: tuple = (20, 15), path: str | Path = None):
         """
         Enhanced visualization of strategy performance in a 2x3 grid layout, including position information.
 
@@ -607,7 +607,7 @@ class Evaluator:
         ax6.set_ylabel("Frequency")
 
         # Save or show the plot
-        if save_path:
-            plt.savefig(save_path, bbox_inches="tight")
+        if path:
+            plt.savefig(path, bbox_inches="tight")
         else:
             plt.show()

@@ -466,7 +466,7 @@ class Broker:
         """
         return self._ordict[ordid]
 
-    def get_transactions(self, alive: bool = False) -> pd.DataFrame:
+    def get_orders(self, alive: bool = False) -> pd.DataFrame:
         """
         Compiles a detailed trade log from the order history.
 
