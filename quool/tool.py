@@ -151,25 +151,23 @@ class Emailer:
         subject: str, 
         message: str, 
         cc: str = None,
-        nickname: str = None,
     ):
         """
         Sends an email with a Markdown-formatted body, converted to HTML, with embedded images if specified.
 
         Args:
-            to_email (str): The recipient's email address(es), separated by commas if multiple.
+            recievers (str): The recipient's email address(es), separated by commas if multiple.
             subject (str): The subject of the email.
-            markdown_body (str): The body of the email in Markdown format.
-            cc_email (str): The CC recipient's email address(es), separated by commas if multiple (optional).
+            message (str): The body of the email in Markdown format.
+            cc (str): The CC recipient's email address(es), separated by commas if multiple (optional).
         """
-        nickname = nickname or self.address
         # Create a multipart message
         msg = MIMEMultipart("related")
-        msg["From"] = nickname
+        msg["From"] = self.address
         msg["To"] = recievers
         # Add CC recipients to the email header
         if cc:
-            msg["Cc"] = cc_email
+            msg["Cc"] = cc
         msg["Subject"] = subject
 
         # Convert Markdown to HTML using the `markdown` package
@@ -317,7 +315,6 @@ class Emailer:
     def close(self):
         """Closes the SMTP server connection."""
         self.smtp_server.quit()
-        self.imap_server.close()
         self.imap_server.logout()
 
     def __enter__(self):
