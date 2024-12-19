@@ -186,23 +186,22 @@ class Order:
 
 
 class Broker:
-    """Abstract base class for a Broker."""
 
     def __init__(
-        self, 
-        manager: ParquetManager = None,
-        principle: float = 1_000_000, 
+        self,
+        data: pd.DataFrame,
+        principle: float = 1_000_000,
         commission: float = 0.001,
         logger: logging.Logger = None,
     ):
         """
-        Initializes the base broker with essential attributes.
+        Initializes the broker with essential attributes.
 
         Args:
             principle (float): Initial cash balance for the broker. Defaults to 1,000,000.
             commission (float): Commission rate for transactions. Defaults to 0.001 (0.1%).
         """
-        self.manager = manager
+        self.data = data
         self._time = None
         self._balance = self.principle = principle
         self._positions = {}
@@ -211,7 +210,7 @@ class Broker:
         self._orders = []  # History of processed orders
         self._ordict = {}
         self.logger = logger or setup_logger("Broker", level="DEBUG")
-    
+
     @property
     def time(self) -> pd.Timestamp:
         """
@@ -354,6 +353,15 @@ class Broker:
         order.status = order.SUBMITTED
         self.logger.debug(f"Order submitted: {order}")
 
+    def _load(self) -> pd.DataFrame:
+        """
+        Loads market data required for processing orders.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing market data (open, high, low, close, volume) indexed by stock codes.
+        """
+        return self.data.loc[self._time]
+
     def update(self, time: str) -> None:
         """
         Updates the broker's state for a new trading day.
@@ -372,21 +380,6 @@ class Broker:
             else:
                 self._pendings.put(order)
             order = self._pendings.get()
-
-    def _load(self) -> pd.DataFrame:
-        """
-        Loads market data required for processing orders.
-
-        Returns:
-            pd.DataFrame: A DataFrame containing market data (open, high, low, close, volume) indexed by stock codes.
-        """
-        data = self.manager.read(
-            index=["code"],
-            date=self._time,
-            columns=["open", "high", "low", "close", "volume"],
-            code__in=[order.code if order else "" for order in list(self._pendings.queue)],
-        )
-        return data
 
     def _match(self, order: Order, data: pd.DataFrame) -> None:
         """
@@ -537,3 +530,43 @@ class Broker:
     
     def __repr__(self):
         return self.__str__()
+
+
+class ManagerBroker(Broker):
+
+    def __init__(
+        self, 
+        manager: ParquetManager = None,
+        principle: float = 1_000_000, 
+        commission: float = 0.001,
+        logger: logging.Logger = None,
+    ):
+        """
+        Initializes the base broker with essential attributes.
+
+        Args:
+            principle (float): Initial cash balance for the broker. Defaults to 1,000,000.
+            commission (float): Commission rate for transactions. Defaults to 0.001 (0.1%).
+        """
+        super().__init__(
+            data=None, 
+            principle=principle, 
+            commission=commission, 
+            logger=logger
+        )
+        self.manager = manager
+
+    def _load(self) -> pd.DataFrame:
+        """
+        Loads market data required for processing orders.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing market data (open, high, low, close, volume) indexed by stock codes.
+        """
+        data = self.manager.read(
+            index=["code"],
+            date=self._time,
+            columns=["open", "high", "low", "close", "volume"],
+            code__in=[order.code if order else "" for order in list(self._pendings.queue)],
+        )
+        return data
