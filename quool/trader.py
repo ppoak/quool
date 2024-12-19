@@ -45,15 +45,16 @@ class Order:
         Initializes an Order instance.
 
         Args:
+            broker (Broker): The broker instance associated with the order.
             code (str): The code of the financial instrument.
             quantity (int): The number of units for the order.
-            trigger_price (float, optional): The price for triggering a limit order.
+            trigger (float, optional): The price for triggering a limit order.
                 Defaults to None for market orders.
-            limit_price (float, optional): The price for limit orders. Defaults to None.
-            order_type (str): The type of order ('MARKET' or 'LIMIT'). Defaults to 'MARKET'.
+            limit (float, optional): The price for limit orders. Defaults to None.
+            ordtype (str): The type of order ('MARKET' or 'LIMIT'). Defaults to 'MARKET'.
             side (str): The side of the order ('BUY' or 'SELL'). Defaults to 'BUY'.
             time (str, optional): The creation timestamp. Defaults to None.
-            valid_before (str, optional): The expiry time for the order. Defaults to None.
+            valid (str, optional): The expiry time for the order. Defaults to None.
         """
         self.ordid = str(uuid.uuid4())
         self.broker = broker
@@ -77,7 +78,6 @@ class Order:
         Executes the order partially or fully, updating its status and attributes.
 
         Args:
-            time (str): The execution time.
             price (float): The execution price per unit.
             quantity (int): The number of units filled.
 
@@ -102,12 +102,9 @@ class Order:
         """
         Cancels the order if it is not already fully executed.
 
-        Args:
-            time (str, optional): The cancellation timestamp. Defaults to None.
-
         Updates:
             - Sets the status to 'CANCELED'.
-            - Sets the executed_at time if provided.
+            - Sets the exetime if provided.
         """
         if self.status in {self.CREATED, self.PARTIAL, self.SUBMITTED}:
             self.status = self.CANCELED
@@ -116,9 +113,6 @@ class Order:
     def is_alive(self) -> bool:
         """
         Checks if the order is still valid based on its expiration and status.
-
-        Args:
-            time (str, optional): The current time. Defaults to None.
 
         Returns:
             bool: True if the order is valid, False otherwise.
@@ -276,10 +270,10 @@ class Broker:
         Args:
             code (str): The stock code (e.g., "AAPL").
             quantity (int): The number of shares to buy.
-            trigger_price (float, optional): The trigger price for the order. Defaults to None.
-            limit_price (float, optional): The limit price for the order. Defaults to None.
+            trigger (float, optional): The trigger price for the order. Defaults to None.
+            limit (float, optional): The limit price for the order. Defaults to None.
             exectype (str): The execution type ('MARKET' or 'LIMIT'). Defaults to 'MARKET'.
-            valid_before (str, optional): The validity period for the order. Defaults to None.
+            valid (str, optional): The validity period for the order. Defaults to None.
 
         Returns:
             Order: The created buy order.
@@ -316,10 +310,10 @@ class Broker:
         Args:
             code (str): The stock code (e.g., "AAPL").
             quantity (int): The number of shares to sell.
-            trigger_price (float, optional): The trigger price for the order. Defaults to None.
-            limit_price (float, optional): The limit price for the order. Defaults to None.
+            trigger (float, optional): The trigger price for the order. Defaults to None.
+            limit (float, optional): The limit price for the order. Defaults to None.
             exectype (str): The execution type ('MARKET' or 'LIMIT'). Defaults to 'MARKET'.
-            valid_before (str, optional): The validity period for the order. Defaults to None.
+            valid (str, optional): The validity period for the order. Defaults to None.
 
         Returns:
             Order: The created sell order.
@@ -425,8 +419,8 @@ class Broker:
 
         Args:
             order (Order): The order to be executed.
-            execute_price (float): The price at which the order is executed.
-            execute_quantity (int): The quantity of shares executed.
+            price (float): The price at which the order is executed.
+            quantity (int): The quantity of shares executed.
         """
         if order.side == order.BUY:
             cost = price * quantity * (1 + self.commission)

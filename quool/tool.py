@@ -108,7 +108,7 @@ class Emailer:
 
     def __init__(
         self, 
-        root_url: str = "163.com",
+        root_url: str,
         smtp_server: str = None, 
         imap_server: str = None, 
         smtp_port: int = 0,
@@ -133,19 +133,26 @@ class Emailer:
         self.smtp_server.starttls()
         self.imap_server = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
     
-    def login(self, email_address: str, password: str):
+    def login(self, address: str, password: str):
         """
         Logs into the SMTP server with the provided credentials.
 
         Args:
-            email_address (str): Sender's email address.
+            address (str): Sender's email address.
             password (str): Sender's email account password.
         """
-        self.email_address = email_address
-        self.smtp_server.login(email_address, password)
-        self.imap_server.login(email_address, password)
+        self.address = address
+        self.smtp_server.login(address, password)
+        self.imap_server.login(address, password)
 
-    def send_email(self, to_email: str, subject: str, markdown_body: str, cc_email: str = None):
+    def send(
+        self, 
+        recievers: str, 
+        subject: str, 
+        message: str, 
+        cc: str = None,
+        nickname: str = None,
+    ):
         """
         Sends an email with a Markdown-formatted body, converted to HTML, with embedded images if specified.
 
@@ -155,23 +162,24 @@ class Emailer:
             markdown_body (str): The body of the email in Markdown format.
             cc_email (str): The CC recipient's email address(es), separated by commas if multiple (optional).
         """
+        nickname = nickname or self.address
         # Create a multipart message
         msg = MIMEMultipart("related")
-        msg["From"] = self.email_address
-        msg["To"] = to_email
+        msg["From"] = nickname
+        msg["To"] = recievers
         # Add CC recipients to the email header
-        if cc_email:
+        if cc:
             msg["Cc"] = cc_email
         msg["Subject"] = subject
 
         # Convert Markdown to HTML using the `markdown` package
         html_body = markdown.markdown(
-            markdown_body,
+            message,
             extensions=["tables", "fenced_code", "codehilite"]
         )
 
         # Find all image paths in the markdown using a regular expression
-        image_paths = re.findall(r'!\[.*?\]\((.*?)\)', markdown_body)
+        image_paths = re.findall(r'!\[.*?\]\((.*?)\)', message)
 
         # Attach images as embedded content
         for i, image_path in enumerate(image_paths):
@@ -194,26 +202,26 @@ class Emailer:
         msg.attach(MIMEText(html_body, "html"))
 
         # Prepare the recipient list, including CC recipients
-        recipient_list = to_email.split(",")
-        if cc_email:
-            recipient_list += cc_email.split(",")
+        recipient_list = recievers.split(",")
+        if cc:
+            recipient_list += cc.split(",")
 
         # Send the email
-        self.smtp_server.sendmail(self.email_address, recipient_list, msg.as_string())
+        self.smtp_server.sendmail(self.address, recipient_list, msg.as_string())
     
-    def receive_emails(
+    def receive(
         self, 
         mailbox: str = "INBOX", 
-        search_criteria: str = "ALL", 
-        save_attachments: bool = False
+        criteria: str = "ALL", 
+        attachments: str | Path = None,
     ):
         """
         Receives emails from the specified mailbox.
 
         Args:
             mailbox (str): The mailbox to select. Default is 'INBOX'.
-            search_criteria (str): The search criteria to filter emails. Default is 'ALL'.
-            save_attachments (bool): Whether to save email attachments. Default is False.
+            criteria (str): The search criteria to filter emails. Default is 'ALL'.
+            attachments (bool): Whether to save email attachments. Default is False.
 
         Returns:
             list[dict]: A list of dictionaries containing email details (subject, from, date, body, attachments).
@@ -221,7 +229,7 @@ class Emailer:
         # Select the mailbox
         self.imap_server.select(mailbox)
         # Search emails based on criteria
-        status, email_ids = self.imap_server.search(None, search_criteria)
+        status, email_ids = self.imap_server.search(None, criteria)
         if status != "OK":
             raise Exception("Failed to search emails.")
 
@@ -255,12 +263,15 @@ class Emailer:
 
                     if content_type == "text/plain" and "attachment" not in content_disposition:
                         email_data["body"] = part.get_payload()
-                    elif "attachment" in content_disposition and save_attachments:
+                    elif "attachment" in content_disposition and attachments:
                         # Save attachment
                         filename = part.get_filename()
                         if filename:
+                            header = decode_header(filename)
+                            filename = ''.join([str(part, charset if isinstance(part, bytes) else 'utf-8') for part, charset in header])
+                            filename = attachments / filename
                             attachment_data = part.get_payload(decode=True)
-                            email_data["attachments"].append({"filename": filename, "data": attachment_data})
+                            email_data["attachments"].append({"filename": str(filename), "data": attachment_data})
                             with open(filename, "wb") as f:
                                 f.write(attachment_data)
             else:
@@ -277,6 +288,7 @@ class Emailer:
         reciever: str,
         message: str,
         cc: str = None,
+        nickname: str = None,
         **kwargs
     ):
         """
@@ -296,16 +308,17 @@ class Emailer:
         finally:
             self.send_email(
                 subject=subject,
-                markdown_body=result,
-                to_email=reciever,
-                cc_email=cc,
+                message=result,
+                recievers=reciever,
+                cc=cc,
+                nickname=nickname,
             )
 
-    def close_connection(self):
+    def close(self):
         """Closes the SMTP server connection."""
         self.smtp_server.quit()
-        self.imap_server.logout()
         self.imap_server.close()
+        self.imap_server.logout()
 
     def __enter__(self):
         """Enters the runtime context."""
@@ -313,7 +326,7 @@ class Emailer:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exits the runtime context and closes the SMTP connection."""
-        self.close_connection()
+        self.close()
 
 
 class Evaluator:

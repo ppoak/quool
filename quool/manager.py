@@ -9,9 +9,11 @@ class ParquetManager:
     """Class to manage Parquet database operations, including data insertions, updates, and reading.
 
     Attributes:
-        base_path (Path): Base path for storing parquet files.
-        partition_col (str, optional): Column used for partitioning the data.
-        index_col (str or list of str, optional): Column(s) used for indexing to prevent duplicate entries.
+        path (Path): Base path for storing parquet files.
+        partitions (list): List of existing partitions.
+        name (str): Name of the database.
+        partition (str): Column used for partitioning the data.
+        index (list): Column(s) used for indexing to avoid duplicates.
     """
 
     def __init__(
@@ -24,9 +26,9 @@ class ParquetManager:
         Initializes the ParquetManager with a base path, partition column(s), and index column(s).
 
         Args:
-            base_path (str or Path): The base directory where parquet files will be stored.
-            partition_col (str, optional): Column used for partitioning the data. If None, it will be automatically detected for existing data.
-            index_col (str, optional): Column(s) used for indexing to avoid duplicates.
+            path (str or Path): The base directory where parquet files will be stored.
+            index (str, optional): Column(s) used for indexing to avoid duplicates.
+            partition (str, optional): Column used for partitioning the data. If None, it will be automatically detected for existing data.
         """
         if not isinstance(partition, (str, type(None))):
             raise ValueError("partition must be a string.")
