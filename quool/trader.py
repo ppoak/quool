@@ -26,8 +26,8 @@ class Order:
     STOPLIMIT = "STOPLIMIT"
 
     # Order sides
-    BUY = 1
-    SELL = -1
+    BUY = "BUY"
+    SELL = "SELL"
 
     def __init__(
         self,
@@ -133,21 +133,21 @@ class Order:
             dict: A dictionary containing the order's attributes.
         """
         return {
-            "OrdID": self.ordid,
-            "Code": self.code,
-            "Quantity": self.quantity,
-            "Limit": self.limit,
-            "Trigger": self.trigger,
-            "ExePrice": self.exeprice,
-            "OrdType": self.ordtype,
-            "Side": self.side,
-            "Status": self.status,
-            "Filled": self.filled,
-            "Value": self.value,
-            "CreTime": self.cretime,
-            "ExeTime": self.exetime,
-            "Commission": self.commission,
-            "Valid": self.valid,
+            "ordid": self.ordid,
+            "code": self.code,
+            "quantity": self.quantity,
+            "limit": self.limit,
+            "trigger": self.trigger,
+            "exeprice": self.exeprice,
+            "ordtype": self.ordtype,
+            "side": self.side,
+            "status": self.status,
+            "filled": self.filled,
+            "value": self.value,
+            "cretime": self.cretime,
+            "exetime": self.exetime,
+            "commission": self.commission,
+            "valid": self.valid,
         }
 
     def __str__(self) -> str:
@@ -165,8 +165,8 @@ class Order:
         )
         latest_price = latest_price if latest_price else 0
         return (
-            f"Order(#{self.ordid[:5]}@[{latest_date}] <{self.code}> "
-            f"{self.side * self.quantity:.2f}x${latest_price:.2f} |{self.status}|)"
+            f"Order(#{self.ordid[:5]}@[{latest_date}] {self.side} <{self.code}> "
+            f"{self.quantity:.2f}x${latest_price:.2f} |{self.status}|)"
         )
 
     def __repr__(self) -> str:
@@ -335,6 +335,30 @@ class Broker:
         self.submit(order)
         return order
 
+    def cancel(self, order: Order | str) -> None:
+        """
+        Cancels an order.
+
+        Args:
+            order (Order): The order to be canceled.
+        """
+        if isinstance(order, str):
+            order = self.get_order(order)
+        order.cancel()
+        self.logger.debug(f"Order canceled: {order}")
+    
+    def close(
+        self,
+        code: str,
+        limit: float = None,
+        trigger: float = None,
+        exectype: str = Order.MARKET,
+        valid: str = None,
+    ) -> Order:
+        """Close a position by selling all shares of a stock. Refer to sell() for details."""
+        quantity = self._positions.get(code, 0)
+        return self.sell(code, quantity, limit, trigger, exectype, valid)
+
     def submit(self, order: Order) -> None:
         """
         Submits an order for processing.
@@ -388,15 +412,22 @@ class Broker:
             return
         
         if order.trigger is not None:
-            pricetype = "low" if order.side == order.BUY else "high"
-            if (
-                (order.ordtype == order.STOP or order.ordtype == order.STOPLIMIT) and 
-                data.loc[order.code, pricetype] * order.side <= order.trigger * order.side
-            ):
-                # order triggered
-                order.trigger = None
+            # STOP and STOPLIMIT orders:
+            # Triggered when price higher than trigger for BUY, 
+            # or lower than trigger for SELL.
+            if order.ordtype == order.STOP or order.ordtype == order.STOPLIMIT:
+                pricetype = "high" if order.side == order.BUY else "low"
+                if (
+                    (order.side == order.BUY and data.loc[order.code, pricetype] >= order.trigger)
+                    or (order.side == order.SELL and data.loc[order.code, pricetype] <= order.trigger)
+                ):
+                    # order triggered
+                    order.trigger = None
+                    self.logger.debug(f"Order triggered: {order}")
+                else:
+                    return
             else:
-                return
+                raise ValueError("Invalid order type for trigger.")
         
         if order.ordtype == order.MARKET or order.ordtype == order.STOP:
             price = data.loc[order.code, "open"]

@@ -18,15 +18,16 @@ from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 
 def setup_logger(
     name, 
-    file=None, 
-    stream=True, 
-    level=logging.INFO, 
-    style=1,
-    rotation=None, 
-    max_bytes=None, 
-    backup_count=None, 
-    when=None, 
-    interval=None,
+    file: str | Path = None, 
+    stream: bool = True, 
+    level: str = logging.INFO, 
+    style: int = 1,
+    clear: bool = False,
+    rotation: str = None, 
+    max_bytes: int = None, 
+    backup_count: int = None, 
+    when: str = None, 
+    interval: int = None,
 ):
     """
     Set up a logger with specified file and stream handlers, with various formatting styles and optional log rotation.
@@ -53,10 +54,13 @@ def setup_logger(
     Returns:
         logging.Logger: Configured logger.
     """
+    if file and clear:
+        Path(file).write_text("")
+    
     logger = logging.getLogger(name)
     if logger.hasHandlers():
         return logger  # Avoid adding handlers multiple times
-
+    
     logger.setLevel(level)
 
     # Define formatter styles
@@ -147,7 +151,7 @@ class Emailer:
 
     def send(
         self, 
-        recievers: str, 
+        receivers: str, 
         subject: str, 
         message: str, 
         cc: str = None,
@@ -156,7 +160,7 @@ class Emailer:
         Sends an email with a Markdown-formatted body, converted to HTML, with embedded images if specified.
 
         Args:
-            recievers (str): The recipient's email address(es), separated by commas if multiple.
+            receivers (str): The recipient's email address(es), separated by commas if multiple.
             subject (str): The subject of the email.
             message (str): The body of the email in Markdown format.
             cc (str): The CC recipient's email address(es), separated by commas if multiple (optional).
@@ -164,7 +168,7 @@ class Emailer:
         # Create a multipart message
         msg = MIMEMultipart("related")
         msg["From"] = self.address
-        msg["To"] = recievers
+        msg["To"] = receivers
         # Add CC recipients to the email header
         if cc:
             msg["Cc"] = cc
@@ -200,7 +204,7 @@ class Emailer:
         msg.attach(MIMEText(html_body, "html"))
 
         # Prepare the recipient list, including CC recipients
-        recipient_list = recievers.split(",")
+        recipient_list = receivers.split(",")
         if cc:
             recipient_list += cc.split(",")
 
@@ -279,38 +283,48 @@ class Emailer:
 
         return emails
 
+    @staticmethod
     def notify(
-        self,
-        task: callable,
+        address: str,
+        password: str,
+        receiver: str,
         subject: str,
-        reciever: str,
-        message: str,
-        cc: str = None,
-        nickname: str = None,
-        **kwargs
+        cc: str = None
     ):
         """
-        Send a notification email after executing a task.
+        A decorator to send a notification email after executing a task.
 
         Args:
-            task (callable): The task to execute.
-            subject (str): The subject of the notification email.
-            reciever (str): The recipient's email address.
-            message (str): The message to include in the notification email.
-            cc (str, optional): The CC recipient's email address. Defaults to None.
+            address (str): Sender's email address.
+            password (str): Sender's email password.
+            receiver (str): The recipient's email address.
+            cc (str, optional): CC recipients. Defaults to None.
+
+        Returns:
+            callable: A decorated function.
         """
-        try:
-            result = task(**kwargs)
-        except Exception as e:
-            result = str(e)
-        finally:
-            self.send_email(
-                subject=subject,
-                message=result,
-                recievers=reciever,
-                cc=cc,
-                nickname=nickname,
-            )
+        def decorator(task):
+            def wrapper(*args, **kwargs):
+                emailer = Emailer(root_url=address.split('@')[-1])
+                emailer.login(address, password)
+                subject = f"Task Notification: {task.__name__}"
+                try:
+                    result = task(*args, **kwargs)
+                    message = f"Task '{task.__name__}' executed successfully.\n\nResult:\n{result}"
+                except Exception as e:
+                    result = str(e)
+                    message = f"Task '{task.__name__}' failed.\n\nError:\n{result}"
+                finally:
+                    emailer.send(
+                        receivers=receiver,
+                        subject=subject,
+                        message=message,
+                        cc=cc
+                    )
+                    emailer.close()
+                return result
+            return wrapper
+        return decorator
 
     def close(self):
         """Closes the SMTP server connection."""
@@ -347,10 +361,10 @@ class Evaluator:
         """
         orders = orders.copy()
         self.orders = orders
-        orders["Time"] = pd.to_datetime(orders["ExeTime"])
-        orders["Cash"] = -orders["Side"] * orders["Value"] + orders["Commission"]
-        orders["Stock"] = orders["Side"] * orders["Filled"]
-        self.flows = orders[["Time", "Code", "Cash", "Stock"]]
+        orders["time"] = pd.to_datetime(orders["exetime"])
+        orders["cash"] = orders["value"].mask(orders["side"].str.lower() == "buy", -orders["value"]) - orders["commission"]
+        orders["stock"] = orders["filled"].mask(orders["side"].str.lower() == "sell", -orders["filled"])
+        self.flows = orders[["time", "code", "cash", "stock"]]
         self.principle = principle
         self._process_flows()
         self.prices = None
@@ -360,11 +374,11 @@ class Evaluator:
         self.benchmark = benchmark.copy() if benchmark is not None else None
 
     def _process_flows(self):
-        cashflow = self.flows.loc[self.flows["Code"] == "Cash", "Cash"].groupby(self.flows["Time"]).sum()
-        self.flows = self.flows[self.flows["Code"] != "Cash"].copy()
+        cashflow = self.flows.loc[self.flows["code"] == "cash", "cash"].groupby(self.flows["time"]).sum()
+        self.flows = self.flows[self.flows["code"] != "cash"].copy()
         
-        self.cash = self.flows.groupby("Time")["Cash"].sum().cumsum().add(cashflow, fill_value=0) + self.principle
-        self.positions = self.flows.groupby(["Time", "Code"])["Stock"].sum().unstack().fillna(0).cumsum()
+        self.cash = self.flows.groupby("time")["cash"].sum().cumsum().add(cashflow, fill_value=0) + self.principle
+        self.positions = self.flows.groupby(["time", "code"])["stock"].sum().unstack().fillna(0).cumsum()
 
     def _process_valuetrades(self):
         timepoints = self.prices.index.union(self.cash.index).union(self.positions.index)
@@ -372,21 +386,32 @@ class Evaluator:
         positions = self.positions.reindex(timepoints).ffill().fillna(0)
         self.market_value = (positions * self.prices).sum(axis=1)
         self.total_value = cash + self.market_value
-
-        flows = self.flows.set_index(["Time", "Code"])
+        
+        flows = self.flows.set_index(["time", "code"])
+        costs = -flows["cash"].unstack("code").fillna(0).cumsum().shift(1)
+        values = flows["cash"].unstack("code")
         open_time = ((positions > 0) & (positions.shift() == 0)).stack()
-        open_time = open_time[open_time]
-        open_cost = flows.loc[open_time.index, "Cash"].sort_index().reset_index()
-        close_time = ((positions == 0) & (positions.shift() > 0)).stack()
-        close_time = close_time[close_time]
-        close_cost = (-flows.loc[close_time.index, "Cash"].sort_index()).reset_index()
+        close_time = (positions == 0) & (positions.shift() > 0)
+
+        open_cost = costs.where(close_time).stack()
+        close_cost = values.where(close_time).stack()
+        trades = pd.concat([open_cost, close_cost], axis=1, keys=["open_cost", "close_cost"])
+        trades = trades.reset_index().rename(columns={"time": "close_at"})
+
+        open_time = open_time[open_time].reset_index()
+        open_time = open_time.iloc[:, :-1]
+        open_time.columns = ["open_at", "code"]
+        
         self.trades = pd.merge_asof(
-            open_cost.rename(columns={"Time": "Open At", "Cash": "Open Cost"}), 
-            close_cost.rename(columns={"Time": "Close At", "Cash": "Close Cost"}), 
-            by="Code", 
-            left_on="Open At", right_on="Close At", 
+            open_time, trades,
+            by="code", 
+            left_on="open_at", right_on="close_at", 
             direction='forward'
         )
+        self.trades["duration"] = (self.trades["close_at"] - self.trades["open_at"]).dt.days
+        self.trades["return"] = (self.trades["close_cost"] - self.trades["open_cost"]) / self.trades["open_cost"]
+        self.cash = cash
+        self.positions = positions
 
     @staticmethod
     def _evaluate(
@@ -465,17 +490,17 @@ class Evaluator:
 
         # Trading Behavior Metrics
         if trades is not None:
-            evaluation["position_duration(days)"] = (trades["Close At"] - trades["Open At"]).mean()
-            evaluation["trade_win_rate(%)"] = ((trades["Close Cost"] - trades["Open Cost"]) > 0).count() / trades.shape[0] * 100
-            evaluation["trade_return(%)"] = ((trades["Close Cost"] - trades["Open Cost"]) / trades["Open Cost"]).mean() * 100
+            evaluation["position_duration(days)"] = (trades["close_at"] - trades["open_at"]).mean()
+            profit = trades["close_cost"] - trades["open_cost"]
+            evaluation["trade_win_rate(%)"] = profit[profit > 0].count() / profit.count() * 100
+            evaluation["trade_return(%)"] = profit.sum() / trades["open_cost"].sum() * 100
         else:
             evaluation["position_duration(days)"] = np.nan
             evaluation["trade_win_rate(%)"] = np.nan
             evaluation["trade_return(%)"] = np.nan
 
-        # Consistency Metrics
-        positive_returns = returns[returns > 0].count()
-        evaluation["win_rate(%)"] = (positive_returns / returns.count()) * 100
+        positive_returns = returns[returns.ge(0 if benchmark is None else benchmark_returns)].count()
+        evaluation["day_return_win_rate(%)"] = (positive_returns / returns.count()) * 100
 
         # Distribution Metrics
         evaluation["skewness"] = returns.skew()
@@ -484,7 +509,7 @@ class Evaluator:
         # Performance Stability Metrics
         monthly_returns = net_value.resample("ME").last().pct_change().fillna(0)
         evaluation["monthly_return_std(%)"] = monthly_returns.std() * 100
-        evaluation["consistency(%)"] = (monthly_returns > 0).sum() / len(monthly_returns) * 100
+        evaluation["monthly_win_rate(%)"] = (monthly_returns > 0).sum() / len(monthly_returns) * 100
         return evaluation
         
     def evaluate(self) -> pd.Series:
@@ -526,7 +551,7 @@ class Evaluator:
         else:
             raise ValueError("Invalid time format, please use pd.Timestamp or int.")
 
-    def plot(self, figsize: tuple = (20, 15), path: str | Path = None):
+    def plot(self, path: str | Path = None, figsize: tuple = (20, 15)):
         """
         Enhanced visualization of strategy performance in a 2x3 grid layout, including position information.
 
@@ -588,13 +613,11 @@ class Evaluator:
 
         # Plot 4: Trade duration vs return scatter plot (modified)
         ax4 = axes[1, 0]
-        self.trades["Duration"] = (self.trades["Close At"] - self.trades["Open At"]).dt.days
-        self.trades["Return"] = (self.trades["Close Cost"] - self.trades["Open Cost"]) / self.trades["Open Cost"]
-        positive_trades = self.trades[self.trades["Return"] > 0]
-        negative_trades = self.trades[self.trades["Return"] <= 0]
+        positive_trades = self.trades[self.trades["return"] > 0]
+        negative_trades = self.trades[self.trades["return"] <= 0]
         
-        ax4.scatter(positive_trades["Duration"], positive_trades["Return"] * 100, c="green", alpha=0.6, label="Profit", edgecolors="k")
-        ax4.scatter(negative_trades["Duration"], negative_trades["Return"] * 100, c="red", alpha=0.6, label="Loss", edgecolors="k")
+        ax4.scatter(positive_trades["duration"], positive_trades["return"] * 100, c="green", alpha=0.6, label="Profit", edgecolors="k")
+        ax4.scatter(negative_trades["duration"], negative_trades["return"] * 100, c="red", alpha=0.6, label="Loss", edgecolors="k")
         ax4.axhline(0, color="black", linewidth=0.8, linestyle="--")
         ax4.set_title("Trade Duration vs. Return")
         ax4.set_xlabel("Duration (days)")
