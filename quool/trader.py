@@ -165,7 +165,7 @@ class Order:
         )
         latest_price = latest_price if latest_price else 0
         return (
-            f"Order(#{self.ordid[:5]}@[{latest_date}] {self.side} <{self.code}> "
+            f"Order(#{self.ordid[:5]}@[{latest_date}] {self.ordtype} {self.side} <{self.code}> "
             f"{self.quantity:.2f}x${latest_price:.2f} |{self.status}|)"
         )
 

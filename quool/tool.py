@@ -154,7 +154,7 @@ class Emailer:
         receivers: str, 
         subject: str, 
         message: str, 
-        cc: str = None,
+        cc: str = None
     ):
         """
         Sends an email with a Markdown-formatted body, converted to HTML, with embedded images if specified.
@@ -180,26 +180,29 @@ class Emailer:
             extensions=["tables", "fenced_code", "codehilite"]
         )
 
-        # Find all image paths in the markdown using a regular expression
-        image_paths = re.findall(r'!\[.*?\]\((.*?)\)', message)
+        # Find all paths in the markdown using a regular expression
+        file_paths = re.findall(r'!\[.*?\]\((.*?)\)', message)
 
-        # Attach images as embedded content
-        for i, image_path in enumerate(image_paths):
-            image_file = Path(image_path)
-            if image_file.exists():
-                with image_file.open("rb") as img:
+        # Attach images and files as needed
+        for i, file_path in enumerate(file_paths):
+            file = Path(file_path)
+            if file.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif'}:
+                with file.open("rb") as img:
                     img_data = img.read()
                     # Create a unique content ID
                     cid = f"image{i}"
                     image_mime = MIMEImage(img_data)
                     image_mime.add_header("Content-ID", f"<{cid}>")
-                    image_mime.add_header("Content-Disposition", "inline", filename=image_file.name)
+                    image_mime.add_header("Content-Disposition", "inline", filename=file.name)
                     msg.attach(image_mime)
-                    # Replace the image path in the HTML body with a cid reference
-                    html_body = html_body.replace(image_path, f"cid:{cid}")
+                    # Replace the file path in the HTML body with a cid reference
+                    html_body = html_body.replace(file_path, f"cid:{cid}")
             else:
-                print(f"Warning: Image file '{image_path}' not found. It will not be embedded in the email.")
-                
+                with file.open("rb") as attachment:
+                    part = MIMEText(attachment.read(), "base64")
+                    part.add_header("Content-Disposition", f"attachment; filename={file.name}")
+                    msg.attach(part)
+
         # Update the HTML part with embedded image references
         msg.attach(MIMEText(html_body, "html"))
 
@@ -387,7 +390,7 @@ class Evaluator:
         self.market_value = (positions * self.prices).sum(axis=1)
         self.total_value = cash + self.market_value
         
-        flows = self.flows.set_index(["time", "code"])
+        flows = self.flows.groupby(["time", "code"]).sum()
         costs = -flows["cash"].unstack("code").fillna(0).cumsum().shift(1)
         values = flows["cash"].unstack("code")
         open_time = ((positions > 0) & (positions.shift() == 0)).stack()
