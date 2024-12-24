@@ -362,11 +362,12 @@ class Evaluator:
             prices (pd.DataFrame): A DataFrame with stock price data indexed by date and code.
             principle (float): Initial cash amount.
         """
-        orders = orders.copy()
         self.orders = orders
+        orders = orders.copy()
         orders["time"] = pd.to_datetime(orders["exetime"])
         orders["cash"] = orders["value"].mask(orders["side"].str.lower() == "buy", -orders["value"]) - orders["commission"]
         orders["stock"] = orders["filled"].mask(orders["side"].str.lower() == "sell", -orders["filled"])
+        orders = orders[~((orders["cash"] == 0) & (orders["stock"] == 0))]
         self.flows = orders[["time", "code", "cash", "stock"]]
         self.principle = principle
         self._process_flows()
@@ -390,27 +391,18 @@ class Evaluator:
         self.market_value = (positions * self.prices).sum(axis=1)
         self.total_value = cash + self.market_value
         
-        flows = self.flows.groupby(["time", "code"]).sum()
-        costs = -flows["cash"].unstack("code").fillna(0).cumsum().shift(1)
-        values = flows["cash"].unstack("code")
-        open_time = ((positions > 0) & (positions.shift() == 0)).stack()
-        close_time = (positions == 0) & (positions.shift() > 0)
-
-        open_cost = costs.where(close_time).stack()
-        close_cost = values.where(close_time).stack()
-        trades = pd.concat([open_cost, close_cost], axis=1, keys=["open_cost", "close_cost"])
-        trades = trades.reset_index().rename(columns={"time": "close_at"})
-
-        open_time = open_time[open_time].reset_index()
-        open_time = open_time.iloc[:, :-1]
-        open_time.columns = ["open_at", "code"]
-        
-        self.trades = pd.merge_asof(
-            open_time, trades,
-            by="code", 
-            left_on="open_at", right_on="close_at", 
-            direction='forward'
-        )
+        flows = self.flows.set_index(["time", "code"]).sort_index()
+        flows["stock_cumsum"] = flows.groupby("code")["stock"].cumsum()
+        flows["trade_mark"] = flows["stock_cumsum"] == 0
+        flows["trade_num"] = flows.groupby("code")["trade_mark"].shift(1).astype("bool").groupby("code").cumsum()
+        self.trades = flows.groupby(["code", "trade_num"]).apply(
+            lambda x: pd.Series({
+                "open_cost": -x[x["stock"] > 0]["cash"].sum(),
+                "open_at": x[x["stock"] > 0].index.get_level_values("time")[0],
+                "close_cost": x[x["stock"] < 0]["cash"].sum() if x["stock"].sum() == 0 else np.nan,
+                "close_at": x[x["stock"] < 0].index.get_level_values("time")[-1] if x["stock"].sum() == 0 else np.nan,
+            })
+        ).reset_index()
         self.trades["duration"] = (self.trades["close_at"] - self.trades["open_at"]).dt.days
         self.trades["return"] = (self.trades["close_cost"] - self.trades["open_cost"]) / self.trades["open_cost"]
         self.cash = cash
