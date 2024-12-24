@@ -411,6 +411,21 @@ class Broker:
             self.logger.error(f"Lacking data: {order}")
             return
         
+        # If the order type is market or stop order, use the opening price and minimum trading volume
+        if order.ordtype == order.MARKET or order.ordtype == order.STOP:
+            price = data.loc[order.code, "open"]
+            quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
+        # If the order type is limit or stop limit order, check if the price conditions are met
+        elif order.ordtype == order.LIMIT or order.ordtype == order.STOPLIMIT:
+            if order.side == order.BUY and data.loc[order.code, "low"] <= order.limit:
+                price = order.limit
+                quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
+            elif order.side == order.SELL and data.loc[order.code, "high"] >= order.limit:
+                price = order.limit
+                quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
+            else:
+                return
+        
         if order.trigger is not None:
             # STOP and STOPLIMIT orders:
             # Triggered when price higher than trigger for BUY, 
@@ -428,19 +443,6 @@ class Broker:
                     return
             else:
                 raise ValueError("Invalid order type for trigger.")
-        
-        if order.ordtype == order.MARKET or order.ordtype == order.STOP:
-            price = data.loc[order.code, "open"]
-            quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
-        elif order.ordtype == order.LIMIT or order.ordtype == order.STOPLIMIT:
-            if order.side == order.BUY and data.loc[order.code, "low"] <= order.limit:
-                price = order.limit
-                quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
-            elif order.side == order.SELL and data.loc[order.code, "high"] >= order.limit:
-                price = order.limit
-                quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
-            else:
-                return
         
         self._execute(order, price, quantity)
 
