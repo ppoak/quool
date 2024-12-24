@@ -309,15 +309,49 @@ class Emailer:
         def decorator(task):
             def wrapper(*args, **kwargs):
                 emailer = Emailer(root_url=address.split('@')[-1])
-                emailer.login(address, password)
                 subject = f"Task Notification: {task.__name__}"
                 try:
+                    begin = pd.to_datetime("now")
                     result = task(*args, **kwargs)
-                    message = f"Task '{task.__name__}' executed successfully.\n\nResult:\n{result}"
+                    end = pd.to_datetime("now")
+                    duration = end - begin
+                    if isinstance(result, str):
+                        result_str = result
+                    elif isinstance(result, pd.DataFrame) or isinstance(result, pd.Series):
+                        result_str = result.head().to_markdown() + '\n...\n' + result.tail().to_markdown()
+                    elif isinstance(result, dict):
+                        result_str = pd.DataFrame([result]).to_markdown()
+                    else:
+                        result_str = str(result)
+                    message = (
+                        f"# Task '{task.__name__}' Execution Report\n\n"
+                        f"## Timing Information\n"
+                        f"| **Description** | **Time** |\n"
+                        f"|-----------------|----------|\n"
+                        f"| **Start Time**  | {begin}  |\n"
+                        f"| **End Time**    | {end}    |\n"
+                        f"| **Duration**    | {duration} |\n\n"
+                        f"## Result\n\n"
+                        f"{result_str}"
+                    )
                 except Exception as e:
                     result = str(e)
+                    end = pd.to_datetime("now")
+                    duration = end - begin
+                    message = (
+                        f"# Task '{task.__name__}' Execution Report\n\n"
+                        f"## Timing Information\n"
+                        f"| **Description** | **Time** |\n"
+                        f"|-----------------|----------|\n"
+                        f"| **Start Time**  | {begin}  |\n"
+                        f"| **End Time**    | {end}    |\n"
+                        f"| **Duration**    | {duration} |\n\n"
+                        f"## Error\n\n"
+                        f"{result}"
+                    )
                     message = f"Task '{task.__name__}' failed.\n\nError:\n{result}"
                 finally:
+                    emailer.login(address, password)
                     emailer.send(
                         receivers=receiver,
                         subject=subject,
