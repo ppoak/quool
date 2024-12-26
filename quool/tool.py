@@ -291,7 +291,6 @@ class Emailer:
         address: str,
         password: str,
         receiver: str,
-        subject: str,
         cc: str = None
     ):
         """
@@ -308,8 +307,6 @@ class Emailer:
         """
         def decorator(task):
             def wrapper(*args, **kwargs):
-                emailer = Emailer(root_url=address.split('@')[-1])
-                subject = f"Task Notification: {task.__name__}"
                 try:
                     begin = pd.to_datetime("now")
                     result = task(*args, **kwargs)
@@ -351,6 +348,8 @@ class Emailer:
                     )
                     message = f"Task '{task.__name__}' failed.\n\nError:\n{result}"
                 finally:
+                    emailer = Emailer(root_url=address.split('@')[-1])
+                    subject = f"{task.__name__} Task Notification"
                     emailer.login(address, password)
                     emailer.send(
                         receivers=receiver,
