@@ -7,7 +7,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from math import pi
 from pathlib import Path
+from matplotlib import gridspec
 from email import message_from_bytes
 from email.mime.text import MIMEText
 from email.header import decode_header
@@ -555,12 +557,12 @@ class Evaluator:
         
         if self.benchmark is not None:
             benchmark = self.benchmark / self.benchmark.iloc[0]
-            self.result = self._evaluate(value=self.total_value, cash=self.cash, trades=self.trades, benchmark=benchmark)
-            return self.result
+            self.evaluation = self._evaluate(value=self.total_value, cash=self.cash, trades=self.trades, benchmark=benchmark)
+            return self.evaluation
         
         benchmark = pd.Series(np.ones_like(self.total_value), index=self.total_value.index)
-        self.result = self._evaluate(value=self.total_value, cash=self.cash, trades=self.trades, benchmark=benchmark)
-        return self.result
+        self.evaluation = self._evaluate(value=self.total_value, cash=self.cash, trades=self.trades, benchmark=benchmark)
+        return self.evaluation
 
     def infer(self, time: pd.Timestamp | int = -1):
         """
@@ -588,84 +590,57 @@ class Evaluator:
             save_path (str | Path, optional): Path to save the plot. Defaults to None.
         """
         plot_data = pd.DataFrame({
-            "Net Value": self.total_value / self.total_value.iloc[0],
-            "Cash": self.cash / self.cash.iloc[0]
+            "value": self.total_value / self.total_value.iloc[0],
+            "cash": self.cash / self.cash.iloc[0]
         })
         if self.benchmark is not None:
-            plot_data["Benchmark"] = self.benchmark / self.benchmark.iloc[0]
+            plot_data["benchmark"] = self.benchmark / self.benchmark.iloc[0]
         else:
-            plot_data["Benchmark"] = 1
-        drawdown = (self.total_value / self.total_value.cummax()) - 1
-        plot_data["Drawdown"] = drawdown
+            plot_data["benchmark"] = 1
+        plot_data["drawdown"] = ((self.total_value / self.total_value.cummax()) - 1) * 100
 
         # Calculate position ratio
-        position_ratio = 1 - (self.cash / self.total_value)
-
-        # Monthly returns for bar chart
-        monthly_returns = plot_data["Net Value"].resample("ME").last().pct_change().fillna(0)
-        monthly_returns.index = monthly_returns.index.to_period("M")  # Simplify x-axis labels
-
-        # Daily returns histogram
-        daily_returns = plot_data["Net Value"].pct_change().fillna(0)
-
-        # Create subplots
-        fig, axes = plt.subplots(2, 3, figsize=figsize, gridspec_kw={'height_ratios': [1, 1]})
-        fig.subplots_adjust(hspace=0.4, wspace=0.3)
-
-        # Plot 1: Net value and benchmark with position ratio
-        ax1 = axes[0, 0]
-        plot_data["Net Value"].plot(ax=ax1, grid=True, title="Net Value and Benchmark Comparison")
-        plot_data["Benchmark"].plot(ax=ax1, grid=True, ls="--", color="grey", alpha=0.7, label="Benchmark")
-        ax1.set_ylabel("Value")
-        ax1.legend(loc="upper left")
-        ax1_position = ax1.twinx()  # Add secondary y-axis for position ratio
-        position_ratio.plot(ax=ax1_position, style="g-", alpha=0.5, label="Position Ratio", grid=False)
-        ax1_position.set_ylabel("Position Ratio")
-        ax1_position.legend(loc="upper right")
-
-        # Plot 2: Drawdown
-        ax2 = axes[0, 1]
-        plot_data["Drawdown"].plot(ax=ax2, style="r--", alpha=0.7, grid=True, title="Drawdown Curve")
-        ax2.fill_between(plot_data.index, plot_data["Drawdown"], 0, color="red", alpha=0.3)
-        ax2.set_ylabel("Drawdown")
-        ax2.set_xlabel("")
-
-        # Plot 3: Monthly returns
-        ax3 = axes[0, 2]
-        monthly_returns.plot.bar(ax=ax3, alpha=0.8, title="Monthly Returns", grid=True, width=0.8)
-        ax3.set_ylabel("Return")
-        ax3.set_xlabel("Month")
-        ax3.axhline(0, color="black", linewidth=0.8, linestyle="--")
-        ax3.set_xticks(range(0, len(monthly_returns), max(1, len(monthly_returns) // 12)))  # Limit xtick density
-        ax3.set_xticklabels([str(label) for label in monthly_returns.index[::max(1, len(monthly_returns) // 12)]], rotation=45)
-
-        # Plot 4: Trade duration vs return scatter plot (modified)
-        ax4 = axes[1, 0]
-        positive_trades = self.trades[self.trades["return"] > 0]
-        negative_trades = self.trades[self.trades["return"] <= 0]
+        plot_data["position"] = (1 - (self.cash / self.total_value)) * 100
+        # Calculate turnover ratio
+        plot_data["turnover"] = self.cash.diff().abs() / self.total_value.shift(1) * 100
         
-        ax4.scatter(positive_trades["duration"], positive_trades["return"] * 100, c="green", alpha=0.6, label="Profit", edgecolors="k")
-        ax4.scatter(negative_trades["duration"], negative_trades["return"] * 100, c="red", alpha=0.6, label="Loss", edgecolors="k")
-        ax4.axhline(0, color="black", linewidth=0.8, linestyle="--")
-        ax4.set_title("Trade Duration vs. Return")
-        ax4.set_xlabel("Duration (days)")
-        ax4.set_ylabel("Return (%)")
-        ax4.legend()
+        # Create figure and GridSpec
+        fig = plt.figure(figsize=figsize)
 
-        # Plot 5: Daily turnover (original)
-        daily_turnover = self.cash.diff().fillna(0).abs() / self.total_value
-        ax5 = axes[1, 1]
-        daily_turnover.plot(ax=ax5, color="purple", title="Daily Turnover", grid=True)
-        ax5.set_ylabel("Turnover")
-        ax5.axhline(0, color="black", linewidth=0.8, linestyle="--")
-        ax5.set_xlabel("")
+        # Define the layout using GridSpec
+        gs = gridspec.GridSpec(4, 1, height_ratios=[3, 1, 1, 1], hspace=0)  # Add a larger space between top and bottom
 
-        # Plot 6: Daily returns histogram (modified)
-        ax6 = axes[1, 2]
-        ax6.hist(daily_returns, bins=len(daily_returns) // 10, color="blue", alpha=0.7, edgecolor="black")
-        ax6.set_title("Daily Returns Distribution")
-        ax6.set_xlabel("Daily Return")
-        ax6.set_ylabel("Frequency")
+        ax1 = fig.add_subplot(gs[0, 0])  # Net value and benchmark
+        ax2 = fig.add_subplot(gs[1, 0], sharex=ax1)  # Signals or volume
+        ax3 = fig.add_subplot(gs[2, 0], sharex=ax1)  # Drawdown
+        ax4 = fig.add_subplot(gs[3, 0], sharex=ax1)  # Filled area
+
+        # Plot 1: Net value and benchmark
+        ax1.plot(plot_data.index, plot_data['value'], label='Strategy Net Value', color='black')
+        ax1.plot(plot_data.index, plot_data['benchmark'], label='Benchmark', color='gray', linestyle='dashed')
+        ax1.set_title("Net Value Curve")
+        ax1.legend(loc='best')
+        ax1.grid(True)
+
+        # Plot 2: Daily turnover bar chart
+        ax2.bar(plot_data.index, plot_data['turnover'], width=0.8, color='gray', label='Turnover')
+        ax2.legend(loc='best')
+        ax2.grid(True)
+
+        # Plot 3: Drawdown line chart
+        ax3.fill_between(plot_data.index, plot_data['drawdown'], 0, color='red', alpha=0.3, label='Drawdown')
+        ax3.legend(loc='best')
+        ax3.grid(True)
+
+        # Plot 4: Filled area chart
+        ax4.fill_between(plot_data.index, 0, plot_data["position"], color='green', alpha=0.3, label='Position')
+        ax4.legend(loc='best')
+        ax4.grid(True)
+
+        # Remove x-axis labels except for the last one in the top four plots
+        plt.setp(ax1.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        plt.setp(ax3.get_xticklabels(), visible=False)
 
         # Save or show the plot
         if path:
