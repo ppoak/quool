@@ -97,6 +97,7 @@ class Order:
             self.exetime = self.broker.time
         else:
             self.status = self.PARTIAL
+            self.exetime = self.broker.time
 
     def cancel(self) -> None:
         """
@@ -104,11 +105,9 @@ class Order:
 
         Updates:
             - Sets the status to 'CANCELED'.
-            - Sets the exetime if provided.
         """
         if self.status in {self.CREATED, self.PARTIAL, self.SUBMITTED}:
             self.status = self.CANCELED
-            self.exetime = self.broker.time
 
     def is_alive(self) -> bool:
         """
@@ -120,7 +119,6 @@ class Order:
         if self.status in {self.CREATED, self.SUBMITTED, self.PARTIAL}:
             if self.valid and self.broker.time > self.valid:
                 self.status = self.EXPIRED
-                self.exetime = self.broker.time
                 return False
             return True
         return False
@@ -184,7 +182,6 @@ class Broker:
     def __init__(
         self,
         data: pd.DataFrame,
-        principle: float = 1_000_000,
         commission: float = 0.001,
         logger: logging.Logger = None,
     ):
@@ -197,10 +194,11 @@ class Broker:
         """
         self.data = data
         self._time = None
-        self._balance = self.principle = principle
+        self._balance = 0
         self._positions = {}
         self.commission = commission
         self._pendings = queue.Queue()
+        self._ledger = [] # Key parameter to restore the state of the broker
         self._orders = []  # History of processed orders
         self._ordict = {}
         self.logger = logger or setup_logger("Broker", level="DEBUG")
@@ -254,6 +252,27 @@ class Broker:
             list: A list of Order objects.
         """
         return self._orders
+
+    @property
+    def ledger(self) -> pd.DataFrame:
+        """
+        Returns the DataFrame of transactions.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing transaction data.
+        """
+        return pd.DataFrame(self._ledger)
+
+    def transfer(self, time: pd.Timestamp, amount: float):
+        """
+        Transfers funds to or from the broker's balance.
+
+        Args:
+            amount (float): The amount to transfer.
+            code (str, optional): The stock code for the transfer. Defaults to None.
+        """
+        self._balance += amount
+        self._post(time=time, code="CASH", ttype="TRANSFER", unit=0, amount=amount, price=0, commission=0)
 
     def buy(
         self,
@@ -371,6 +390,38 @@ class Broker:
         order.status = order.SUBMITTED
         self.logger.debug(f"Order submitted: {order}")
 
+    def _post(
+        self,
+        time: pd.Timestamp,
+        code: str,
+        ttype: str,
+        unit: float,
+        amount: float,
+        price: float,
+        commission: float,
+    ):
+        """
+        Records a transaction in the broker's ledger.
+
+        Args:
+            time (pd.Timestamp): The timestamp of the transaction.
+            code (str): The stock code.
+            ttype (str): The transaction type ('BUY' or 'SELL').
+            unit (float): The number of shares transacted.
+            amount (float): The total amount of the transaction.
+            price (float): The price per share.
+            commission (float): The commission fee.
+        """
+        self._ledger.append({
+            "time": time,
+            "code": code,
+            "ttype": ttype,
+            "unit": unit,
+            "amount": amount,
+            "price": price,
+            "commission": commission,
+        })
+
     def _load(self) -> pd.DataFrame:
         """
         Loads market data required for processing orders.
@@ -444,7 +495,8 @@ class Broker:
             else:
                 raise ValueError("Invalid order type for trigger.")
         
-        self._execute(order, price, quantity)
+        if quantity:
+            self._execute(order, price, quantity)
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
         """
@@ -456,24 +508,34 @@ class Broker:
             quantity (int): The quantity of shares executed.
         """
         if order.side == order.BUY:
-            cost = price * quantity * (1 + self.commission)
+            amount = price * quantity
+            commission = amount * self.commission
+            cost = amount + commission
             if cost > self._balance:
                 order.status = order.REJECTED
-                order.exetime = self._time
                 self.logger.warning(f"Insufficient balance: {order}")
             else:
                 order.execute(price, quantity)
+                self._post(
+                    time=self.time, code=order.code, ttype=order.side, 
+                    unit=quantity, amount=-amount, price=price, commission=commission
+                )
                 self._balance -= cost
                 self._positions[order.code] = self._positions.get(order.code, 0) + quantity
                 self.logger.info(f"Order executed: {order}")
         elif order.side == order.SELL:
-            revenue = price * quantity * (1 - self.commission)
+            amount = price * quantity
+            commission = amount * self.commission
+            revenue = amount - commission
             if self._positions.get(order.code, 0) < quantity:
                 order.status = order.REJECTED
-                order.exetime = self._time
                 self.logger.warning(f"Insufficient position: {order}")
             else:
                 order.execute(price, quantity)
+                self._post(
+                    time=self.time, code=order.code, ttype=order.side, 
+                    unit=-quantity, amount=amount, price=price, commission=commission
+                )
                 order.commission = price * quantity * self.commission
                 self._balance += revenue
                 self._positions[order.code] -= quantity
@@ -502,44 +564,40 @@ class Broker:
         """
         orders = list(self._orders)
         if alive:
-            orders += self._orders
+            orders += list(self.pendings.queue)
         trade_log = [order.to_dict() for order in orders]
         return pd.DataFrame(trade_log)
     
-    def resume(self, orders: pd.DataFrame) -> None:
+    def restore(self, ledger: pd.DataFrame, pendings: pd.DataFrame) -> None:
         """
-        Resumes the broker's state based on a given transaction log.
+        Restores the broker's state based on a given transaction log.
 
         Args:
-            orders (pd.DataFrame): A DataFrame containing cash and stock flow records, 
-                columns are "Code", "Time", "Cash", "Stock", 
-                if dividend is set, set "Code" column to "Cash".
+            ledger (pd.DataFrame): A DataFrame containing cash and stock flow records, 
+                columns are "Time", "Code", "Unit", "Amount", "Price", "Commission".
+            pendings (pd.DataFrame): A DataFrame containing order records, 
+                columns are "Code", "Time", "Cash", "Stock", "Status", "OrdId", "ExePrice", "ExeTime".
         """
-        pendings = order[order["Status"].isin([Order.CREATED, Order.PARTIAL, Order.SUBMITTED])]
-        orders = orders[~orders["Status"].isin([Order.CREATED, Order.PARTIAL, Order.SUBMITTED])].copy()
-        evaluator = Evaluator(orders=orders, prices=None, principle=self.principle)
-        positions = evaluator.positions.iloc[-1]
-        self._positions = positions[positions > 0].to_dict()
+        evaluator = Evaluator(ledger=ledger, prices=pd.DataFrame(), benchmark=None)
         self._balance = evaluator.cash.iloc[-1]
-        for _, order_series in pendings.iterrow():
+        self._positions = evaluator.stocks.iloc[-1].to_dict()
+        self._pendings = queue.Queue()
+        for _, order in pendings.iterrows():
             order = Order(
-                self, 
-                code=order_series["Code"],
-                quantity=order_series["Quantity"] - order_series["Filled"],
-                limit=order_series["Limit"],
-                trigger=order_series["Trigger"],
-                ordtype=order_series["OrdType"],
-                side=order_series["Side"],
-                time=pd.to_datetime(order_series["CreTime"]),
-                valid=pd.to_datetime(order_series["Valid"]),
+                broker=self, code=order["code"], 
+                quantity=order["quantity"], limit=order["limit"],
+                trigger=order["trigger"], ordtype=order["ordtype"],
+                side=order["side"], time=order["cretime"], valid=order["valid"]
             )
-            order.status = order_series["Status"]
-            order.ordid = order_series["OrdId"]
-            order.exeprice = order_series["ExePrice"]
-            order.exetime = order_series["ExeTime"]
-            order.value = order_series["Value"]
+            order.ordid = order["ordid"]
+            order.status = order["status"]
+            order.filled = order["filled"]
+            order.value = order["value"]
+            order.exetime = order["exetime"]
+            order.exeprice = order["exeprice"]
+            order.commission = order["commission"]
             self._pendings.put(order)
-
+        
     def __str__(self) -> str:
         """
         Provides a string representation of the broker's state.

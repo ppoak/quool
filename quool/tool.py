@@ -323,7 +323,7 @@ class Emailer:
                     else:
                         result_str = str(result)
                     message = (
-                        f"# Task '{task.__name__}' Execution Report\n\n"
+                        f"# [Success] '{task.__name__}'\n\n"
                         f"## Timing Information\n"
                         f"| **Description** | **Time** |\n"
                         f"|-----------------|----------|\n"
@@ -338,7 +338,7 @@ class Emailer:
                     end = pd.to_datetime("now")
                     duration = end - begin
                     message = (
-                        f"# Task '{task.__name__}' Execution Report\n\n"
+                        f"# Failure '{task.__name__}'\n\n"
                         f"## Timing Information\n"
                         f"| **Description** | **Time** |\n"
                         f"|-----------------|----------|\n"
@@ -348,7 +348,6 @@ class Emailer:
                         f"## Error\n\n"
                         f"{result}"
                     )
-                    message = f"Task '{task.__name__}' failed.\n\nError:\n{result}"
                 finally:
                     emailer = Emailer(root_url=address.split('@')[-1])
                     subject = f"{task.__name__} Task Notification"
@@ -383,83 +382,59 @@ class Evaluator:
 
     def __init__(
         self,
-        orders: pd.DataFrame,
+        ledger: pd.DataFrame,
         prices: pd.DataFrame,
-        principle: float,
         benchmark: pd.Series = None,
     ):
         """
         Initialize the Evaluator.
 
         Args:
-            orders (pd.DataFrame): Standard order DataFrame made by the broker.
-            transactions (pd.DataFrame): A DataFrame containing transaction records.
+            ledger (pd.DataFrame): A DataFrame with trading records.
             prices (pd.DataFrame): A DataFrame with stock price data indexed by date and code.
-            principle (float): Initial cash amount.
         """
-        self.orders = orders
-        orders = orders.copy()
-        orders["time"] = pd.to_datetime(orders["exetime"])
-        orders["cash"] = orders["value"].mask(orders["side"].str.lower() == "buy", -orders["value"]) - orders["commission"]
-        orders["stock"] = orders["filled"].mask(orders["side"].str.lower() == "sell", -orders["filled"])
-        orders = orders[~((orders["cash"] == 0) & (orders["stock"] == 0))]
-        self.flows = orders[["time", "code", "cash", "stock"]]
-        self.principle = principle
-        self._process_flows()
-        self.prices = None
-        if prices is not None:
-            self.prices = prices.copy()
-            self._process_valuetrades()
+        ledger = ledger.copy()
+        ledger["time"] = pd.to_datetime(ledger["time"])
+        ledger = ledger.set_index(["time", "code"])
+        self.ledger = ledger.sort_index()
+        cash = self.ledger.groupby("time")[["amount", "commission"]].sum()
+        self.cash = (cash["amount"] - cash["commission"]).cumsum()
+        self.positions = self.ledger.drop(index="CASH", level=1).groupby(["time", "code"])["unit"].sum().unstack().fillna(0).cumsum()
+        self.prices = prices.copy()
         self.benchmark = benchmark.copy() if benchmark is not None else None
 
-    def _process_flows(self):
-        cashflow = self.flows.loc[self.flows["code"] == "cash", "cash"].groupby(self.flows["time"]).sum()
-        self.flows = self.flows[self.flows["code"] != "cash"].copy()
-        
-        self.cash = self.flows.groupby("time")["cash"].sum().cumsum().add(cashflow, fill_value=0) + self.principle
-        self.positions = self.flows.groupby(["time", "code"])["stock"].sum().unstack().fillna(0).cumsum()
-
-    def _process_valuetrades(self):
+    def evaluate(self):
         timepoints = self.prices.index.union(self.cash.index).union(self.positions.index)
-        cash = self.cash.reindex(timepoints).ffill().fillna(self.principle)
-        positions = self.positions.reindex(timepoints).ffill().fillna(0)
-        self.market_value = (positions * self.prices).sum(axis=1)
-        self.total_value = cash + self.market_value
+        self.cash = self.cash.reindex(timepoints).ffill()
+        self.positions = self.positions.reindex(timepoints).ffill().fillna(0)
+        self.market_value = (self.positions * self.prices).sum(axis=1)
+        self.total_value = self.cash + self.market_value
         
-        flows = self.flows.set_index(["time", "code"]).sort_index()
-        flows["stock_cumsum"] = flows.groupby("code")["stock"].cumsum()
-        flows["trade_mark"] = flows["stock_cumsum"] == 0
-        flows["trade_num"] = flows.groupby("code")["trade_mark"].shift(1).astype("bool").groupby("code").cumsum()
-        self.trades = flows.groupby(["code", "trade_num"]).apply(
+        ledger = self.ledger.copy()
+        ledger["stock_cumsum"] = ledger.groupby("code")["unit"].cumsum()
+        ledger["trade_mark"] = ledger["stock_cumsum"] == 0
+        ledger["trade_num"] = ledger.groupby("code")["trade_mark"].shift(1).astype("bool").groupby("code").cumsum()
+        self.trades = ledger.drop(index="CASH", level=1).groupby(["code", "trade_num"]).apply(
             lambda x: pd.Series({
-                "open_cost": -x[x["stock"] > 0]["cash"].sum(),
-                "open_at": x[x["stock"] > 0].index.get_level_values("time")[0],
-                "close_cost": x[x["stock"] < 0]["cash"].sum() if x["stock"].sum() == 0 else np.nan,
-                "close_at": x[x["stock"] < 0].index.get_level_values("time")[-1] if x["stock"].sum() == 0 else np.nan,
+                "open_cost": -x[x["unit"] > 0]["amount"].sum(),
+                "open_at": x[x["unit"] > 0].index.get_level_values("time")[0],
+                "close_cost": x[x["unit"] < 0]["amount"].sum() if x["unit"].sum() == 0 else np.nan,
+                "close_at": x[x["unit"] < 0].index.get_level_values("time")[-1] if x["unit"].sum() == 0 else np.nan,
             })
-        ).reset_index()
-        self.trades["duration"] = (self.trades["close_at"] - self.trades["open_at"]).dt.days
+        )
+        self.trades["duration"] = self.trades["close_at"] - self.trades["open_at"]
         self.trades["return"] = (self.trades["close_cost"] - self.trades["open_cost"]) / self.trades["open_cost"]
-        self.cash = cash
-        self.positions = positions
-
-    @staticmethod
-    def _evaluate(
-        value: pd.Series, 
-        cash: pd.Series = None, 
-        trades: pd.DataFrame = None, 
-        benchmark: pd.Series = None
-    ):
-        net_value = value / value.iloc[0]
-        returns = value.pct_change().fillna(0)
+        
+        net_value = self.total_value / self.total_value.iloc[0]
+        returns = net_value.pct_change().fillna(0)
         drawdown = net_value / net_value.cummax() - 1
         max_drawdown = drawdown.min()
         max_drawdown_end = drawdown.idxmin()
         max_drawdown_start = drawdown.loc[:max_drawdown_end][drawdown.loc[:max_drawdown_end] == 0].index[-1]
 
         # Benchmark Comparison Metrics
-        if benchmark is None:
-            benchmark = pd.Series(np.ones_like(value), index=value.index)
+        if self.benchmark is None:
+            benchmark = pd.Series(np.ones_like(self.total_value), index=self.total_value.index)
         benchmark_returns = benchmark.pct_change().fillna(0)
         excess_returns = returns - benchmark_returns
 
@@ -467,26 +442,17 @@ class Evaluator:
         # Basic Performance Metrics
         evaluation["total_return(%)"] = (net_value.iloc[-1] - 1) * 100
         evaluation["annual_return(%)"] = (
-            (1 + evaluation["total_return(%)"] / 100) ** (365 / (value.index[-1] - value.index[0]).days) - 1
+            (1 + evaluation["total_return(%)"] / 100) ** (365 / (net_value.index[-1] - net_value.index[0]).days) - 1
         ) * 100
         evaluation["annual_volatility(%)"] = (returns.std() * np.sqrt(252)) * 100
-
-        # Risk Metrics
-        evaluation["max_drawdown(%)"] = max_drawdown * 100
-        evaluation["max_drawdown_period"] = max_drawdown_end - max_drawdown_start
         evaluation["sharpe_ratio"] = (
             evaluation["annual_return(%)"] / evaluation["annual_volatility(%)"]
             if evaluation["annual_volatility(%)"] != 0
             else np.nan
         )
-        evaluation["turnover_ratio(%)"] = (
-            (cash.diff().abs() / value.shift(1)).mean() * 100
-            if cash is not None
-            else np.nan
-        )
         evaluation["calmar_ratio"] = (
-            evaluation["annual_return(%)"] / abs(evaluation["max_drawdown(%)"])
-            if evaluation["max_drawdown(%)"] != 0
+            evaluation["annual_return(%)"] / abs(max_drawdown * 100)
+            if max_drawdown != 0
             else np.nan
         )
         downside_std = returns[returns < 0].std()
@@ -496,6 +462,21 @@ class Evaluator:
             else np.nan
         )
 
+        # Risk Metrics
+        evaluation["max_drawdown(%)"] = max_drawdown * 100
+        evaluation["max_drawdown_period"] = max_drawdown_end - max_drawdown_start
+        var_95 = np.percentile(returns, 5) * 100
+        evaluation["VaR_5%(%)"] = var_95
+        cvar_95 = returns[returns <= var_95 / 100].mean() * 100
+        evaluation["CVaR_5%(%)"] = cvar_95
+
+        # Turnover Ratio
+        delta = self.positions.diff()
+        delta.iloc[0] = self.positions.iloc[0]
+        self.turnover = (delta * self.prices).abs().sum(axis=1) / self.total_value.shift(1)
+        evaluation["turnover_ratio(%)"] = self.turnover.mean() * 100
+
+        # Alpha and Beta, Benchmark related
         beta = returns.cov(benchmark_returns) / benchmark_returns.var() if benchmark_returns.var() != 0 else np.nan
         evaluation["beta"] = beta
         evaluation["alpha(%)"] = (
@@ -512,74 +493,21 @@ class Evaluator:
             else np.nan
         )
 
-        # Additional Risk Metrics
-        var_95 = np.percentile(returns, 5) * 100
-        evaluation["VaR_5%(%)"] = var_95
-        cvar_95 = returns[returns <= var_95 / 100].mean() * 100
-        evaluation["CVaR_5%(%)"] = cvar_95
-
-        # Trading Behavior Metrics
-        if trades is not None:
-            evaluation["position_duration(days)"] = (trades["close_at"] - trades["open_at"]).mean()
-            profit = trades["close_cost"] - trades["open_cost"]
-            evaluation["trade_win_rate(%)"] = profit[profit > 0].count() / profit.count() * 100
-            evaluation["trade_return(%)"] = profit.sum() / trades["open_cost"].sum() * 100
-        else:
-            evaluation["position_duration(days)"] = np.nan
-            evaluation["trade_win_rate(%)"] = np.nan
-            evaluation["trade_return(%)"] = np.nan
-
-        positive_returns = returns[returns.ge(0 if benchmark is None else benchmark_returns)].count()
-        evaluation["day_return_win_rate(%)"] = (positive_returns / returns.count()) * 100
+        # Trading behavior
+        evaluation["position_duration(days)"] = self.trades["duration"].mean()
+        profit = self.trades["close_cost"] - self.trades["open_cost"]
+        evaluation["trade_win_rate(%)"] = profit[profit > 0].count() / profit.count() * 100
+        evaluation["trade_return(%)"] = profit.sum() / self.trades["open_cost"].sum() * 100
 
         # Distribution Metrics
         evaluation["skewness"] = returns.skew()
         evaluation["kurtosis"] = returns.kurtosis()
-
-        # Performance Stability Metrics
+        positive_returns = returns[returns.ge(0 if benchmark is None else benchmark_returns)].count()
+        evaluation["day_return_win_rate(%)"] = (positive_returns / returns.count()) * 100
         monthly_returns = net_value.resample("ME").last().pct_change().fillna(0)
         evaluation["monthly_return_std(%)"] = monthly_returns.std() * 100
         evaluation["monthly_win_rate(%)"] = (monthly_returns > 0).sum() / len(monthly_returns) * 100
         return evaluation
-        
-    def evaluate(self) -> pd.Series:
-        """
-        Calculate performance metrics.
-
-        Args:
-            benchmark (pd.Series, optional): Benchmark net value series.
-
-        Returns:
-            pd.Series: Evaluation metrics.
-        """
-        if self.prices is None:
-            raise ValueError("Price data is not provided.")
-        
-        if self.benchmark is not None:
-            benchmark = self.benchmark / self.benchmark.iloc[0]
-            self.evaluation = self._evaluate(value=self.total_value, cash=self.cash, trades=self.trades, benchmark=benchmark)
-            return self.evaluation
-        
-        benchmark = pd.Series(np.ones_like(self.total_value), index=self.total_value.index)
-        self.evaluation = self._evaluate(value=self.total_value, cash=self.cash, trades=self.trades, benchmark=benchmark)
-        return self.evaluation
-
-    def infer(self, time: pd.Timestamp | int = -1):
-        """
-        Infer the current position at a given time.
-
-        Args:
-            time (pd.Timestamp | int, optional): Time point. Defaults to -1.
-
-        Returns:
-            pd.Series: Position at the given time.
-        """
-        if isinstance(time, pd.Timestamp):
-            return self.positions.loc[time]
-        elif isinstance(time, int):
-            return self.positions.iloc[time]
-        else:
-            raise ValueError("Invalid time format, please use pd.Timestamp or int.")
 
     def plot(self, path: str | Path = None, figsize: tuple = (20, 15)):
         """
