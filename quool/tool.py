@@ -410,11 +410,11 @@ class Evaluator:
         self.market_value = (self.positions * self.prices).sum(axis=1)
         self.total_value = self.cash + self.market_value
         
-        ledger = self.ledger.copy()
+        ledger = self.ledger.drop(index="CASH", level=1).copy()
         ledger["stock_cumsum"] = ledger.groupby("code")["unit"].cumsum()
         ledger["trade_mark"] = ledger["stock_cumsum"] == 0
         ledger["trade_num"] = ledger.groupby("code")["trade_mark"].shift(1).astype("bool").groupby("code").cumsum()
-        self.trades = ledger.drop(index="CASH", level=1).groupby(["code", "trade_num"]).apply(
+        self.trades = ledger.groupby(["code", "trade_num"]).apply(
             lambda x: pd.Series({
                 "open_cost": -x[x["unit"] > 0]["amount"].sum(),
                 "open_at": x[x["unit"] > 0].index.get_level_values("time")[0],
