@@ -462,6 +462,23 @@ class Broker:
             self.logger.error(f"Lacking data: {order}")
             return
         
+        if order.trigger is not None:
+            # STOP and STOPLIMIT orders:
+            # Triggered when price higher than trigger for BUY, 
+            # or lower than trigger for SELL.
+            if order.ordtype == order.STOP or order.ordtype == order.STOPLIMIT:
+                pricetype = "high" if order.side == order.BUY else "low"
+                if (
+                    (order.side == order.BUY and data.loc[order.code, pricetype] >= order.trigger)
+                    or (order.side == order.SELL and data.loc[order.code, pricetype] <= order.trigger)
+                ):
+                    # order triggered
+                    order.trigger = None
+                    self.logger.debug(f"Order triggered: {order}")
+                return
+            else:
+                raise ValueError("Invalid order type for trigger.")
+
         # If the order type is market or stop order, use the opening price and minimum trading volume
         if order.ordtype == order.MARKET or order.ordtype == order.STOP:
             price = data.loc[order.code, "open"]
@@ -476,26 +493,8 @@ class Broker:
                 quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
             else:
                 return
-        
-        if order.trigger is not None:
-            # STOP and STOPLIMIT orders:
-            # Triggered when price higher than trigger for BUY, 
-            # or lower than trigger for SELL.
-            if order.ordtype == order.STOP or order.ordtype == order.STOPLIMIT:
-                pricetype = "high" if order.side == order.BUY else "low"
-                if (
-                    (order.side == order.BUY and data.loc[order.code, pricetype] >= order.trigger)
-                    or (order.side == order.SELL and data.loc[order.code, pricetype] <= order.trigger)
-                ):
-                    # order triggered
-                    order.trigger = None
-                    self.logger.debug(f"Order triggered: {order}")
-                else:
-                    return
-            else:
-                raise ValueError("Invalid order type for trigger.")
-        
-        if quantity:
+                
+        if quantity > 0:
             self._execute(order, price, quantity)
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
