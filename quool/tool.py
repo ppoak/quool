@@ -317,13 +317,16 @@ class Emailer:
                     if isinstance(result, str):
                         result_str = result
                     elif isinstance(result, pd.DataFrame) or isinstance(result, pd.Series):
-                        result_str = result.head().to_markdown() + '\n...\n' + result.tail().to_markdown()
+                        if len(result) > 10:
+                            result_str = result.head().to_markdown() + '\n\n...\n\n' + result.tail().to_markdown()
+                        else:
+                            result_str = result.to_markdown()
                     elif isinstance(result, dict):
-                        result_str = pd.DataFrame([result]).to_markdown()
+                        result_str = pd.DataFrame(result).to_markdown()
                     else:
                         result_str = str(result)
                     message = (
-                        f"# [Success] '{task.__name__}'\n\n"
+                        f"# [Success] {task.__name__}\n\n"
                         f"## Timing Information\n"
                         f"| **Description** | **Time** |\n"
                         f"|-----------------|----------|\n"
@@ -338,7 +341,7 @@ class Emailer:
                     end = pd.to_datetime("now")
                     duration = end - begin
                     message = (
-                        f"# Failure '{task.__name__}'\n\n"
+                        f"# [Failure] {task.__name__}\n\n"
                         f"## Timing Information\n"
                         f"| **Description** | **Time** |\n"
                         f"|-----------------|----------|\n"
@@ -350,7 +353,7 @@ class Emailer:
                     )
                 finally:
                     emailer = Emailer(root_url=address.split('@')[-1])
-                    subject = f"{task.__name__} Task Notification"
+                    subject = f"Task: {task.__name__}"
                     emailer.login(address, password)
                     emailer.send(
                         receivers=receiver,
