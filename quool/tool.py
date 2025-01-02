@@ -416,14 +416,14 @@ class Evaluator:
         ledger["trade_num"] = ledger.groupby("code")["trade_mark"].shift(1).astype("bool").groupby("code").cumsum()
         self.trades = ledger.groupby(["code", "trade_num"]).apply(
             lambda x: pd.Series({
-                "open_cost": -x[x["unit"] > 0]["amount"].sum(),
+                "open_amount": -x[x["unit"] > 0]["amount"].sum(),
                 "open_at": x[x["unit"] > 0].index.get_level_values("time")[0],
-                "close_cost": x[x["unit"] < 0]["amount"].sum() if x["unit"].sum() == 0 else np.nan,
+                "close_amount": x[x["unit"] < 0]["amount"].sum() if x["unit"].sum() == 0 else np.nan,
                 "close_at": x[x["unit"] < 0].index.get_level_values("time")[-1] if x["unit"].sum() == 0 else np.nan,
             })
         )
         self.trades["duration"] = self.trades["close_at"] - self.trades["open_at"]
-        self.trades["return"] = (self.trades["close_cost"] - self.trades["open_cost"]) / self.trades["open_cost"]
+        self.trades["return"] = (self.trades["close_amount"] - self.trades["open_amount"]) / self.trades["open_amount"]
         
         net_value = self.total_value / self.total_value.iloc[0]
         returns = net_value.pct_change().fillna(0)
@@ -495,9 +495,9 @@ class Evaluator:
 
         # Trading behavior
         evaluation["position_duration(days)"] = self.trades["duration"].mean()
-        profit = self.trades["close_cost"] - self.trades["open_cost"]
+        profit = self.trades["close_amount"] - self.trades["open_amount"]
         evaluation["trade_win_rate(%)"] = profit[profit > 0].count() / profit.count() * 100
-        evaluation["trade_return(%)"] = profit.sum() / self.trades["open_cost"].sum() * 100
+        evaluation["trade_return(%)"] = profit.sum() / self.trades["open_amount"].sum() * 100
 
         # Distribution Metrics
         evaluation["skewness"] = returns.skew()
