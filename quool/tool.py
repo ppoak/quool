@@ -6,8 +6,6 @@ import markdown
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from math import pi
 from pathlib import Path
 from matplotlib import gridspec
 from email import message_from_bytes
@@ -179,7 +177,7 @@ class Emailer:
         # Convert Markdown to HTML using the `markdown` package
         html_body = markdown.markdown(
             message,
-            extensions=["tables", "fenced_code", "codehilite"]
+            extensions=["tables", "fenced_code", "codehilite", "extra"]
         )
 
         # Find all paths in the markdown using a regular expression
@@ -310,6 +308,7 @@ class Emailer:
         def decorator(task):
             def wrapper(*args, **kwargs):
                 try:
+                    success = True
                     begin = pd.to_datetime("now")
                     result = task(*args, **kwargs)
                     end = pd.to_datetime("now")
@@ -325,35 +324,28 @@ class Emailer:
                         result_str = pd.DataFrame(result).to_markdown()
                     else:
                         result_str = str(result)
+                    args = [str(arg).replace(">", "&gt;").replace("<", "&lt;") for arg in args]
+                    kwargs = {key: str(value).replace(">", "&gt;").replace("<", "&lt;") for key, value in kwargs.items()}
                     message = (
-                        f"# [Success] {task.__name__}\n\n"
-                        f"## Timing Information\n"
-                        f"| **Description** | **Time** |\n"
-                        f"|-----------------|----------|\n"
-                        f"| **Start Time**  | {begin}  |\n"
-                        f"| **End Time**    | {end}    |\n"
-                        f"| **Duration**    | {duration} |\n\n"
-                        f"## Result\n\n"
-                        f"{result_str}"
+                        f"{result_str}\n\n"
+                        f"> Parameters: {args} {kwargs}\n\n"
+                        f"> Run from {begin} to {end} ({duration})"
                     )
                 except Exception as e:
+                    success = False
                     result = str(e)
                     end = pd.to_datetime("now")
+                    args = [str(arg).replace(">", "&gt;").replace("<", "&lt;") for arg in args]
+                    kwargs = {key: str(value).replace(">", "&gt;").replace("<", "&lt;") for key, value in kwargs.items()}
                     duration = end - begin
                     message = (
-                        f"# [Failure] {task.__name__}\n\n"
-                        f"## Timing Information\n"
-                        f"| **Description** | **Time** |\n"
-                        f"|-----------------|----------|\n"
-                        f"| **Start Time**  | {begin}  |\n"
-                        f"| **End Time**    | {end}    |\n"
-                        f"| **Duration**    | {duration} |\n\n"
-                        f"## Error\n\n"
-                        f"{result}"
+                        f"{result}\n\n"
+                        f"> Parameters: {args} {kwargs}\n\n"
+                        f"> Run from {begin} to {end} ({duration})"
                     )
                 finally:
                     emailer = Emailer(root_url=address.split('@')[-1])
-                    subject = f"Task: {task.__name__}"
+                    subject = f"Task {task.__name__} {'success' if success else 'failure'}"
                     emailer.login(address, password)
                     emailer.send(
                         receivers=receiver,
