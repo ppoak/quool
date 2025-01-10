@@ -666,7 +666,7 @@ class Broker:
             json.dump(self.dump(), f, indent=4, ensure_ascii=False)
         
     @classmethod
-    def restore(cls, path: str, market_data: pd.DataFrame, logger = None) -> None:
+    def restore(cls, path: str, market: pd.DataFrame, logger = None) -> None:
         """
         Restores the broker's state from a JSON file.
 
@@ -675,7 +675,7 @@ class Broker:
         """
         with open(path, "r") as f:
             data = json.load(f)
-            broker = cls.load(data, market_data, logger)
+            broker = cls.load(data, market, logger)
         return broker
 
     def report(self):
@@ -736,7 +736,7 @@ class Broker:
             dict: A dictionary containing the broker's performance metrics.
         """
         report = self.report()
-        return evaluate(report["total_value"], benchmark=benchmark, turnover=report["turnover"], trades=report["trades"])
+        return evaluate(report["values"]["total"], benchmark=benchmark, turnover=report["values"]["turnover"], trades=report["trades"])
 
     def __str__(self) -> str:
         """
