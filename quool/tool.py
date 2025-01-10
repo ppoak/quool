@@ -7,8 +7,10 @@ import traceback
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from email import encoders
 from email import message_from_bytes
 from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
 from email.header import decode_header
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
@@ -304,8 +306,14 @@ class Emailer:
                     # Replace the file path in the HTML body with a cid reference
                     html_body = html_body.replace(file_path, f"cid:{cid}")
             else:
-                with file.open("rb") as attachment:
-                    part = MIMEText(attachment.read(), "base64")
+                try:
+                    part = MIMEText(file.read_text("utf-8"), "plain", "utf-8")
+                    part.add_header("Content-Disposition", f"attachment; filename={file.name}")
+                    msg.attach(part)
+                except UnicodeDecodeError:
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(file.read_bytes())
+                    encoders.encode_base64(part)
                     part.add_header("Content-Disposition", f"attachment; filename={file.name}")
                     msg.attach(part)
 
