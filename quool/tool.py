@@ -3,6 +3,7 @@ import logging
 import imaplib
 import smtplib
 import markdown
+import traceback
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -328,8 +329,8 @@ class Emailer:
                     kwargs = {key: str(value).replace(">", "&gt;").replace("<", "&lt;") for key, value in kwargs.items()}
                     message = (
                         f"{result_str}\n\n"
-                        f"> Parameters: {args} {kwargs}\n\n"
-                        f"> Run from {begin} to {end} ({duration})"
+                        f"> *Parameters: {args} {kwargs}*\n\n"
+                        f"> *Run from {begin} to {end} ({duration})*"
                     )
                 except Exception as e:
                     success = False
@@ -339,9 +340,9 @@ class Emailer:
                     kwargs = {key: str(value).replace(">", "&gt;").replace("<", "&lt;") for key, value in kwargs.items()}
                     duration = end - begin
                     message = (
-                        f"{result}\n\n"
-                        f"> Parameters: {args} {kwargs}\n\n"
-                        f"> Run from {begin} to {end} ({duration})"
+                        f"```\n{'\n'.join([trace.replace('^', '') for trace in traceback.format_exception(type(e), e, e.__traceback__)])}\n```\n\n"
+                        f"> *Parameters: {args} {kwargs}*\n\n"
+                        f"> *Run from {begin} to {end} ({duration})*"
                     )
                 finally:
                     emailer = Emailer(root_url=address.split('@')[-1])

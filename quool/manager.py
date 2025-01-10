@@ -35,7 +35,6 @@ class ParquetManager:
         
         self.path = Path(path).expanduser().resolve()
         self.path.mkdir(parents=True, exist_ok=True)
-        self.partitions = sorted(list(self.path.iterdir())) 
         self.name = self.path.name
         self.partition = self._auto_detect_partition_col() if partition is None else partition
 
@@ -50,6 +49,11 @@ class ParquetManager:
     def required_cols(self):
         """Returns the required columns for the data."""
         return [self.index] if isinstance(self.index, str) else self.index + [self.partition]
+    
+    @property
+    def partitions(self):
+        """Returns the list of existing partitions."""
+        return sorted(list(self.path.iterdir()))
 
     def _auto_detect_partition_col(self):
         """Automatically detects the partition column based on file naming convention."""
@@ -410,7 +414,7 @@ class ParquetManager:
                 partition_range = f"{min_file.split('=')[1]} - {max_file.split('=')[1]}"
 
         # Display schema info from one file if available
-        first_file = self.partitions[np.argmin(file_size)]
+        first_file = self.partitions[np.argmin(file_size)] if file_count else None
         column_info = "N/A"
         if first_file:
             try:
