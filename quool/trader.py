@@ -1,10 +1,11 @@
 import uuid
+import json
 import queue
 import logging
 import numpy as np
 import pandas as pd
 from .manager import ParquetManager
-from .tool import setup_logger, Evaluator
+from .tool import setup_logger, evaluate
 
 
 class Order:
@@ -123,7 +124,7 @@ class Order:
             return True
         return False
 
-    def to_dict(self) -> dict:
+    def dump(self) -> dict:
         """
         Converts the order's attributes to a dictionary for structured representation.
 
@@ -142,11 +143,45 @@ class Order:
             "status": self.status,
             "filled": self.filled,
             "value": self.value,
-            "cretime": self.cretime,
-            "exetime": self.exetime,
+            "cretime": self.cretime.isoformat() if self.cretime else None,
+            "exetime": self.exetime.isoformat() if self.exetime else None,
             "commission": self.commission,
-            "valid": self.valid,
+            "valid": self.valid.isoformat() if self.valid else None,
         }
+
+    @classmethod
+    def load(cls, data: dict, broker: 'Broker') -> 'Order':
+        """
+        Creates an Order instance from a dictionary.
+
+        Args:
+            data (dict): A dictionary containing the order's attributes.
+            broker (Broker): The broker instance associated with the order.
+
+        Returns:
+            Order: The reconstructed Order instance.
+        """
+        order = cls(
+            broker=broker,
+            code=data["code"],
+            quantity=data["quantity"],
+            limit=data.get("limit"),
+            trigger=data.get("trigger"),
+            ordtype=data.get("ordtype", cls.MARKET),
+            side=data.get("side", cls.BUY),
+            time=data.get("cretime"),
+            valid=data.get("valid"),
+        )
+        # Restore additional attributes
+        order.ordid = data.get("ordid", order.ordid)  # Use existing ordid or generate a new one
+        order.status = data.get("status", cls.CREATED)
+        order.filled = data.get("filled", 0)
+        order.value = data.get("value", 0)
+        order.exetime = pd.to_datetime(data["exetime"]) if data.get("exetime") else None
+        order.exeprice = data.get("exeprice")
+        order.commission = data.get("commission", 0)
+        
+        return order
 
     def __str__(self) -> str:
         """
@@ -181,7 +216,7 @@ class Broker:
 
     def __init__(
         self,
-        data: pd.DataFrame,
+        market: pd.DataFrame,
         commission: float = 0.001,
         logger: logging.Logger = None,
     ):
@@ -189,10 +224,11 @@ class Broker:
         Initializes the broker with essential attributes.
 
         Args:
+            market (pd.DataFrame): The market data for trading.
             principle (float): Initial cash balance for the broker. Defaults to 1,000,000.
             commission (float): Commission rate for transactions. Defaults to 0.001 (0.1%).
         """
-        self.data = data
+        self.market = market
         self._time = None
         self._balance = 0
         self._positions = {}
@@ -272,7 +308,7 @@ class Broker:
             code (str, optional): The stock code for the transfer. Defaults to None.
         """
         self._balance += amount
-        self._post(time=time, code="CASH", ttype="TRANSFER", unit=0, amount=amount, price=0, commission=0)
+        self._post(time=pd.to_datetime(time), code="CASH", ttype="TRANSFER", unit=0, amount=amount, price=0, commission=0)
 
     def buy(
         self,
@@ -429,7 +465,7 @@ class Broker:
         Returns:
             pd.DataFrame: A DataFrame containing market data (open, high, low, close, volume) indexed by stock codes.
         """
-        return self.data.loc[self._time]
+        return self.market.loc[self._time]
 
     def update(self, time: str) -> None:
         """
@@ -567,36 +603,141 @@ class Broker:
         trade_log = [order.to_dict() for order in orders]
         return pd.DataFrame(trade_log)
     
-    def restore(self, ledger: pd.DataFrame, pendings: pd.DataFrame) -> None:
+    def dump(self):
         """
-        Restores the broker's state based on a given transaction log.
+        Serialize the Broker instance to a dictionary for JSON storage.
+        """
+        ledger = pd.DataFrame(self._ledger)
+        ledger["time"] = ledger["time"].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        return {
+            "balance": self._balance,
+            "positions": self._positions,
+            "ledger": ledger.to_dict(orient="records"),
+            "orders": [order.dump() for order in self._orders],
+            "pendings": [order.dump() for order in list(self._pendings.queue)],
+            "commission": self.commission,
+            "time": self._time.isoformat() if self._time else None,
+        }
+    
+    @classmethod
+    def load(cls, data: dict, market: pd.DataFrame, logger = None) -> 'Broker':
+        """
+        Restores a Broker instance from a dictionary.
+        Market data must be provided externally.
 
         Args:
-            ledger (pd.DataFrame): A DataFrame containing cash and stock flow records, 
-                columns are "Time", "Code", "Unit", "Amount", "Price", "Commission".
-            pendings (pd.DataFrame): A DataFrame containing order records, 
-                columns are "Code", "Time", "Cash", "Stock", "Status", "OrdId", "ExePrice", "ExeTime".
+            data (dict): A dictionary containing the serialized Broker state.
+            market_data (pd.DataFrame): Market data required for the Broker.
+
+        Returns:
+            Broker: The restored Broker instance.
         """
-        evaluator = Evaluator(ledger=ledger, prices=pd.DataFrame(), benchmark=None)
-        self._balance = evaluator.cash.iloc[-1]
-        self._positions = evaluator.stocks.iloc[-1].to_dict()
-        self._pendings = queue.Queue()
-        for _, order in pendings.iterrows():
-            order = Order(
-                broker=self, code=order["code"], 
-                quantity=order["quantity"], limit=order["limit"],
-                trigger=order["trigger"], ordtype=order["ordtype"],
-                side=order["side"], time=order["cretime"], valid=order["valid"]
-            )
-            order.ordid = order["ordid"]
-            order.status = order["status"]
-            order.filled = order["filled"]
-            order.value = order["value"]
-            order.exetime = order["exetime"]
-            order.exeprice = order["exeprice"]
-            order.commission = order["commission"]
-            self._pendings.put(order)
+        # Initialize Broker with external market data and commission
+        broker = cls(market=market, commission=data["commission"], logger=logger)
+
+        # Restore basic attributes
+        broker._time = pd.Timestamp(data["time"]) if data["time"] else None
+        broker._balance = data["balance"]
+        broker._positions = data["positions"]
+        ledger = pd.DataFrame(data["ledger"])
+        ledger["time"] = pd.to_datetime(ledger["time"])
+        broker._ledger = ledger.to_dict(orient="records")
+
+        # Restore orders
+        for order_data in data["orders"]:
+            order = Order.load(order_data, broker)
+            broker._orders.append(order)
+
+        # Restore pending orders
+        for order_data in data["pendings"]:
+            order = Order.load(order_data, broker)
+            broker._pendings.put(order)
+
+        return broker
+
+    def store(self, path: str) -> None:
+        """
+        Stores the broker's state to a JSON file.
+
+        Args:
+            path (str): The file path where the broker's state will be saved.
+        """
+        with open(path, "w") as f:
+            json.dump(self.dump(), f, indent=4, ensure_ascii=False)
         
+    @classmethod
+    def restore(cls, path: str, market_data: pd.DataFrame, logger = None) -> None:
+        """
+        Restores the broker's state from a JSON file.
+
+        Args:
+            path (str): The file path from which the broker's state will be loaded.
+        """
+        with open(path, "r") as f:
+            data = json.load(f)
+            broker = cls.load(data, market_data, logger)
+        return broker
+
+    def report(self):
+        """
+        Generates a report of the broker's performance.
+
+        Returns:
+            dict: A dictionary containing the broker's performance metrics.
+        """
+        ledger = self.ledger
+        ledger = ledger.set_index(["time", "code"]).sort_index()
+        prices = self.market["close"].unstack("code")
+
+        # cash, position, trades, total_value, market_value calculation 
+        cash = ledger.groupby("time")[["amount", "commission"]].sum()
+        cash = (cash["amount"] - cash["commission"]).cumsum()
+        positions = ledger.drop(index="CASH", level=1).groupby(["time", "code"])["unit"].sum().unstack().fillna(0).cumsum()
+        timepoints = prices.index.union(cash.index).union(positions.index)
+        cash = cash.reindex(timepoints).ffill()
+        positions = positions.reindex(timepoints).ffill().fillna(0)
+        market = (positions * prices).sum(axis=1)
+        total = cash + market
+        delta = positions.diff()
+        delta.iloc[0] = positions.iloc[0]
+        turnover = (delta * prices).abs().sum(axis=1) / total.shift(1).fillna(cash.iloc[0])
+        
+        ledger = ledger.drop(index="CASH", level=1)
+        ledger["stock_cumsum"] = ledger.groupby("code")["unit"].cumsum()
+        ledger["trade_mark"] = ledger["stock_cumsum"] == 0
+        ledger["trade_num"] = ledger.groupby("code")["trade_mark"].shift(1).astype("bool").groupby("code").cumsum()
+        trades = ledger.groupby(["code", "trade_num"]).apply(
+            lambda x: pd.Series({
+                "open_amount": -x[x["unit"] > 0]["amount"].sum(),
+                "open_at": x[x["unit"] > 0].index.get_level_values("time")[0],
+                "close_amount": x[x["unit"] < 0]["amount"].sum() if x["unit"].sum() == 0 else np.nan,
+                "close_at": x[x["unit"] < 0].index.get_level_values("time")[-1] if x["unit"].sum() == 0 else np.nan,
+            })
+        )
+        trades["duration"] = trades["close_at"] - trades["open_at"]
+        trades["return"] = (trades["close_amount"] - trades["open_amount"]) / trades["open_amount"]
+        return {
+            "values": pd.concat(
+                [total, market, cash, turnover], 
+                axis=1, keys=["total", "market", "cash", "turnover"]
+            ),
+            "positions": positions,
+            "trades": trades,
+        }
+
+    def evaluate(self, benchmark: pd.Series = None):
+        """
+        Evaluates the broker's performance based on its current state.
+
+        Args:
+            benchmark (pd.Series, optional): A benchmark series for comparison. Defaults to None.
+
+        Returns:
+            dict: A dictionary containing the broker's performance metrics.
+        """
+        report = self.report()
+        return evaluate(report["total_value"], benchmark=benchmark, turnover=report["turnover"], trades=report["trades"])
+
     def __str__(self) -> str:
         """
         Provides a string representation of the broker's state.
@@ -604,13 +745,7 @@ class Broker:
         Returns:
             str: A summary of the broker's balance, positions, and orders.
         """
-        return (
-            f"Balance: {self._balance}\n"
-            f"Positions: {self._positions}\n"
-            f"Commssion: {self.commission}\n"
-            f"#Orders: {len(self._orders)}\n"
-            f"#Pendings: {self._pendings.qsize()}"
-        )
+        return f"Broker[{self.time}] ${self.balance}x{self.commission} |#{self._pendings.qsize()} Pending #{len(self.orders)} Orders| \n{self.positions}\n"
     
     def __repr__(self):
         return self.__str__()
@@ -633,7 +768,7 @@ class ManagerBroker(Broker):
             commission (float): Commission rate for transactions. Defaults to 0.001 (0.1%).
         """
         super().__init__(
-            data=None, 
+            market=None, 
             principle=principle, 
             commission=commission, 
             logger=logger

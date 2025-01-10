@@ -1,7 +1,7 @@
 from .tool import (
     Emailer,
-    Evaluator,
     setup_logger,
+    evaluate,
 )
 
 from .manager import (
