@@ -685,8 +685,7 @@ class Broker:
         Returns:
             dict: A dictionary containing the broker's performance metrics.
         """
-        ledger = self.ledger
-        ledger = ledger.set_index(["time", "code"]).sort_index()
+        ledger = self.ledger.set_index(["time", "code"]).sort_index()
         prices = self.market["close"].unstack("code")
 
         # cash, position, trades, total_value, market_value calculation 
