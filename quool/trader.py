@@ -713,7 +713,7 @@ class Broker:
                 "close_at": x[x["unit"] < 0].index.get_level_values("time")[-1] if x["unit"].sum() == 0 else np.nan,
             })
         )
-        trades["duration"] = trades["close_at"] - trades["open_at"]
+        trades["duration"] = pd.to_datetime(trades["close_at"]) - pd.to_datetime(trades["open_at"])
         trades["return"] = (trades["close_amount"] - trades["open_amount"]) / trades["open_amount"]
         return {
             "values": pd.concat(
@@ -744,7 +744,7 @@ class Broker:
         Returns:
             str: A summary of the broker's balance, positions, and orders.
         """
-        return f"Broker[{self.time}] ${self.balance}x{self.commission} |#{self._pendings.qsize()} Pending #{len(self.orders)} Orders| \n{self.positions}\n"
+        return f"Broker[{self.time}] ${self.balance:.2f}x{self.commission * 1e4:.2f}Bps |#{self._pendings.qsize()} Pending #{len(self.orders)} Orders| \n{self.positions}\n"
     
     def __repr__(self):
         return self.__str__()
