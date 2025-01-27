@@ -308,6 +308,7 @@ class Broker:
             code (str, optional): The stock code for the transfer. Defaults to None.
         """
         self._balance += amount
+        self._time = pd.to_datetime(time)
         self._post(time=pd.to_datetime(time), code="CASH", ttype="TRANSFER", unit=0, amount=amount, price=0, commission=0)
 
     def buy(
@@ -744,7 +745,7 @@ class Broker:
         Returns:
             str: A summary of the broker's balance, positions, and orders.
         """
-        return f"Broker[{self.time}] ${self.balance:.2f}x{self.commission * 1e4:.2f}Bps |#{self._pendings.qsize()} Pending #{len(self.orders)} Orders| \n{self.positions}\n"
+        return f"Broker[{self.time}] ${self.balance:.2f}x{self.commission * 1e4:.2f}Bps |#{min(self._pendings.qsize(), 0)} Pending #{len(self.orders)} Orders| \n{self.positions}\n"
     
     def __repr__(self):
         return self.__str__()
