@@ -277,7 +277,10 @@ class Broker:
         Returns:
             list: A list of Order objects.
         """
-        return self._pendings
+        pendings = list(self._pendings.queue)
+        if None in pendings:
+            return pendings.remove(None)
+        return pendings
     
     @property
     def orders(self) -> list:
@@ -745,7 +748,7 @@ class Broker:
         Returns:
             str: A summary of the broker's balance, positions, and orders.
         """
-        return f"Broker[{self.time}] ${self.balance:.2f}x{self.commission * 1e4:.2f}Bps |#{min(self._pendings.qsize(), 0)} Pending #{len(self.orders)} Orders| \n{self.positions}\n"
+        return f"Broker[{self.time}] ${self.balance:.2f}x{self.commission * 1e4:.2f}Bps |#{len(self.pendings)} Pending #{len(self.orders)} Orders| \n{self.positions}\n"
     
     def __repr__(self):
         return self.__str__()
