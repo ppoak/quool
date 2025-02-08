@@ -1,11 +1,10 @@
 import uuid
 import json
 import queue
-import logging
 import numpy as np
 import pandas as pd
+from .tool import evaluate
 from .manager import ParquetManager
-from .tool import setup_logger, evaluate
 
 
 class Order:
@@ -218,7 +217,6 @@ class Broker:
         self,
         market: pd.DataFrame = None,
         commission: float = 0.001,
-        logger: logging.Logger = None,
     ):
         """
         Initializes the broker with essential attributes.
@@ -237,7 +235,6 @@ class Broker:
         self._ledger = [] # Key parameter to restore the state of the broker
         self._orders = []  # History of processed orders
         self._ordict = {}
-        self.logger = logger or setup_logger("Broker", level="DEBUG")
 
     @property
     def time(self) -> pd.Timestamp:
@@ -267,7 +264,7 @@ class Broker:
         Returns:
             dict: A dictionary of positions with stock codes as keys and quantities as values.
         """
-        return self._positions
+        return pd.Series(self._positions, name="positions")
     
     @property
     def pendings(self) -> list:
@@ -280,7 +277,7 @@ class Broker:
         pendings = list(self._pendings.queue)
         if None in pendings:
             return pendings.remove(None)
-        return pendings
+        return pd.DataFrame([order.dump() for order in pendings])
     
     @property
     def orders(self) -> list:
@@ -290,7 +287,7 @@ class Broker:
         Returns:
             list: A list of Order objects.
         """
-        return self._orders
+        return pd.DataFrame([order.dump() for order in self._orders])
 
     @property
     def ledger(self) -> pd.DataFrame:
@@ -398,7 +395,6 @@ class Broker:
         if isinstance(order, str):
             order = self.get_order(order)
         order.cancel()
-        self.logger.debug(f"Order canceled: {order}")
     
     def close(
         self,
@@ -422,7 +418,6 @@ class Broker:
         self._pendings.put(order)
         self._ordict[order.ordid] = order
         order.status = order.SUBMITTED
-        self.logger.debug(f"Order submitted: {order}")
 
     def _post(
         self,
@@ -501,7 +496,6 @@ class Broker:
             data (pd.DataFrame): The market data containing open, high, low, close, and volume information.
         """
         if order.code not in data.index:
-            self.logger.error(f"Lacking data: {order}")
             return
         
         if order.trigger is not None:
@@ -516,7 +510,6 @@ class Broker:
                 ):
                     # order triggered
                     order.trigger = None
-                    self.logger.debug(f"Order triggered: {order}")
                 return
             else:
                 raise ValueError("Invalid order type for trigger.")
@@ -554,7 +547,6 @@ class Broker:
             cost = amount + commission
             if cost > self._balance:
                 order.status = order.REJECTED
-                self.logger.warning(f"Insufficient balance: {order}")
             else:
                 order.execute(price, quantity)
                 self._post(
@@ -563,14 +555,12 @@ class Broker:
                 )
                 self._balance -= cost
                 self._positions[order.code] = self._positions.get(order.code, 0) + quantity
-                self.logger.info(f"Order executed: {order}")
         elif order.side == order.SELL:
             amount = price * quantity
             commission = amount * self.commission
             revenue = amount - commission
             if self._positions.get(order.code, 0) < quantity:
                 order.status = order.REJECTED
-                self.logger.warning(f"Insufficient position: {order}")
             else:
                 order.execute(price, quantity)
                 self._post(
@@ -582,7 +572,6 @@ class Broker:
                 self._positions[order.code] -= quantity
                 if self._positions[order.code] == 0:
                     del self._positions[order.code]
-                self.logger.info(f"Order executed: {order}")
 
     def get_order(self, ordid: str) -> Order:
         """
@@ -613,21 +602,23 @@ class Broker:
         """
         Serialize the Broker instance to a dictionary for JSON storage.
         """
+        ledger = self.ledger
+        orders = self.orders
+        pendings = self.pendings
         if not self.ledger.empty:
-            ledger = self.ledger
             ledger["time"] = ledger["time"].dt.strftime('%Y-%m-%dT%H:%M:%S')
         return {
             "balance": self._balance,
             "positions": self._positions,
             "ledger": ledger.to_dict(orient="records") if history else [],
-            "orders": [order.dump() for order in self._orders] if history else [],
-            "pendings": [order.dump() for order in list(self._pendings.queue)],
+            "orders": orders.to_dict(orient="records") if history else [],
+            "pendings": pendings.to_dict(orient="records"),
             "commission": self.commission,
             "time": self._time.isoformat() if self._time else None,
         }
     
     @classmethod
-    def load(cls, data: dict, market: pd.DataFrame, logger = None) -> 'Broker':
+    def load(cls, data: dict, market: pd.DataFrame) -> 'Broker':
         """
         Restores a Broker instance from a dictionary.
         Market data must be provided externally.
@@ -640,7 +631,7 @@ class Broker:
             Broker: The restored Broker instance.
         """
         # Initialize Broker with external market data and commission
-        broker = cls(market=market, commission=data["commission"], logger=logger)
+        broker = cls(market=market, commission=data["commission"])
 
         # Restore basic attributes
         broker._time = pd.Timestamp(data["time"]) if data["time"] else None
@@ -674,7 +665,7 @@ class Broker:
             json.dump(self.dump(history=history), f, indent=4, ensure_ascii=False)
         
     @classmethod
-    def restore(cls, path: str, market: pd.DataFrame, logger = None) -> None:
+    def restore(cls, path: str, market: pd.DataFrame) -> None:
         """
         Restores the broker's state from a JSON file.
 
@@ -683,7 +674,7 @@ class Broker:
         """
         with open(path, "r") as f:
             data = json.load(f)
-            broker = cls.load(data, market, logger)
+            broker = cls.load(data, market)
         return broker
 
     def report(self):
@@ -765,7 +756,6 @@ class ManagerBroker(Broker):
         manager: ParquetManager = None,
         principle: float = 1_000_000, 
         commission: float = 0.001,
-        logger: logging.Logger = None,
     ):
         """
         Initializes the base broker with essential attributes.
@@ -778,7 +768,6 @@ class ManagerBroker(Broker):
             market=None, 
             principle=principle, 
             commission=commission, 
-            logger=logger
         )
         self.manager = manager
 
