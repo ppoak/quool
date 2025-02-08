@@ -2,7 +2,7 @@ import sys
 import streamlit as st
 from streamlit import runtime
 from streamlit.web import cli
-from quool.app import ASSET_PATH, BROKER_PATH
+from quool.app import ASSET_PATH, BROKER_PATH, STRATEGIES_PATH, TEMPLATE_PATH
 
 
 def main():
@@ -21,9 +21,11 @@ def main():
     broker_selector = st.Page("brokers/selector.py", title="Selector", icon="📊")
     broker_monitor = st.Page("brokers/monitor.py", title="Monitor", icon="📈")
     transaction_transact = st.Page("transaction/transact.py", title="Transact", icon="💸")
+    strategies_selector = st.Page("strategies/runner.py", title="Runner", icon="💡")
     pg = st.navigation({
         "Broker": [broker_selector, broker_monitor],
         "Transaction": [transaction_transact],
+        "Strategies": [strategies_selector],
     })
     pg.run()
 
@@ -31,6 +33,8 @@ def main():
 if __name__ == "__main__":
     ASSET_PATH.mkdir(parents=True, exist_ok=True)
     BROKER_PATH.mkdir(parents=True, exist_ok=True)
+    STRATEGIES_PATH.mkdir(parents=True, exist_ok=True)
+    TEMPLATE_PATH.mkdir(parents=True, exist_ok=True)
     if runtime.exists():
         main()
     else:

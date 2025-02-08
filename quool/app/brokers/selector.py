@@ -1,60 +1,42 @@
-import pandas as pd
 import streamlit as st
-from quool import ParquetManager, Broker
-from quool.app import BROKER_PATH
+from pathlib import Path
+from quool.app import BROKER_PATH, Broker
 
 
-def read_market(begin, end):
-    if not (begin is None and end is None):
-        begin = begin or pd.Timestamp("2015-01-01")
-        end = end or pd.Timestamp.now()
-        return ParquetManager("D:/Documents/DataBase/quotes_day").read(
-            date__ge=begin, date__le=end,
-        )
-    else:
-        return None
-
-def display_creator(begin, end):
-    st.header("Create One")
+def display_creator():
+    st.header("Broker Creator")
     name = st.text_input("*broker name*", value="default")
 
     if st.button("create"):
-        market = read_market(begin, end)
-        broker = Broker(market=market)
+        broker = Broker(market=None)
         broker.store(BROKER_PATH / f"{name}.json")
-        st.session_state.bname = name
+        st.session_state.bpath = Path(BROKER_PATH / f"{name}.json")
         st.session_state.broker = broker
-        st.success("broker created", icon="✅")
+        st.toast("broker created", icon="✅")
         
-def display_selector(begin, end):
-    st.header("Select One")
+def display_selector():
+    st.header("Broker Selector")
     brokers = list(BROKER_PATH.glob("*.json"))
-    name = st.selectbox("*Select an existing broker*", [b.stem for b in brokers])
+    path = st.selectbox("*Select an existing broker*", brokers, format_func=lambda x: x.stem)
     if st.button("select"):
-        if name is not None:
-            broker = Broker.restore(BROKER_PATH / f"{name}.json", market=read_market(begin, end))
-            st.session_state.bname = name
+        if path is not None:
+            broker = Broker.restore(path, market=None)
+            st.session_state.bpath = path
             st.session_state.broker = broker
-            st.success("broker selected", icon="✅")
+            st.toast("broker selected", icon="✅")
         else:
-            st.error("no broker selected", icon="❌")
+            st.toast("no broker selected", icon="❌")
 
 def layout():
     st.title("BROKER SELECTOR")
-
     current_broker = st.empty()
-    begin, end = None, None
-    if st.button("Backtest"):
-        begin = st.date_input("*select begin date for backtesting*", value="2015-01-01")
-        end = st.date_input("*select end date for backtesting*")
-
     col1, col2 = st.columns(2)
     with col1:
-        display_creator(begin, end)
+        display_creator()
     with col2:
-        display_selector(begin, end)
-    bname = st.session_state.get('bname', "*No Broker Selected*")
-    current_broker.write(f"Current Broker: {bname}")
+        display_selector()
+    bpath = st.session_state.get('bpath', Path("*No Broker Selected*"))
+    current_broker.write(f"Current Broker: **{bpath.stem}**")
 
 if __name__ == "__page__":
     layout()

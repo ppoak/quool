@@ -646,11 +646,13 @@ class Broker:
         for order_data in data["orders"]:
             order = Order.load(order_data, broker)
             broker._orders.append(order)
+            broker._ordict[order.ordid] = order
 
         # Restore pending orders
         for order_data in data["pendings"]:
             order = Order.load(order_data, broker)
             broker._pendings.put(order)
+            broker._ordict[order.ordid] = order
 
         return broker
 

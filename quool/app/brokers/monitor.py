@@ -1,23 +1,17 @@
+import asyncio
 import pandas as pd
 import streamlit as st
 from quool.app import fetch_realtime, BROKER_PATH, REFRESH_INTERVAL
 
 
-def cancel_order(event):
-    print(event)
-
 @st.fragment(run_every=REFRESH_INTERVAL)
-def display_monitor(placeholder):
+def display_monitor(_):
     market = fetch_realtime()
-    broker = st.session_state.get("broker")
-    if broker is None:
-        st.warning("No broker selected")
-        return
-    broker.update(time=None, market=market)
+    broker = st.session_state.broker
     placeholder.empty()
     with placeholder.container():
-        orders = pd.DataFrame([o.dump() for o in broker.orders])
-        pendings = pd.DataFrame([p.dump() for p in broker.pendings])
+        orders = broker.orders
+        pendings = broker.pendings
         if not orders.empty:
             orders["ordid"] = orders["ordid"].str.slice(0, 5)
         if not pendings.empty:
@@ -30,8 +24,8 @@ def display_monitor(placeholder):
             "orders": len(broker.orders),
         }, name="status").to_frame().T)
         st.header("Positions")
-        if broker.positions:
-            st.dataframe(pd.concat([pd.Series(broker.positions, name="positions"), market], axis=1, join="inner"))
+        if not broker.positions.empty:
+            st.dataframe(pd.concat([broker.positions, market], axis=1, join="inner"))
         else:
             st.write("Empty")
         st.header("Pendings")
@@ -44,12 +38,19 @@ def display_monitor(placeholder):
             st.dataframe(orders)
         else:
             st.write("Empty")
-    broker.store(BROKER_PATH / f"{st.session_state.bname}.json")
+    broker.store(st.session_state.bpath)
 
-def layout():
+async def layout():
     st.title("BROKER STATUS")
+    global placeholder
     placeholder = st.empty()
-    display_monitor(placeholder)
+    broker = st.session_state.get("broker")
+    if broker is None:
+        st.warning("No broker selected")
+        return
+    task = asyncio.create_task(broker.realtime_update())
+    task.add_done_callback(display_monitor)
+    display_monitor(None)
 
 if __name__ == "__page__":
-    layout()
+    asyncio.run(layout())
