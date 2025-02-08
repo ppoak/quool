@@ -216,7 +216,7 @@ class Broker:
 
     def __init__(
         self,
-        market: pd.DataFrame,
+        market: pd.DataFrame = None,
         commission: float = 0.001,
         logger: logging.Logger = None,
     ):
@@ -311,8 +311,8 @@ class Broker:
             code (str, optional): The stock code for the transfer. Defaults to None.
         """
         self._balance += amount
-        self._time = pd.to_datetime(time)
-        self._post(time=pd.to_datetime(time), code="CASH", ttype="TRANSFER", unit=0, amount=amount, price=0, commission=0)
+        self._time = pd.to_datetime(time or 'now')
+        self._post(time=self._time, code="CASH", ttype="TRANSFER", unit=0, amount=amount, price=0, commission=0)
 
     def buy(
         self,
@@ -337,9 +337,6 @@ class Broker:
         Returns:
             Order: The created buy order.
         """
-        if not self._time:
-            raise ValueError("Current date is not set. Please call update() before placing orders.")
-
         order = Order(
             broker=self,
             code=code,
@@ -348,7 +345,7 @@ class Broker:
             trigger=trigger,
             ordtype=exectype,
             side=Order.BUY,
-            time=self._time,
+            time=self._time or pd.to_datetime('now'),
             valid=valid,
         )
         self.submit(order)
@@ -377,9 +374,6 @@ class Broker:
         Returns:
             Order: The created sell order.
         """
-        if not self._time:
-            raise ValueError("Current date is not set. Please call update() before placing orders.")
-
         order = Order(
             broker=self,
             code=code,
@@ -388,7 +382,7 @@ class Broker:
             trigger=trigger,
             ordtype=exectype,
             side=Order.SELL,
-            time=self._time,
+            time=self._time or pd.to_datetime('now'),
             valid=valid,
         )
         self.submit(order)
@@ -462,16 +456,24 @@ class Broker:
             "commission": commission,
         })
 
-    def _load(self) -> pd.DataFrame:
+    def _load(self, market: pd.DataFrame = None) -> pd.DataFrame:
         """
         Loads market data required for processing orders.
 
         Returns:
             pd.DataFrame: A DataFrame containing market data (open, high, low, close, volume) indexed by stock codes.
         """
-        return self.market.loc[self._time]
+        if not self.pendings:
+            if self._time is None and market is not None:
+                self._time = pd.to_datetime('now')
+                market = market.copy()
+            elif self._time is not None and self.market is not None:
+                market = self.market.loc[self._time]
+            else:
+                raise ValueError("No market data source available.")
+        return market
 
-    def update(self, time: str) -> None:
+    def update(self, time: str, market: pd.DataFrame = None) -> None:
         """
         Updates the broker's state for a new trading day.
 
@@ -480,10 +482,10 @@ class Broker:
         """
         self._time = pd.to_datetime(time)
         self._pendings.put(None)  # Placeholder for end-of-day processing.
-        data = self._load()
+        market = self._load(market)
         order = self._pendings.get()
         while order is not None:
-            self._match(order, data)
+            self._match(order, market)
             if not order.is_alive():
                 self._orders.append(order)
             else:
@@ -607,17 +609,18 @@ class Broker:
         trade_log = [order.to_dict() for order in orders]
         return pd.DataFrame(trade_log)
     
-    def dump(self):
+    def dump(self, history: bool = True) -> dict:
         """
         Serialize the Broker instance to a dictionary for JSON storage.
         """
-        ledger = pd.DataFrame(self._ledger)
-        ledger["time"] = ledger["time"].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        if not self.ledger.empty:
+            ledger = self.ledger
+            ledger["time"] = ledger["time"].dt.strftime('%Y-%m-%dT%H:%M:%S')
         return {
             "balance": self._balance,
             "positions": self._positions,
-            "ledger": ledger.to_dict(orient="records"),
-            "orders": [order.dump() for order in self._orders],
+            "ledger": ledger.to_dict(orient="records") if history else [],
+            "orders": [order.dump() for order in self._orders] if history else [],
             "pendings": [order.dump() for order in list(self._pendings.queue)],
             "commission": self.commission,
             "time": self._time.isoformat() if self._time else None,
@@ -644,8 +647,9 @@ class Broker:
         broker._balance = data["balance"]
         broker._positions = data["positions"]
         ledger = pd.DataFrame(data["ledger"])
-        ledger["time"] = pd.to_datetime(ledger["time"])
-        broker._ledger = ledger.to_dict(orient="records")
+        if not ledger.empty:
+            ledger["time"] = pd.to_datetime(ledger["time"])
+            broker._ledger = ledger.to_dict(orient="records")
 
         # Restore orders
         for order_data in data["orders"]:
@@ -659,7 +663,7 @@ class Broker:
 
         return broker
 
-    def store(self, path: str) -> None:
+    def store(self, path: str, history: bool = True) -> None:
         """
         Stores the broker's state to a JSON file.
 
@@ -667,7 +671,7 @@ class Broker:
             path (str): The file path where the broker's state will be saved.
         """
         with open(path, "w") as f:
-            json.dump(self.dump(), f, indent=4, ensure_ascii=False)
+            json.dump(self.dump(history=history), f, indent=4, ensure_ascii=False)
         
     @classmethod
     def restore(cls, path: str, market: pd.DataFrame, logger = None) -> None:

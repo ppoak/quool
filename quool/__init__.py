@@ -14,4 +14,6 @@ from .trader import (
     Broker,
 )
 
-__version__ = "7.0.3"
+import quool.app as app
+
+__version__ = "7.0.4"

@@ -183,3 +183,5 @@ test
 test*
 script
 strategy/coilysis.py
+
+asset/*

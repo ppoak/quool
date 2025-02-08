@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quool"
-version = "7.0.3"
+version = "7.0.4"
 description = "Quantitative Toolkit - a helper in quant developing"
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
@@ -21,8 +21,10 @@ dependencies = [
     "joblib",
     "pandas",
     "pyarrow",
-    "matplotlib",
 ]
+
+[project.optional-dependencies]
+app = ["streamlit", "akshare", "plotly"]
 
 [project.urls]
 Homepage = "https://github.com/ppoak/quool"
