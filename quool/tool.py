@@ -126,11 +126,15 @@ def evaluate(
         dict: A dictionary containing the evaluation results.
     """
     net_value = value / value.iloc[0]
-    returns = net_value.pct_change().fillna(0)
+    returns = net_value.pct_change(fill_method=None).fillna(0)
     drawdown = net_value / net_value.cummax() - 1
     max_drawdown = drawdown.min()
     max_drawdown_end = drawdown.idxmin()
-    max_drawdown_start = drawdown.loc[:max_drawdown_end][drawdown.loc[:max_drawdown_end] == 0].index[-1]
+    max_drawdown_start = drawdown.loc[:max_drawdown_end][drawdown.loc[:max_drawdown_end] == 0]
+    if max_drawdown_start.empty:
+        max_drawdown_start = max_drawdown_end
+    else:
+        max_drawdown_start = max_drawdown_start.index[-1]
 
     # Benchmark Comparison Metrics
     if benchmark is None:
@@ -142,8 +146,10 @@ def evaluate(
     # Basic Performance Metrics
     evaluation["total_return(%)"] = (net_value.iloc[-1] - 1) * 100
     evaluation["annual_return(%)"] = (
-        (1 + evaluation["total_return(%)"] / 100) ** (365 / (net_value.index[-1] - net_value.index[0]).days) - 1
-    ) * 100
+        ((1 + evaluation["total_return(%)"] / 100) ** (365 / (net_value.index[-1] - net_value.index[0]).days) - 1) * 100
+        if (net_value.index[-1] - net_value.index[0]).days != 0
+        else np.nan
+    )
     evaluation["annual_volatility(%)"] = (returns.std() * np.sqrt(252)) * 100
     evaluation["sharpe_ratio"] = (
         evaluation["annual_return(%)"] / evaluation["annual_volatility(%)"]
@@ -177,7 +183,10 @@ def evaluate(
         evaluation["turnover_ratio(%)"] = np.nan
 
     # Alpha and Beta, Benchmark related
-    beta = returns.cov(benchmark_returns) / benchmark_returns.var() if benchmark_returns.var() != 0 else np.nan
+    if returns.count() > 30:
+        beta = returns.cov(benchmark_returns) / benchmark_returns.var() if benchmark_returns.var() != 0 else np.nan
+    else:
+        beta = np.nan
     evaluation["beta"] = beta
     evaluation["alpha(%)"] = (
         (returns.mean() - beta * benchmark_returns.mean()) * 252 * 100
@@ -194,7 +203,7 @@ def evaluate(
     )
 
     # Trading behavior
-    if trades is not None:
+    if trades is not None and not trades.empty:
         evaluation["position_duration(days)"] = trades["duration"].mean()
         profit = trades["close_amount"] - trades["open_amount"]
         evaluation["trade_win_rate(%)"] = profit[profit > 0].count() / profit.count() * 100
@@ -207,7 +216,7 @@ def evaluate(
     # Distribution Metrics
     evaluation["skewness"] = returns.skew()
     evaluation["kurtosis"] = returns.kurtosis()
-    positive_returns = returns[returns.ge(0 if benchmark is None else benchmark_returns)].count()
+    positive_returns = returns[returns.gt(0 if benchmark is None else benchmark_returns)].count()
     evaluation["day_return_win_rate(%)"] = (positive_returns / returns.count()) * 100
     monthly_returns = net_value.resample("ME").last().pct_change().fillna(0)
     evaluation["monthly_return_std(%)"] = monthly_returns.std() * 100

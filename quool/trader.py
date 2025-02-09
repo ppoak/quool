@@ -40,6 +40,7 @@ class Order:
         side: str = BUY,
         time: str = None,
         valid: str = None,
+        ordid: str = None,
     ):
         """
         Initializes an Order instance.
@@ -56,7 +57,7 @@ class Order:
             time (str, optional): The creation timestamp. Defaults to None.
             valid (str, optional): The expiry time for the order. Defaults to None.
         """
-        self.ordid = str(uuid.uuid4())
+        self.ordid = ordid or str(uuid.uuid4())
         self.broker = broker
         self.code = code
         self.quantity = quantity
@@ -216,6 +217,7 @@ class Broker:
     def __init__(
         self,
         market: pd.DataFrame = None,
+        brokid: str = None,
         commission: float = 0.001,
     ):
         """
@@ -227,6 +229,7 @@ class Broker:
             commission (float): Commission rate for transactions. Defaults to 0.001 (0.1%).
         """
         self.market = market
+        self.brokid = brokid or str(uuid.uuid4())
         self._time = None
         self._balance = 0
         self._positions = {}
@@ -608,6 +611,7 @@ class Broker:
         if not self.ledger.empty:
             ledger["time"] = ledger["time"].dt.strftime('%Y-%m-%dT%H:%M:%S')
         return {
+            "brokid": self.brokid,
             "balance": self._balance,
             "positions": self._positions,
             "ledger": ledger.to_dict(orient="records") if history else [],
@@ -631,7 +635,7 @@ class Broker:
             Broker: The restored Broker instance.
         """
         # Initialize Broker with external market data and commission
-        broker = cls(market=market, commission=data["commission"])
+        broker = cls(market=market, brokid=data["brokid"], commission=data["commission"])
 
         # Restore basic attributes
         broker._time = pd.Timestamp(data["time"]) if data["time"] else None
@@ -667,7 +671,7 @@ class Broker:
             json.dump(self.dump(history=history), f, indent=4, ensure_ascii=False)
         
     @classmethod
-    def restore(cls, path: str, market: pd.DataFrame) -> None:
+    def restore(cls, path: str, market: pd.DataFrame = None) -> None:
         """
         Restores the broker's state from a JSON file.
 
@@ -714,8 +718,11 @@ class Broker:
                 "close_at": x[x["unit"] < 0].index.get_level_values("time")[-1] if x["unit"].sum() == 0 else np.nan,
             })
         )
-        trades["duration"] = pd.to_datetime(trades["close_at"]) - pd.to_datetime(trades["open_at"])
-        trades["return"] = (trades["close_amount"] - trades["open_amount"]) / trades["open_amount"]
+        if not trades.empty:
+            trades["duration"] = pd.to_datetime(trades["close_at"]) - pd.to_datetime(trades["open_at"])
+            trades["return"] = (trades["close_amount"] - trades["open_amount"]) / trades["open_amount"]
+        else:
+            trades = pd.DataFrame(columns=["open_amount", "open_at", "close_amount", "close_at", "duration", "return"])
         return {
             "values": pd.concat(
                 [total, market, cash, turnover], 
@@ -736,7 +743,17 @@ class Broker:
             dict: A dictionary containing the broker's performance metrics.
         """
         report = self.report()
-        return evaluate(report["values"]["total"], benchmark=benchmark, turnover=report["values"]["turnover"], trades=report["trades"])
+        return {
+            "evaluation": evaluate(
+                report["values"]["total"], 
+                benchmark=benchmark, 
+                turnover=report["values"]["turnover"], 
+                trades=report["trades"]
+            ),
+            "values": report["values"],
+            "positions": report["positions"],
+            "trades": report["trades"],
+        }
 
     def __str__(self) -> str:
         """
