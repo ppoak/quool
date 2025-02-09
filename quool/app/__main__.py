@@ -2,7 +2,11 @@ import sys
 import streamlit as st
 from streamlit import runtime
 from streamlit.web import cli
-from quool.app import ASSET_PATH, BROKER_PATH, STRATEGIES_PATH, TEMPLATE_PATH
+from quool.app import (
+    Broker, save_broker,
+    ASSET_PATH, BROKER_PATH, LOG_PATH,
+    TEMPLATE_PATH, STRATEGIES_PATH,
+)
 
 
 def main():
@@ -18,15 +22,30 @@ def main():
         }
     )
 
-    broker_selector = st.Page("brokers/selector.py", title="Selector", icon="📊")
-    broker_monitor = st.Page("brokers/monitor.py", title="Monitor", icon="📈")
-    transaction_transact = st.Page("transaction/transact.py", title="Transact", icon="💸")
-    strategies_selector = st.Page("strategies/runner.py", title="Runner", icon="💡")
-    pg = st.navigation({
-        "Broker": [broker_selector, broker_monitor],
-        "Transaction": [transaction_transact],
-        "Strategies": [strategies_selector],
-    })
+    brokers = [broker.stem for broker in BROKER_PATH.glob("*.json")]
+    selection = st.sidebar.selectbox(f"*select broker*", brokers, index=0)
+    if selection is not None:
+        st.session_state.broker = Broker.restore(path=BROKER_PATH / f"{selection}.json")
+    if st.session_state.get("broker") is None:
+        st.sidebar.warning("No broker selected")
+    else:
+        st.sidebar.write(f"CURRENT BROKER: **{st.session_state.broker.brokid}**")
+
+    name = st.sidebar.text_input("*input broker id*", value="default")
+    col1, col2 = st.sidebar.columns(2)
+    if col1.button("*create*", use_container_width=True):
+        broker = Broker(brokid=name)
+        broker.store(BROKER_PATH / f"{name}.json")
+        st.session_state.broker = broker
+        st.rerun()
+    if col2.button("*save*", use_container_width=True):
+        st.session_state.broker.store(BROKER_PATH / f"{name}.json")
+
+    monitor = st.Page("monitor.py", title="Monitor", icon="📈")
+    transact = st.Page("transact.py", title="Transact", icon="💸")
+    runner = st.Page("runner.py", title="Runner", icon="💡")
+    performance = st.Page("performance.py", title="Performance", icon="📊")
+    pg = st.navigation([monitor, transact, runner, performance])
     pg.run()
 
 
@@ -35,6 +54,7 @@ if __name__ == "__main__":
     BROKER_PATH.mkdir(parents=True, exist_ok=True)
     STRATEGIES_PATH.mkdir(parents=True, exist_ok=True)
     TEMPLATE_PATH.mkdir(parents=True, exist_ok=True)
+    LOG_PATH.mkdir(parents=True, exist_ok=True)
     if runtime.exists():
         main()
     else:

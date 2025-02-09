@@ -2,14 +2,10 @@ import asyncio
 import pandas as pd
 from io import BytesIO
 import streamlit as st
-from quool.app import display_realtime, BROKER_PATH, REFRESH_INTERVAL, TEMPLATE_PATH
+from quool.app import display_realtime, fetch_realtime, BROKER_PATH, REFRESH_INTERVAL, TEMPLATE_PATH
 
 
-def _toast_for_submit(event):
-    st.toast("**order submited**", icon="✅")
-    st.session_state.broker.store(st.session_state.bpath)
-
-async def display_transact():
+def display_transact():
     st.header("Transact")
     broker = st.session_state.broker
     code = st.text_input("*input symbol*")
@@ -21,20 +17,31 @@ async def display_transact():
     subcol1, subcol2 = st.columns(2)
     with subcol1:
         if st.button("buy", use_container_width=True):
-            broker.buy(
-                code=code, quantity=quantity, limit=limit, 
-                trigger=trigger, exectype=exectype, valid=valid
-            )
-            task = asyncio.create_task(broker.realtime_update())
-            task.add_done_callback(_toast_for_submit)
+            try:
+                broker.buy(
+                    code=code, quantity=quantity, limit=limit, 
+                    trigger=trigger, exectype=exectype, valid=valid
+                )
+                broker.update(None, fetch_realtime())
+                broker.store(BROKER_PATH / f"{broker.brokid}.json")
+            except Exception as e:
+                st.toast(f"**{e}**", icon="❌")
+            else:
+                st.toast("**order submited**", icon="✅")
+                
     with subcol2:
         if st.button("sell", use_container_width=True):
-            broker.sell(
-                code=code, quantity=quantity, limit=limit,
-                trigger=trigger, exectype=exectype, valid=valid
-            )
-            task = asyncio.create_task(broker.realtime_update())
-            task.add_done_callback(_toast_for_submit)
+            try:
+                broker.sell(
+                    code=code, quantity=quantity, limit=limit,
+                    trigger=trigger, exectype=exectype, valid=valid
+                )
+                broker.update(None, fetch_realtime())
+                broker.store(BROKER_PATH / f"{broker.brokid}.json")
+            except Exception as e:
+                st.toast(f"**{e}**", icon="❌")
+            else:
+                st.toast("**order submited**", icon="✅")
 
 @st.fragment(run_every=REFRESH_INTERVAL)
 def display_cancel():
@@ -55,10 +62,10 @@ def display_transfer():
     broker = st.session_state.broker
     if st.button("transfer", use_container_width=True):
         broker.transfer(time=None, amount=amount)
-        broker.store(st.session_state.bpath)
+        broker.store(BROKER_PATH / f"{broker.brokid}.json")
         st.toast("**transfered**", icon="✅")
 
-async def display_bracket_transact():
+def display_bracket_transact():
     st.header("Bracket Transact")
     broker = st.session_state.broker
     file = st.file_uploader("*upload bracket orders*", type="xlsx")
@@ -81,10 +88,10 @@ async def display_bracket_transact():
                     elif sheet == "sell":
                         for _, row in pd.read_excel(f, sheet_name=sheet, dtype={"code": "str"}).iterrows():
                             broker.sell(**row)
-            task = asyncio.create_task(broker.realtime_update())
-            task.add_done_callback(_toast_for_submit)
+            broker.update(None, fetch_realtime())
+            broker.store(BROKER_PATH / f"{broker.brokid}.json")
 
-async def layout():
+def layout():
     st.title("TRANSACT")
     broker = st.session_state.get("broker")
     if broker is None:
@@ -93,12 +100,11 @@ async def layout():
     display_realtime()
     col1, col2 = st.columns(2)
     with col1:
-        await display_transact()
+        display_transact()
     with col2:
-        display_cancel()
         display_transfer()
-        await display_bracket_transact()
+        display_bracket_transact()
 
 
 if __name__ == "__page__":
-    asyncio.run(layout())
+    layout()

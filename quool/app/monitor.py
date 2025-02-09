@@ -1,13 +1,16 @@
 import asyncio
 import pandas as pd
 import streamlit as st
-from quool.app import fetch_realtime, BROKER_PATH, REFRESH_INTERVAL
+import plotly.subplots as sp
+import plotly.graph_objects as go
+from quool.app import fetch_realtime, BROKER_PATH, REFRESH_INTERVAL, read_market
 
 
 @st.fragment(run_every=REFRESH_INTERVAL)
-def display_monitor(_):
+def display_monitor(placeholder):
     market = fetch_realtime()
     broker = st.session_state.broker
+    broker.update(None, market)
     placeholder.empty()
     with placeholder.container():
         orders = broker.orders
@@ -38,19 +41,17 @@ def display_monitor(_):
             st.dataframe(orders)
         else:
             st.write("Empty")
-    broker.store(st.session_state.bpath)
+    broker.store(BROKER_PATH / f"{broker.brokid}.json")
 
-async def layout():
+def layout():
     st.title("BROKER STATUS")
-    global placeholder
     placeholder = st.empty()
     broker = st.session_state.get("broker")
     if broker is None:
         st.warning("No broker selected")
         return
-    task = asyncio.create_task(broker.realtime_update())
-    task.add_done_callback(display_monitor)
-    display_monitor(None)
+    display_monitor(placeholder)
+
 
 if __name__ == "__page__":
-    asyncio.run(layout())
+    layout()
