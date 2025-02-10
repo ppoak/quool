@@ -16,7 +16,7 @@ except ImportError as e:
 def parsearg():
     parser = argparse.ArgumentParser()
     parser.add_argument('-r', "--refresh", type=int, default=5, help="refresh interval")
-    parser.add_argument('-p', "--root", type=str, default="asset", help="root path")
+    parser.add_argument('-p', "--root", type=str, default="app", help="root path")
     args = parser.parse_args()
     return args
 
@@ -122,3 +122,11 @@ def display_realtime():
             x=kline.index, y=kline.volume, name="volume"
         ), row=2, col=1)
         st.plotly_chart(fig)
+
+@st.dialog("Edit your strategy", width="large")
+def display_editor(code):
+    height = max(len(code.split("\n")) * 20, 68)
+    code = st.text_area(label="*edit your strategy*", value=code, height=height)
+    if st.button("save", use_container_width=True):
+        st.session_state.spath.write_text(code)
+        st.rerun()

@@ -22,13 +22,6 @@ def main():
         }
     )
 
-    monitor = st.Page("monitor.py", title="Monitor", icon="📈")
-    transact = st.Page("transact.py", title="Transact", icon="💸")
-    runner = st.Page("runner.py", title="Runner", icon="💡")
-    performance = st.Page("performance.py", title="Performance", icon="📊")
-    pg = st.navigation([monitor, transact, runner, performance])
-    pg.run()
-
     selection = st.sidebar.selectbox(f"*select broker*", [broker.stem for broker in BROKER_PATH.glob("*.json")], index=0)
     if selection is not None:
         st.session_state.broker = Broker.restore(path=BROKER_PATH / f"{selection}.json")
@@ -38,7 +31,7 @@ def main():
         st.sidebar.write(f"CURRENT BROKER: **{st.session_state.broker.brokid}**")
     
     name = st.sidebar.text_input("*input broker id*", value="default")
-    col1, col2 = st.sidebar.columns(2)
+    col1, col2, col3 = st.sidebar.columns(3)
     if col1.button("*create*", use_container_width=True):
         broker = Broker(brokid=name)
         broker.store(BROKER_PATH / f"{name}.json")
@@ -46,7 +39,18 @@ def main():
         st.rerun()
     if col2.button("*save*", use_container_width=True):
         st.session_state.broker.store(BROKER_PATH / f"{name}.json")
+    if col3.button("*delete*", use_container_width=True):
+        st.session_state.broker = None
+        (BROKER_PATH / f"{name}.json").unlink()
+        st.rerun()
     
+    monitor = st.Page("monitor.py", title="Monitor", icon="📈")
+    transact = st.Page("transact.py", title="Transact", icon="💸")
+    runner = st.Page("runner.py", title="Runner", icon="▶️")
+    performance = st.Page("performance.py", title="Performance", icon="📊")
+    strategy = st.Page("strategy.py", title="Strategy", icon="💡")
+    pg = st.navigation([monitor, transact, strategy, runner, performance])
+    pg.run()
     with st.sidebar.container():
         update_broker()
 

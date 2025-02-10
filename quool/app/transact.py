@@ -19,19 +19,19 @@ def display_transact():
     subcol1, subcol2 = st.columns(2)
     with subcol1:
         if st.button("buy", use_container_width=True):
-            broker.buy(
+            order = broker.buy(
                 code=code, quantity=quantity, limit=limit, 
                 trigger=trigger, exectype=exectype, valid=valid
             )
-            st.toast("**order placed**", icon="✅")
+            st.toast(f"**{order}**", icon="✅")
                 
     with subcol2:
         if st.button("sell", use_container_width=True):
-            broker.sell(
+            order = broker.sell(
                 code=code, quantity=quantity, limit=limit,
                 trigger=trigger, exectype=exectype, valid=valid
             )
-            st.toast("**order placed**", icon="✅")
+            st.toast(f"**{order}**", icon="✅")
 
 @st.fragment(run_every=REFRESH_INTERVAL)
 def display_cancel():
@@ -60,21 +60,28 @@ def display_bracket_transact():
     file = st.file_uploader("*upload bracket orders*", type="xlsx")
     subcol1, subcol2 = st.columns(2)
     with subcol1:
-        st.download_button("*download template*", 
-            data=(TEMPLATE_PATH / "bracket_template.xlsx").read_bytes(), 
+        bio = BytesIO()
+        writer = pd.ExcelWriter(bio, engine="xlsxwriter")
+        pd.DataFrame(
+            columns=["code", "quantity", "limit", "trigger", "exectype", "valid", "side"]
+        ).to_excel(writer, sheet_name="bracket transaction", index=False)
+        writer._save()
+        bio.seek(0)
+        st.download_button(
+            "*download template*", data=bio.read(), 
             file_name="bracket_template.xlsx", use_container_width=True
         )
     with subcol2:
         if file is None:
             return
-        with pd.ExcelFile(BytesIO(file.getvalue())) as f:
-            for sheet in f.sheet_names:
-                if sheet == "buy":
-                    for _, row in pd.read_excel(f, sheet_name=sheet, dtype={"code": "str"}).iterrows():
-                        broker.buy(**row)
-                elif sheet == "sell":
-                    for _, row in pd.read_excel(f, sheet_name=sheet, dtype={"code": "str"}).iterrows():
-                        broker.sell(**row)
+        data = pd.read_excel(BytesIO(file.getvalue()))
+        for i, item in data.iterrows():
+            if item["side"] == "buy":
+                item.pop("side")
+                broker.buy(**item)
+            elif item["side"] == "sell":
+                item.pop("side")
+                broker.sell(**item)
 
 def layout():
     st.title("TRANSACT")

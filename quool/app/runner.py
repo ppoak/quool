@@ -1,11 +1,15 @@
 import importlib
+import traceback
 import pandas as pd
 import streamlit as st
 from io import BytesIO
 from pathlib import Path
 from quool import Broker
 from joblib import Parallel, delayed
-from quool.app import STRATEGIES_PATH, LOG_PATH, BROKER_PATH, TEMPLATE_PATH, REFRESH_INTERVAL, read_market
+from quool.app import (
+    read_market, display_editor,
+    STRATEGIES_PATH, LOG_PATH, BROKER_PATH, TEMPLATE_PATH, REFRESH_INTERVAL,
+)
 
 
 @delayed
@@ -13,12 +17,12 @@ def run_strategy(name, market, init, update, stop, since, params):
     timepoints = market.index.get_level_values(0).unique()
     broker = Broker(market, brokid=name)
     if init is not None:
-        init(broker, **params)
+        init(broker=broker, time=timepoints[0], **params)
     for tp in timepoints:
         broker.update(tp)
         update(time=tp, broker=broker, **params)
     if stop is not None:
-        stop(broker, **params)
+        stop(broker=broker, time=timepoints[0], **params)
     broker.store(BROKER_PATH / f"{broker.brokid}.json", since)
 
 def display_market():
@@ -31,20 +35,15 @@ def display_market():
         try:
             market = read_market(begin, end)
             st.session_state.market = market
-            st.toast("Market loaded", icon="✅")
         except Exception as e:
             st.toast(f"Error loading market: {e}", icon="❌")
     error_nomarket.empty()
-
-def display_creator():
-    st.header("Strategies Creator")
 
 def display_selector():
     st.header("Strategies Selector")
     strategies = list(STRATEGIES_PATH.glob("*.py"))
     strategy = st.selectbox("*Select an existing strategy*", strategies, format_func=lambda x: x.stem)
     if strategy is not None:
-        st.toast("Strategy selected", icon="✅")
         st.session_state.spath = strategy
     else:
         st.error("No strategy selected", icon="❌")
@@ -60,10 +59,15 @@ def display_strategy():
         return
     else:
         market = st.session_state.market
-        module = importlib.import_module(
-            str(strategy).replace('/', '.').replace('\\', '.')[:-3]
-        )
-        importlib.reload(module)
+        try:
+            module = importlib.import_module(
+                str(strategy).replace('/', '.').replace('\\', '.')[:-3]
+            )
+            importlib.reload(module)
+        except Exception as e:
+            st.error(f"Error loading strategy: {e}")
+            st.error('\n'.join([trace.replace("^", "") for trace in traceback.format_exception(type(e), e, e.__traceback__)]))
+            return
         if (
             not hasattr(module, "update") or not hasattr(module, "params")
             or not callable(getattr(module, "update")) or not callable(getattr(module, "params"))
@@ -130,11 +134,9 @@ def display_status():
 def layout():
     st.title("STRATEGIES RUNNER")
     display_market()
-    col1, col2 = st.columns(2)
-    with col1:
-        display_creator()
-    with col2:
-        display_selector()
+    display_selector()
+    if st.button("edit", use_container_width=True):
+        display_editor(st.session_state.spath.read_text())
     display_strategy()
 
 
