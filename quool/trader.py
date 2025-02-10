@@ -601,10 +601,11 @@ class Broker:
         trade_log = [order.to_dict() for order in orders]
         return pd.DataFrame(trade_log)
     
-    def dump(self, history: bool = True) -> dict:
+    def dump(self, since: pd.Timestamp = None) -> dict:
         """
         Serialize the Broker instance to a dictionary for JSON storage.
         """
+        since = pd.to_datetime(since or "now")
         ledger = self.ledger
         orders = self.orders
         pendings = self.pendings
@@ -614,8 +615,14 @@ class Broker:
             "brokid": self.brokid,
             "balance": self._balance,
             "positions": self._positions,
-            "ledger": ledger.to_dict(orient="records") if history else [],
-            "orders": orders.to_dict(orient="records") if history else [],
+            "ledger": (
+                ledger[pd.to_datetime(ledger["time"]) >= since].to_dict(orient="records")
+                if not ledger.empty else []
+            ),
+            "orders": (
+                orders[pd.to_datetime(orders["cretime"]) >= since].to_dict(orient="records")
+                if not orders.empty else []
+            ),
             "pendings": pendings.to_dict(orient="records"),
             "commission": self.commission,
             "time": self._time.isoformat() if self._time else None,
@@ -660,7 +667,7 @@ class Broker:
 
         return broker
 
-    def store(self, path: str, history: bool = True) -> None:
+    def store(self, path: str, since: pd.Timestamp = None) -> None:
         """
         Stores the broker's state to a JSON file.
 
@@ -668,7 +675,7 @@ class Broker:
             path (str): The file path where the broker's state will be saved.
         """
         with open(path, "w") as f:
-            json.dump(self.dump(history=history), f, indent=4, ensure_ascii=False)
+            json.dump(self.dump(since=since), f, indent=4, ensure_ascii=False)
         
     @classmethod
     def restore(cls, path: str, market: pd.DataFrame = None) -> None:
