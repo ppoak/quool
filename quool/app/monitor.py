@@ -1,8 +1,5 @@
-import asyncio
 import pandas as pd
 import streamlit as st
-import plotly.subplots as sp
-import plotly.graph_objects as go
 from quool.app import fetch_realtime, BROKER_PATH, REFRESH_INTERVAL, read_market
 
 
@@ -10,7 +7,6 @@ from quool.app import fetch_realtime, BROKER_PATH, REFRESH_INTERVAL, read_market
 def display_monitor(placeholder):
     market = fetch_realtime()
     broker = st.session_state.broker
-    broker.update(None, market)
     placeholder.empty()
     with placeholder.container():
         orders = broker.orders
@@ -33,12 +29,12 @@ def display_monitor(placeholder):
             st.write("Empty")
         st.header("Pendings")
         if not pendings.empty:
-            st.dataframe(pendings)
+            st.dataframe(pendings, hide_index=True)
         else:
             st.write("Empty")
         st.header("History")
         if not orders.empty:
-            st.dataframe(orders)
+            st.dataframe(orders, hide_index=True)
         else:
             st.write("Empty")
     broker.store(BROKER_PATH / f"{broker.brokid}.json")

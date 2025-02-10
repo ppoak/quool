@@ -49,9 +49,15 @@ class Broker(QBroker):
             while self._pendings.qsize() > 0:
                 self.update(None, fetch_realtime())
 
-def fetch_realtime(format=True):
+def fetch_realtime(prerealtime: pd.DataFrame = None):
     data = ak.stock_zh_a_spot_em().set_index("代码", drop=True).drop(columns="序号")
-    if format:
+    if prerealtime is not None:
+        data["oepn"] = prerealtime["close"]
+        data["high"] = prerealtime["close"].max(prerealtime["high"])
+        data["low"] = prerealtime["close"].min(prerealtime["low"])
+        data["close"] = data["最新价"]
+        data["volume"] = data["成交量"] - prerealtime["成交量"]
+    else:
         data["open"] = data["最新价"]
         data["high"] = data["最新价"]
         data["low"] = data["最新价"]
@@ -82,13 +88,22 @@ def read_market(begin, end):
     else:
         return None
 
-def save_broker():
-    st.session_state.broker.store(BROKER_PATH / f"{st.session_state.broker.name}.json")
+@st.fragment(run_every=REFRESH_INTERVAL)
+def update_broker():
+    broker = st.session_state.get('broker')
+    if broker is None:
+        st.toast("No broker selected", icon="❌")
+    elif is_trading_time():
+        broker.update(None, fetch_realtime())
+        broker.store(BROKER_PATH / f"{broker.brokid}.json")
+    else:
+        broker.update(None, pd.DataFrame())
+        broker.store(BROKER_PATH / f"{broker.brokid}.json")
 
 @st.fragment(run_every=REFRESH_INTERVAL)
 def display_realtime():
     st.header("Realtime")
-    realtime = fetch_realtime(format=False)
+    realtime = fetch_realtime()
     selection = st.dataframe(realtime, selection_mode="single-row", on_select='rerun')
     if selection['selection']["rows"]:
         code = realtime.index[selection['selection']["rows"][0]]

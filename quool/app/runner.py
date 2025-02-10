@@ -9,10 +9,9 @@ from quool.app import STRATEGIES_PATH, LOG_PATH, BROKER_PATH, TEMPLATE_PATH, REF
 
 
 @delayed
-def run_strategy(name, market, init, update, stop, history, params):
+def run_strategy(name, market, init, update, stop, since, params):
     timepoints = market.index.get_level_values(0).unique()
-    broker = Broker(market)
-    broker.name = name
+    broker = Broker(market, brokid=name)
     if init is not None:
         init(broker, **params)
     for tp in timepoints:
@@ -20,13 +19,13 @@ def run_strategy(name, market, init, update, stop, history, params):
         update(time=tp, broker=broker, **params)
     if stop is not None:
         stop(broker, **params)
-    broker.store(BROKER_PATH / f"{broker.name}.json", history)
+    broker.store(BROKER_PATH / f"{broker.brokid}.json", since)
 
 def display_market():
     error_nomarket = st.empty()
     if st.session_state.get("market") is None:
         error_nomarket.error("No market selected")
-    begin = st.date_input("*select begin date for backtesting*", value="2015-01-01")
+    begin = st.date_input("*select begin date for backtesting*", value=pd.to_datetime("now") - pd.Timedelta(days=30))
     end = st.date_input("*select end date for backtesting*")
     with st.spinner("Loading market...", show_time=True):
         try:
@@ -45,10 +44,10 @@ def display_selector():
     strategies = list(STRATEGIES_PATH.glob("*.py"))
     strategy = st.selectbox("*Select an existing strategy*", strategies, format_func=lambda x: x.stem)
     if strategy is not None:
-        st.toast("strategy selected", icon="✅")
+        st.toast("Strategy selected", icon="✅")
         st.session_state.spath = strategy
     else:
-        st.error("no strategy selected", icon="❌")
+        st.error("No strategy selected", icon="❌")
 
 def display_strategy():
     st.header(f"Strategy")
@@ -86,7 +85,7 @@ def display_strategy():
                 file_name="param_template.xlsx"
             )
             file = st.file_uploader("*upload param file*", type="xlsx")
-        history = st.checkbox("*save history*", value=True)
+        since = st.date_input("*save since*", value=market.index.levels[0].min())
         if st.button("Run", use_container_width=True):
             if file is not None:
                 st.session_state.param = pd.read_excel(BytesIO(file.getvalue()), index_col=0).to_dict(orient="index")
@@ -105,7 +104,7 @@ def display_strategy():
                     init=init,
                     update=update,
                     stop=stop,
-                    history=history,
+                    since=since,
                     params=para,
                 ) for name, para in st.session_state.param.items())
             status.empty()
