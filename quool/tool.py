@@ -23,6 +23,7 @@ def setup_logger(
     stream: bool = True, 
     level: str = logging.INFO, 
     style: int = 1,
+    replace: bool = False,
     clear: bool = False,
     rotation: str = None, 
     max_bytes: int = None, 
@@ -58,7 +59,10 @@ def setup_logger(
     if file and clear:
         Path(file).write_text("")
     
-    logger = logging.getLogger(name)
+    if not replace:
+        logger = logging.getLogger(name)
+    else:
+        logger = logging.Logger(name, level=level)
     if logger.hasHandlers():
         return logger  # Avoid adding handlers multiple times
     
