@@ -8,7 +8,36 @@ from .manager import ParquetManager
 
 
 class Order:
-    """Represents a financial order with attributes and state management."""
+    """Represents a financial order with attributes and state management.
+    
+    Class Attributes:
+        CREATED (str): Order status indicating the order has been created.
+        SUBMITTED (str): Order status indicating the order has been submitted.
+        PARTIAL (str): Order status indicating the order has been partially filled.
+        FILLED (str): Order status indicating the order has been fully filled.
+        CANCELED (str): Order status indicating the order has been canceled.
+        EXPIRED (str): Order status indicating the order has expired.
+        REJECTED (str): Order status indicating the order has been rejected.
+        MARKET (str): Order type indicating a market order.
+        LIMIT (str): Order type indicating a limit order.
+        STOP (str): Order type indicating a stop order.
+        STOPLIMIT (str): Order type indicating a stop-limit order.
+        BUY (str): Order side indicating a buy order.
+        SELL (str): Order side indicating a sell order.
+
+    Attributes:
+        broker (Broker): The broker instance associated with the order.
+        code (str): The code of the financial instrument.
+        quantity (int): The number of units for the order.
+        trigger (float): The price for triggering a limit order.
+        limit (float): The price for limit orders.
+        ordtype (str): The type of order ('MARKET' or 'LIMIT' or 'STOP' or 'STOPLIMIT').
+        side (str): The side of the order ('BUY' or 'SELL').
+        cretime (str): The creation timestamp.
+        exetime (str): The execution timestamp.
+        status (str): The current status of the order.
+        ordid (str): The unique identifier for the order.
+    """
 
     # Order statuses
     CREATED = "CREATED"
@@ -213,6 +242,46 @@ class Order:
 
 
 class Broker:
+
+    """Broker class is a interface for managing trading operations and market matching.
+
+    Attributes:
+        market (pd.DataFrame): The market data for trading. which contains a standard format:
+            1. Index:
+                - index level 0 (pd.DatetimeIndex): The timestamp of the market data.
+                - index level 1 (pd.Index): The stock codes and their corresponding levels.
+            2. Columns:
+                - 'open': The opening price of the stock.
+                - 'high': The highest price of the stock.
+                - 'low': The lowest price of the stock.
+                - 'close': The closing price of the stock.
+                - 'volume': The trading volume of the stock.
+            You can acquire the data with `market.loc[time]` for a certain cross-section market data
+        
+        brokid (str): The unique identifier for the broker instance. If not provided when initializing, uuid will be generated.
+        commission (float): The commission rate for transactions. Defaults to 0.001 (0.1%).
+        time (pd.Timestamp): The current time of the broker. Indicating the latest time when broker called `update()`.
+        balance (float): The current balance of the broker.
+        positions (pd.Series): The current positions held by the broker. A pd.Series with code index and share value.
+        pendings (pd.DataFrame): The pending orders of the broker. A pd.DataFrame with detailed information of each order.
+            For detailed field of the DataFrame, please refer to attributes of `Order` class.
+        orders (pd.DataFrame): The history of processed orders. A pd.DataFrame with detailed information of each order.
+            For detailed field of the DataFrame, please refer to attributes of `Order` class.
+        ledger (pd.DataFrame): The history of balance changes. A pd.DataFrame with detailed information of each balance change.
+
+    Methods:
+        update(time: pd.Timestamp, market: pd.DataFrame): Update the broker's state to the given time.
+        buy(code: str, quantity: float, limit: float, trigger: float, exectype: str, valid: pd.Timestamp): Place a buy order.
+            limit: The limit price for the order. Only fits for `exectype = "LIMIT"` or `exectype = "STOP_LIMIT"`.
+            trigger: The trigger price for the order. Only fits for `exectype = "STOP"` or `exectype = "STOP_LIMIT"`.
+            exectype: The execution type of the order. Only fits for `exectype = "MARKET"` or `exectype = "LIMIT"` or `exectype = "STOP"` or `exectype = "STOP_LIMIT"`.
+            valid: The validity period of the order. You should provide it in pd.Timestamp format.
+        sell(code: str, quantity: float, limit: float, trigger: float, exectype: str, valid: pd.Timestamp): Place a sell order.
+            see more information in `buy()`.
+        cancel(orderid: str): Cancel the order with the given orderid.
+        close(code: str, limit: float, trigger: float, exectype: str, valid: pd.Timestamp): Close the position with the given code.
+            see more information in `buy()`.
+    """
 
     def __init__(
         self,
@@ -605,7 +674,7 @@ class Broker:
         """
         Serialize the Broker instance to a dictionary for JSON storage.
         """
-        since = pd.to_datetime(since or "now")
+        since = pd.to_datetime(since or 0)
         ledger = self.ledger
         orders = self.orders
         pendings = self.pendings
