@@ -339,6 +339,19 @@ class Broker:
         return pd.Series(self._positions, name="positions")
     
     @property
+    def value(self) -> float:
+        """
+        Returns the current value of the broker's portfolio.
+
+        Returns:
+            float: The current value of the portfolio.
+        """
+        if self.market is not None:
+            return self.balance + (self.positions * self.market.loc[self._time, "close"]).sum()
+        else:
+            raise Exception("Market data is not available.")
+    
+    @property
     def pendings(self) -> list:
         """
         Returns the list of orders submitted by the broker.
