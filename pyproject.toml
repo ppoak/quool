@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quool"
-version = "7.0.4"
+version = "7.0.5"
 description = "Quantitative Toolkit - a helper in quant developing"
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [

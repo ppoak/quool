@@ -16,4 +16,4 @@ from .trader import (
 
 import quool.app as app
 
-__version__ = "7.0.4"
+__version__ = "7.0.5"
