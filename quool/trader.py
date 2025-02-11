@@ -245,19 +245,7 @@ class Broker:
 
     """Broker class is a interface for managing trading operations and market matching.
 
-    Attributes:
-        market (pd.DataFrame): The market data for trading. which contains a standard format:
-            1. Index:
-                - index level 0 (pd.DatetimeIndex): The timestamp of the market data.
-                - index level 1 (pd.Index): The stock codes and their corresponding levels.
-            2. Columns:
-                - 'open': The opening price of the stock.
-                - 'high': The highest price of the stock.
-                - 'low': The lowest price of the stock.
-                - 'close': The closing price of the stock.
-                - 'volume': The trading volume of the stock.
-            You can acquire the data with `market.loc[time]` for a certain cross-section market data
-        
+    Attributes:        
         brokid (str): The unique identifier for the broker instance. If not provided when initializing, uuid will be generated.
         commission (float): The commission rate for transactions. Defaults to 0.001 (0.1%).
         time (pd.Timestamp): The current time of the broker. Indicating the latest time when broker called `update()`.
@@ -271,6 +259,14 @@ class Broker:
 
     Methods:
         update(time: pd.Timestamp, market: pd.DataFrame): Update the broker's state to the given time.
+            market (pd.DataFrame): The market data for trading. which contains a standard format:
+                1. Index (pd.Index): The stock codes and their corresponding levels.
+                2. Columns:
+                    - 'open': The opening price of the stock.
+                    - 'high': The highest price of the stock.
+                    - 'low': The lowest price of the stock.
+                    - 'close': The closing price of the stock.
+                    - 'volume': The trading volume of the stock.
         buy(code: str, quantity: float, limit: float, trigger: float, exectype: str, valid: pd.Timestamp): Place a buy order.
             limit: The limit price for the order. Only fits for `exectype = "LIMIT"` or `exectype = "STOP_LIMIT"`.
             trigger: The trigger price for the order. Only fits for `exectype = "STOP"` or `exectype = "STOP_LIMIT"`.
@@ -281,11 +277,12 @@ class Broker:
         cancel(orderid: str): Cancel the order with the given orderid.
         close(code: str, limit: float, trigger: float, exectype: str, valid: pd.Timestamp): Close the position with the given code.
             see more information in `buy()`.
+        get_value(market: pd.DataFrame): Calculate the current value of the broker's portfolio.
+            market (pd.DataFrame): The market data for trading. please refer to `update()` for more information.
     """
 
     def __init__(
         self,
-        market: pd.DataFrame = None,
         brokid: str = None,
         commission: float = 0.001,
     ):
@@ -297,7 +294,6 @@ class Broker:
             principle (float): Initial cash balance for the broker. Defaults to 1,000,000.
             commission (float): Commission rate for transactions. Defaults to 0.001 (0.1%).
         """
-        self.market = market
         self.brokid = brokid or str(uuid.uuid4())
         self._time = None
         self._balance = 0
@@ -307,6 +303,7 @@ class Broker:
         self._ledger = [] # Key parameter to restore the state of the broker
         self._orders = []  # History of processed orders
         self._ordict = {}
+        self.container = {}
 
     @property
     def time(self) -> pd.Timestamp:
@@ -337,19 +334,6 @@ class Broker:
             dict: A dictionary of positions with stock codes as keys and quantities as values.
         """
         return pd.Series(self._positions, name="positions")
-    
-    @property
-    def value(self) -> float:
-        """
-        Returns the current value of the broker's portfolio.
-
-        Returns:
-            float: The current value of the portfolio.
-        """
-        if self.market is not None:
-            return self.balance + (self.positions * self.market.loc[self._time, "close"]).sum()
-        else:
-            raise Exception("Market data is not available.")
     
     @property
     def pendings(self) -> list:
@@ -536,33 +520,15 @@ class Broker:
             "commission": commission,
         })
 
-    def _load(self, market: pd.DataFrame = None) -> pd.DataFrame:
-        """
-        Loads market data required for processing orders.
-
-        Returns:
-            pd.DataFrame: A DataFrame containing market data (open, high, low, close, volume) indexed by stock codes.
-        """
-        if not self.pendings:
-            if self._time is None and market is not None:
-                self._time = pd.to_datetime('now')
-                market = market.copy()
-            elif self._time is not None and self.market is not None:
-                market = self.market.loc[self._time]
-            else:
-                raise ValueError("No market data source available.")
-        return market
-
-    def update(self, time: str, market: pd.DataFrame = None) -> None:
+    def update(self, time: str, market: pd.DataFrame) -> None:
         """
         Updates the broker's state for a new trading day.
 
         Args:
             time (str): The current trading day.
         """
-        self._time = pd.to_datetime(time)
+        self._time = pd.to_datetime(time or 'now')
         self._pendings.put(None)  # Placeholder for end-of-day processing.
-        market = self._load(market)
         order = self._pendings.get()
         while order is not None:
             self._match(order, market)
@@ -657,6 +623,15 @@ class Broker:
                 self._positions[order.code] -= quantity
                 if self._positions[order.code] == 0:
                     del self._positions[order.code]
+    
+    def get_value(self, market: pd.DataFrame) -> float:
+        """
+        Returns the current value of the broker's portfolio.
+
+        Returns:
+            float: The current value of the portfolio.
+        """
+        return self.balance + (self.positions * market["close"]).sum()
 
     def get_order(self, ordid: str) -> Order:
         """
@@ -698,20 +673,21 @@ class Broker:
             "balance": self._balance,
             "positions": self._positions,
             "ledger": (
-                ledger[pd.to_datetime(ledger["time"]) >= since].to_dict(orient="records")
+                ledger[pd.to_datetime(ledger["time"]) >= since].replace(np.nan, None).to_dict(orient="records")
                 if not ledger.empty else []
             ),
             "orders": (
-                orders[pd.to_datetime(orders["cretime"]) >= since].to_dict(orient="records")
+                orders[pd.to_datetime(orders["cretime"]) >= since].replace(np.nan, None).to_dict(orient="records")
                 if not orders.empty else []
             ),
-            "pendings": pendings.to_dict(orient="records"),
+            "pendings": pendings.replace(np.nan, None).to_dict(orient="records"),
             "commission": self.commission,
             "time": self._time.isoformat() if self._time else None,
+            "container": self.container,
         }
     
     @classmethod
-    def load(cls, data: dict, market: pd.DataFrame) -> 'Broker':
+    def load(cls, data: dict) -> 'Broker':
         """
         Restores a Broker instance from a dictionary.
         Market data must be provided externally.
@@ -724,7 +700,7 @@ class Broker:
             Broker: The restored Broker instance.
         """
         # Initialize Broker with external market data and commission
-        broker = cls(market=market, brokid=data["brokid"], commission=data["commission"])
+        broker = cls(brokid=data["brokid"], commission=data["commission"])
 
         # Restore basic attributes
         broker._time = pd.Timestamp(data["time"]) if data["time"] else None
@@ -746,6 +722,11 @@ class Broker:
             order = Order.load(order_data, broker)
             broker._pendings.put(order)
             broker._ordict[order.ordid] = order
+        
+        # Extra fields
+        for key, value in data.items():
+            if key not in ["brokid", "commission", "time", "balance", "positions", "ledger", "orders", "pendings"]:
+                setattr(broker, key, value)
 
         return broker
 
@@ -760,7 +741,7 @@ class Broker:
             json.dump(self.dump(since=since), f, indent=4, ensure_ascii=False)
         
     @classmethod
-    def restore(cls, path: str, market: pd.DataFrame = None) -> None:
+    def restore(cls, path: str) -> None:
         """
         Restores the broker's state from a JSON file.
 
@@ -769,10 +750,10 @@ class Broker:
         """
         with open(path, "r") as f:
             data = json.load(f)
-            broker = cls.load(data, market)
+            broker = cls.load(data)
         return broker
 
-    def report(self):
+    def report(self, market: pd.DataFrame):
         """
         Generates a report of the broker's performance.
 
@@ -780,7 +761,7 @@ class Broker:
             dict: A dictionary containing the broker's performance metrics.
         """
         ledger = self.ledger.set_index(["time", "code"]).sort_index()
-        prices = self.market["close"].unstack("code")
+        prices = market["close"].unstack("code")
 
         # cash, position, trades, total_value, market_value calculation 
         cash = ledger.groupby("time")[["amount", "commission"]].sum()
@@ -821,7 +802,7 @@ class Broker:
             "trades": trades,
         }
 
-    def evaluate(self, benchmark: pd.Series = None):
+    def evaluate(self, market: pd.DataFrame, benchmark: pd.Series = None):
         """
         Evaluates the broker's performance based on its current state.
 
@@ -831,7 +812,7 @@ class Broker:
         Returns:
             dict: A dictionary containing the broker's performance metrics.
         """
-        report = self.report()
+        report = self.report(market)
         return {
             "evaluation": evaluate(
                 report["values"]["total"], 

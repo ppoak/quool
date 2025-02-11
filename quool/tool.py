@@ -210,7 +210,11 @@ def evaluate(
     if trades is not None and not trades.empty:
         evaluation["position_duration(days)"] = trades["duration"].mean()
         profit = trades["close_amount"] - trades["open_amount"]
-        evaluation["trade_win_rate(%)"] = profit[profit > 0].count() / profit.count() * 100
+        evaluation["trade_win_rate(%)"] = (
+            profit[profit > 0].count() / profit.count() * 100
+            if profit.count() != 0
+            else np.nan
+        )
         evaluation["trade_return(%)"] = profit.sum() / trades["open_amount"].sum() * 100
     else:
         evaluation["position_duration(days)"] = np.nan
