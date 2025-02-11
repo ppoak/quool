@@ -1,9 +1,9 @@
 import pandas as pd
 from io import BytesIO
 import streamlit as st
-from quool.app import (
+from .tool import (
     display_realtime,
-    BROKER_PATH, REFRESH_INTERVAL, TEMPLATE_PATH
+    BROKER_PATH, REFRESH_INTERVAL
 )
 
 
@@ -97,7 +97,3 @@ def layout():
         display_transfer()
         display_cancel()
         display_bracket_transact()
-
-
-if __name__ == "__page__":
-    layout()

@@ -470,10 +470,10 @@ class Emailer:
                     kwargs = {key: str(value).replace(">", "&gt;").replace("<", "&lt;") for key, value in kwargs.items()}
                     duration = end - begin
                     message = (
-                        "```" + f"\n{'\n'.join([trace.replace('^', '') for trace in traceback.format_exception(type(e), e, e.__traceback__)])}\n" + "```\n\n"
-                        f"> *Parameters: {args} {kwargs}*\n\n"
-                        f"> *Run from {begin} to {end} ({duration})*"
-                    )
+                        "```\n{'\n'.join([trace.replace('^', '') for trace in traceback.format_exception(type(e), e, e.__traceback__)])}\n```\n\n"
+                        "> *Parameters: {args} {kwargs}*\n\n"
+                        "> *Run from {begin} to {end} ({duration})*"
+                    ).format(args=args, kwargs=kwargs, begin=begin, end=end, duration=duration)
                 finally:
                     emailer = Emailer(root_url=address.split('@')[-1])
                     subject = f"Task {task.__name__} {'success' if success else 'failure'}"

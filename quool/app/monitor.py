@@ -1,6 +1,6 @@
 import pandas as pd
 import streamlit as st
-from quool.app import BROKER_PATH, REFRESH_INTERVAL
+from .tool import BROKER_PATH, REFRESH_INTERVAL
 
 
 @st.fragment(run_every=REFRESH_INTERVAL)
@@ -46,7 +46,3 @@ def layout():
         st.warning("No broker selected")
         return
     display_monitor(placeholder)
-
-
-if __name__ == "__page__":
-    layout()
