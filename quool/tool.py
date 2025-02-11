@@ -470,7 +470,7 @@ class Emailer:
                     kwargs = {key: str(value).replace(">", "&gt;").replace("<", "&lt;") for key, value in kwargs.items()}
                     duration = end - begin
                     message = (
-                        f"```\n{'\n'.join([trace.replace('^', '') for trace in traceback.format_exception(type(e), e, e.__traceback__)])}\n```\n\n"
+                        "```" + f"\n{'\n'.join([trace.replace('^', '') for trace in traceback.format_exception(type(e), e, e.__traceback__)])}\n" + "```\n\n"
                         f"> *Parameters: {args} {kwargs}*\n\n"
                         f"> *Run from {begin} to {end} ({duration})*"
                     )
