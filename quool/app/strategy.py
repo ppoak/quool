@@ -3,7 +3,7 @@ import ollama
 import streamlit as st
 from pathlib import Path
 from quool import Order, Broker
-from quool.app import STRATEGIES_PATH, display_editor, update_strategy
+from .tool import STRATEGIES_PATH, display_editor, update_strategy
 
 
 def generate_strategy(model: str, prompt: str):
@@ -150,25 +150,21 @@ def display_creator():
             st.error(e)
     if st.session_state.get("strategy") is None:
         st.warning("no strategy selected")
-        return
     elif not clicked:
         code_placeholder = st.empty()
         code_placeholder.code(Path(st.session_state.strategy.__file__).read_text())
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("edit", use_container_width=True):
-            display_editor(Path(st.session_state.strategy.__file__).read_text())
-    with col2:
-        if st.button("discard", use_container_width=True):
-            Path(STRATEGIES_PATH / f"{name}.py").unlink()
-            st.session_state.strategy = None
-            code_placeholder.empty()
-            st.toast("strategy deleted", icon="✅")
+    if (STRATEGIES_PATH / f"{name}.py").exists():
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("edit", use_container_width=True):
+                display_editor((STRATEGIES_PATH / f"{name}.py").read_text(), name)
+        with col2:
+            if st.button("discard", use_container_width=True):
+                Path(STRATEGIES_PATH / f"{name}.py").unlink()
+                st.session_state.strategy = None
+                code_placeholder.empty()
+                st.toast("strategy deleted", icon="✅")
         
 def layout():
     st.title("STRATEGY CREATEOR")
     display_creator()
-
-
-if __name__ == "__page__":
-    layout()

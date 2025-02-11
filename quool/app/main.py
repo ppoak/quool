@@ -1,23 +1,23 @@
-import sys
-import pandas as pd
 import streamlit as st
-import quool.app as app
+import quool.app.tool as tool
 from quool import Broker
-from streamlit import runtime
-from streamlit.web import cli
-from quool.app import (
+from .monitor import layout as monitor_layout
+from .performance import layout as performance_layout
+from .runner import layout as runner_layout
+from .strategy import layout as strategy_layout
+from .transact import layout as transact_layout
+from .tool import (
     fetch_realtime,
     update_broker, update_market, update_strategy,
-    ASSET_PATH, BROKER_PATH, LOG_PATH,
-    TEMPLATE_PATH, STRATEGIES_PATH,
+    ASSET_PATH, BROKER_PATH, LOG_PATH, STRATEGIES_PATH,
 )
 
 
 def setup_styler():
     styler = st.sidebar.text_input("*input code styler*", value="raw2ricequant")
-    styler = getattr(app, styler, None)
+    styler = getattr(tool, styler, None)
     if styler is None:
-        st.sidebar.warning("No styler selected")
+        st.sidebar.warning(f"No styler named: {styler.__name__}")
     else:
         st.session_state.styler = styler
 
@@ -45,11 +45,11 @@ def setup_broker():
         st.rerun()
 
 def setup_page():
-    monitor = st.Page("monitor.py", title="Monitor", icon="📈")
-    transact = st.Page("transact.py", title="Transact", icon="💸")
-    runner = st.Page("runner.py", title="Runner", icon="▶️")
-    performance = st.Page("performance.py", title="Performance", icon="📊")
-    strategy = st.Page("strategy.py", title="Strategy", icon="💡")
+    monitor = st.Page(monitor_layout, title="Monitor", icon="📈", url_path="monitor")
+    transact = st.Page(transact_layout, title="Transact", icon="💸", url_path="transact")
+    runner = st.Page(runner_layout, title="Runner", icon="▶️", url_path="runner")
+    performance = st.Page(performance_layout, title="Performance", icon="📊", url_path="performance")
+    strategy = st.Page(strategy_layout, title="Strategy", icon="💡", url_path="strategy")
     pg = st.navigation([monitor, transact, strategy, runner, performance])
     pg.run()
 
@@ -59,7 +59,7 @@ def setup_market():
         st.session_state.timepoints = st.session_state.market.index.get_level_values(0).unique()
 
 def setup_strategy():
-    if st.session_state.broker is None:
+    if st.session_state.get('broker') is None:
         st.sidebar.warning("No broker selected")
         return
     
@@ -105,7 +105,11 @@ def setup_strategy():
         (STRATEGIES_PATH / f"{selection}.py").unlink()
         st.rerun()
 
-def main():
+def layout():
+    ASSET_PATH.mkdir(parents=True, exist_ok=True)
+    BROKER_PATH.mkdir(parents=True, exist_ok=True)
+    STRATEGIES_PATH.mkdir(parents=True, exist_ok=True)
+    LOG_PATH.mkdir(parents=True, exist_ok=True)
     setup_styler()
     setup_broker()
     setup_market()
@@ -113,16 +117,3 @@ def main():
     setup_page()
     with st.sidebar.container():
         update_broker()
-
-
-if __name__ == "__main__":
-    ASSET_PATH.mkdir(parents=True, exist_ok=True)
-    BROKER_PATH.mkdir(parents=True, exist_ok=True)
-    STRATEGIES_PATH.mkdir(parents=True, exist_ok=True)
-    TEMPLATE_PATH.mkdir(parents=True, exist_ok=True)
-    LOG_PATH.mkdir(parents=True, exist_ok=True)
-    if runtime.exists():
-        main()
-    else:
-        sys.argv = ["streamlit", "run", __file__]
-        cli.main()

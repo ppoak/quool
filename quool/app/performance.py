@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 import plotly.subplots as sp
 import plotly.graph_objects as go
-from quool.app import read_market, fetch_realtime
+from .tool import read_market
 
 
 def display_curve(values):
@@ -42,11 +42,17 @@ def display_evaluation(evaluation, trades):
         st.metric("Max Drawdown", f"{evaluation['max_drawdown(%)']:.2f}%")
         st.metric("Alpha", f"{evaluation['alpha(%)']:.2f}%")
         st.metric("Trade Win Rate", f"{evaluation['trade_win_rate(%)']:.2}%")
-        st.metric("Position Duration", f"{evaluation['position_duration(days)'].days:.2f} days")
+        st.metric("Position Duration", 
+            f"{evaluation['position_duration(days)'].days 
+            if isinstance(evaluation['position_duration(days)'], pd.Timedelta) else 0:.2f} days"
+        )
         st.metric("Trade Return", f"{evaluation['trade_return(%)']:.2}%")
     with cols[1]:
         st.metric("Annual Return", f"{evaluation['annual_return(%)']:.2f}%")
-        st.metric("Max Drawdown Period", f"{evaluation['max_drawdown_period'].days} days")
+        st.metric("Max Drawdown Period", f"{
+            evaluation['max_drawdown_period'].days
+            if isinstance(evaluation['max_drawdown_period'], pd.Timedelta) else 0:
+        } days")
         st.metric("Annual Volatility", f"{evaluation['annual_volatility(%)']:.2f}%")
         st.metric("Beta", f"{evaluation['beta']:.2f}")
         st.metric("Excess Return", f"{evaluation['excess_return(%)']:.2f}%")
@@ -80,7 +86,3 @@ def display_performance():
 def layout():
     st.title("PERFORMANCE")
     display_performance()
-
-
-if __name__ == "__page__":
-    layout()

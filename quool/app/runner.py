@@ -1,13 +1,12 @@
-import re
 import pandas as pd
 import streamlit as st
 from io import BytesIO
 from pathlib import Path
 from joblib import Parallel, delayed
 from quool import Broker, setup_logger
-from quool.app import (
-    read_market, display_editor, update_strategy,
-    STRATEGIES_PATH, LOG_PATH, BROKER_PATH, TEMPLATE_PATH, REFRESH_INTERVAL,
+from .tool import (
+    read_market, update_strategy,
+    STRATEGIES_PATH, LOG_PATH, BROKER_PATH
 )
 
 
@@ -121,12 +120,7 @@ def display_strategy():
 def layout():
     st.title("STRATEGIES RUNNER")
     display_market()
-    display_selector()
-    if st.button("edit", use_container_width=True):
-        display_editor(Path(st.session_state.strategy.__file__).read_text())
+    # display_selector()
+    # if st.button("edit", use_container_width=True):
+        # display_editor(Path(st.session_state.strategy.__file__).read_text())
     display_strategy()
-
-
-if __name__ == "__page__":
-    layout()
-
