@@ -1,4 +1,6 @@
 import sys
+import pandas as pd
+import importlib
 import streamlit as st
 from streamlit import runtime
 from streamlit.web import cli
@@ -29,7 +31,7 @@ def main():
         st.sidebar.warning("No broker selected")
     else:
         st.sidebar.write(f"CURRENT BROKER: **{st.session_state.broker.brokid}**")
-    
+
     name = st.sidebar.text_input("*input broker id*", value="default")
     col1, col2, col3 = st.sidebar.columns(3)
     if col1.button("*create*", use_container_width=True):
@@ -43,7 +45,7 @@ def main():
         st.session_state.broker = None
         (BROKER_PATH / f"{name}.json").unlink()
         st.rerun()
-    
+
     monitor = st.Page("monitor.py", title="Monitor", icon="📈")
     transact = st.Page("transact.py", title="Transact", icon="💸")
     runner = st.Page("runner.py", title="Runner", icon="▶️")
@@ -51,6 +53,32 @@ def main():
     strategy = st.Page("strategy.py", title="Strategy", icon="💡")
     pg = st.navigation([monitor, transact, strategy, runner, performance])
     pg.run()
+
+    if st.session_state.broker is None:
+        st.sidebar.warning("No broker selected")
+    else:
+        selection = st.sidebar.selectbox(f"*select strategy*", [strategy.stem for strategy in STRATEGIES_PATH.glob("*.py")], index=0)
+        if selection is not None:
+            st.session_state.strategy = STRATEGIES_PATH / f"{selection}.py"
+        if st.session_state.get("strategy") is None:
+            st.sidebar.warning("No strategy selected")
+        else:
+            st.sidebar.write(f"CURRENT STRATEGY: **{st.session_state.strategy.stem}**")
+            module = importlib.reload(importlib.import_module(
+                str(STRATEGIES_PATH / f"{st.session_state.strategy.stem}").replace("/", ".").replace("\\", ".")
+            ))
+            with st.sidebar.container():
+                params = getattr(module, "params")()
+            
+            col1, col2 = st.sidebar.columns(2)
+            if col1.button("*run*", use_container_width=True):
+                getattr(module, "init")(st.session_state.broker, pd.to_datetime('now'), **params)
+                st.rerun()
+            if col2.button("*remove*", use_container_width=True):
+                st.session_state.strategy = None
+                (STRATEGIES_PATH / f"{selection}.py").unlink()
+                st.rerun()
+
     with st.sidebar.container():
         update_broker()
 

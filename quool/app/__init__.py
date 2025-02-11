@@ -1,5 +1,6 @@
 try:
     import argparse
+    import importlib
     import pandas as pd
     import akshare as ak
     import streamlit as st
@@ -77,13 +78,13 @@ def fetch_kline(symbol, format=True):
         data.set_index("datetime", inplace=True)
     return data
 
-def read_market(begin, end):
+def read_market(begin, end, extra: str = None):
     if not (begin is None and end is None):
         begin = begin or pd.Timestamp("2015-01-01")
         end = end or pd.Timestamp.now()
         return ParquetManager("D:/Documents/DataBase/quotes_day").read(
             date__ge=begin, date__le=end, index=["date", "code"],
-            columns=["open", "high", "low", "close", "volume"]
+            columns=["open", "high", "low", "close", "volume"] + (extra.split(',') or [])
         )
     else:
         return None
@@ -91,12 +92,11 @@ def read_market(begin, end):
 @st.fragment(run_every=REFRESH_INTERVAL)
 def update_broker():
     broker = st.session_state.get('broker')
-    if broker is None:
-        st.toast("No broker selected", icon="❌")
-    elif is_trading_time():
+    strategy = st.session_state.get('strategy')
+    if broker is not None and is_trading_time():
         broker.update(None, fetch_realtime())
         broker.store(BROKER_PATH / f"{broker.brokid}.json")
-    else:
+    elif broker is not None:
         broker.update(None, pd.DataFrame())
         broker.store(BROKER_PATH / f"{broker.brokid}.json")
 

@@ -8,6 +8,12 @@ from quool.app import STRATEGIES_PATH, display_editor
 
 def generate_strategy(model: str, prompt: str):
     def _generate():
+        nonlocal prompt
+        refs = re.findall(r"<(.*)>", prompt)
+        for ref in refs:
+            ref_path = STRATEGIES_PATH / f"{ref}.py"
+            if ref_path.exists():
+                prompt = prompt.replace(f"<{ref}>", f"<reference>\n```\n{ref_path.read_text()}\n```\n</reference>")
         full_prompt = """
         Here is the docstring of `Broker` and `Order` in quantitive package `quool`:
 
@@ -113,7 +119,11 @@ def display_creator():
     text = st.text_area("*Write your strategy here*")
     col1, col2 = st.columns(2)
     with col1:
-        model = st.selectbox("*select a model*", [model.model for model in ollama.list().models])
+        try:
+            model = st.selectbox("*select a model*", [model.model for model in ollama.list().models])
+        except:
+            st.error("no model available")
+            return
     with col2:
         clicked = st.button("generate", use_container_width=True)
     strategy_placeholder = st.empty()

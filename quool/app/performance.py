@@ -22,13 +22,13 @@ def display_curve(values):
     fig.add_traces([
         go.Scatter(
             x=values.index, 
-            y=values["total"] / values["total"].cummax() - 1, 
+            y=(values["total"] / values["total"].cummax() - 1) * 100, 
             name="drawdown")
     ], rows=2, cols=1)
     fig.add_traces([
         go.Bar(
             x=values.index, 
-            y=values["turnover"], 
+            y=values["turnover"] * 100, 
             name="turnover"
         )
     ], rows=3, cols=1)
@@ -54,7 +54,7 @@ def display_evaluation(evaluation, trades, broker):
             "orders": len(broker.orders),
         }, name="status").to_frame().T, hide_index=True)
         st.subheader("Trades")
-        st.dataframe(trades, hide_index=True)
+        st.dataframe(trades)
 
 def display_performance():
     broker = st.session_state.broker
