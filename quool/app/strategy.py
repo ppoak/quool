@@ -3,7 +3,7 @@ import ollama
 import streamlit as st
 from pathlib import Path
 from quool import Order, Broker
-from quool.app import STRATEGIES_PATH, display_editor
+from quool.app import STRATEGIES_PATH, display_editor, update_strategy
 
 
 def generate_strategy(model: str, prompt: str):
@@ -63,22 +63,36 @@ def generate_strategy(model: str, prompt: str):
             return param
 
         def init(broker: Broker, time: pd.Timestamp, **kwargs):
-            # this function runs before the entire backtesting loop
-            # broker is a global variable, any variable can be attached to it and used in different functions
-            # creating a logger according to broker.brokid
-            logger = setup_logger(broker.brokid, stream=False, file=LOG_PATH / f"{{broker.brokid}}.log")
-            broker.logger = logger
+            '''
+            This function runs before the entire backtesting loop
+            Broker is a global variable, any variable can be attached to it and used in different functions
+            There are some preset for broker:
+                1. logger (logging.Logger): you can use it to log information
+                2. data (pd.DataFrame): market data. 
+                    In `init`, broker.data is total historical data used for backtesting
+                3. timepoints (pd.DatetimeIndex): timepoints of the market data. 
+                    In `init`, broker.timepoints is total historical timepoints of the market data
+            '''
 
         def update(broker: Broker, time: pd.Timestamp, **kwargs):
+            '''
+            This function runs in every trading time
+            In this function, `broker.logger` stays the same with `init`,
+            but `broker.data` and `broker.timepoints` are updated to the current time point.
+            And `broker.data_` is the crossection market data.
+            In the following code, we display some basic manipulations in broker.
+            '''
             # time is a pd.Timestamp object, indicator current time point in backtesting
             broker.logger.info(f"update at {{time}}")
             logger.info(f"kwargs: {{kwargs}}")
             # get market data
-            market_at_time = broker.market.loc[time]
+            market_at_time = broker.data.loc[time]
+            # or
+            market_at_time = broker.data_
             # get position
             position = broker.positions
             # get value
-            value = broker.value
+            value = broker.get_value(broker.data_)
             # place buy/sell order
             code = "000001.XSHE"
             broker.buy(code=code, quantity=quantity)
@@ -87,13 +101,12 @@ def generate_strategy(model: str, prompt: str):
         
         def stop(broker: Broker, time: pd.Timestamp, **kwargs):
             # this function runs after the entire backtesting loop
-            # broker is a global variable, any variable can be attached to it and used in different functions
             broker.logger.info("stop")
         ```
         </template>
         
         In the tamplate above, every comment indicate the aim of the code. You need to write the code according to the task requirement, 
-        and add comments to explain the important steps. You can refer to <order_doc> and <broker_doc> to understand the usage of Broker and Order.
+        and add comments to explain the important steps. You can refer to <order_doc> and <broker_doc> tags to understand the usage of Broker and Order.
 
         Now, please complete the task of strategy development according to the requirements provided to you and the example template. 
         In your reply, please strictly follow the format of the example template within the <template> tag, and do not add any other information.
@@ -130,22 +143,25 @@ def display_creator():
     if clicked:
         response = strategy_placeholder.write_stream(generate_strategy(model, text))
         code = re.findall(r"```(python)?\s*([\s\S]*)\s*```", response)[0][-1]
-        st.session_state.spath = STRATEGIES_PATH / f"{name}.py"
-        st.session_state.spath.write_text(code)
-    if st.session_state.get("spath") is None:
-        st.warning("no strategy generated")
+        (STRATEGIES_PATH / f"{name}.py").write_text(code)
+        try:
+            update_strategy(name)
+        except Exception as e:
+            st.error(e)
+    if st.session_state.get("strategy") is None:
+        st.warning("no strategy selected")
         return
     elif not clicked:
         code_placeholder = st.empty()
-        code_placeholder.code(st.session_state.spath.read_text())
+        code_placeholder.code(Path(st.session_state.strategy.__file__).read_text())
     col1, col2 = st.columns(2)
     with col1:
         if st.button("edit", use_container_width=True):
-            display_editor(st.session_state.spath.read_text())
+            display_editor(Path(st.session_state.strategy.__file__).read_text())
     with col2:
         if st.button("discard", use_container_width=True):
             Path(STRATEGIES_PATH / f"{name}.py").unlink()
-            st.session_state.spath = None
+            st.session_state.strategy = None
             code_placeholder.empty()
             st.toast("strategy deleted", icon="✅")
         

@@ -34,27 +34,33 @@ def display_curve(values):
     ], rows=3, cols=1)
     st.plotly_chart(fig)
 
-def display_evaluation(evaluation, trades, broker):
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Evaluation")
-        evaluation.loc["max_drawdown_period"] = evaluation.loc["max_drawdown_period"].days
-        evaluation.loc["position_duration(days)"] = (
-            evaluation.loc["position_duration(days)"].days 
-            if isinstance(evaluation.loc["position_duration(days)"], pd.Timedelta) 
-            else evaluation.loc["position_duration(days)"]
-        )
-        st.dataframe(evaluation)
-    with col2:
-        st.subheader("Status")
-        st.dataframe(pd.Series({
-            "balance": broker.balance, 
-            "value": broker.balance + (fetch_realtime()["close"] * pd.Series(broker.positions)).sum(),
-            "pendings": len(broker.pendings),
-            "orders": len(broker.orders),
-        }, name="status").to_frame().T, hide_index=True)
-        st.subheader("Trades")
-        st.dataframe(trades)
+def display_evaluation(evaluation, trades):
+    st.subheader("Evaluation")
+    cols = st.columns(3, vertical_alignment="top")
+    with cols[0]:
+        st.metric("Total Return", f"{evaluation['total_return(%)']:.2f}%")
+        st.metric("Max Drawdown", f"{evaluation['max_drawdown(%)']:.2f}%")
+        st.metric("Alpha", f"{evaluation['alpha(%)']:.2f}%")
+        st.metric("Trade Win Rate", f"{evaluation['trade_win_rate(%)']:.2}%")
+        st.metric("Position Duration", f"{evaluation['position_duration(days)'].days:.2f} days")
+        st.metric("Trade Return", f"{evaluation['trade_return(%)']:.2}%")
+    with cols[1]:
+        st.metric("Annual Return", f"{evaluation['annual_return(%)']:.2f}%")
+        st.metric("Max Drawdown Period", f"{evaluation['max_drawdown_period'].days} days")
+        st.metric("Annual Volatility", f"{evaluation['annual_volatility(%)']:.2f}%")
+        st.metric("Beta", f"{evaluation['beta']:.2f}")
+        st.metric("Excess Return", f"{evaluation['excess_return(%)']:.2f}%")
+        st.metric("VaR 5%", f"{evaluation['VaR_5%(%)']:.2f}%")
+    with cols[2]:
+        st.metric("Sharpe Ratio", f"{evaluation['sharpe_ratio']:.2f}")
+        st.metric("Information Ratio", f"{evaluation['information_ratio']:.2f}")
+        st.metric("Sortino Ratio", f"{evaluation['sortino_ratio(%)']:.2f}%")
+        st.metric("Turnover Rate", f"{evaluation['turnover_ratio(%)']:.2}%")
+        st.metric("Excess Volatility", f"{evaluation['excess_return(%)']:.2f}%")
+        st.metric("CVaR 5%", f"{evaluation['CVaR_5%(%)']:.2f}%")
+    
+    st.subheader("Trades")
+    st.dataframe(trades)
 
 def display_performance():
     broker = st.session_state.broker
@@ -62,13 +68,14 @@ def display_performance():
     if ledger.empty:
         st.error("No Transaction")
         return
+    backadj = st.checkbox("Back-adjusted", value=True)
     with st.spinner("Loading market...", show_time=True):
-        broker.market = read_market(ledger["time"].min(), ledger["time"].max())
+        data = read_market(ledger["time"].min(), ledger["time"].max(), backadj=backadj)
     
     st.header("Performance")
-    evaluation = broker.evaluate()
+    evaluation = broker.evaluate(data)
     display_curve(evaluation["values"])
-    display_evaluation(evaluation["evaluation"], evaluation["trades"], broker)
+    display_evaluation(evaluation["evaluation"], evaluation["trades"])
 
 def layout():
     st.title("PERFORMANCE")

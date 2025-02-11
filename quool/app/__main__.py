@@ -1,29 +1,27 @@
 import sys
 import pandas as pd
-import importlib
 import streamlit as st
+import quool.app as app
+from quool import Broker
 from streamlit import runtime
 from streamlit.web import cli
 from quool.app import (
-    Broker, update_broker,
+    fetch_realtime,
+    update_broker, update_market, update_strategy,
     ASSET_PATH, BROKER_PATH, LOG_PATH,
     TEMPLATE_PATH, STRATEGIES_PATH,
 )
 
 
-def main():
-    st.set_page_config(
-        page_title="TraderApp",
-        page_icon="😊",
-        layout="wide",
-        initial_sidebar_state="auto",
-        menu_items={
-            'Get Help': 'https://www.extremelycoolapp.com/help',
-            'Report a bug': "https://www.extremelycoolapp.com/bug",
-            'About': "# This is a header. This is an *extremely* cool app!"
-        }
-    )
+def setup_styler():
+    styler = st.sidebar.text_input("*input code styler*", value="raw2ricequant")
+    styler = getattr(app, styler, None)
+    if styler is None:
+        st.sidebar.warning("No styler selected")
+    else:
+        st.session_state.styler = styler
 
+def setup_broker():
     selection = st.sidebar.selectbox(f"*select broker*", [broker.stem for broker in BROKER_PATH.glob("*.json")], index=0)
     if selection is not None:
         st.session_state.broker = Broker.restore(path=BROKER_PATH / f"{selection}.json")
@@ -46,6 +44,7 @@ def main():
         (BROKER_PATH / f"{name}.json").unlink()
         st.rerun()
 
+def setup_page():
     monitor = st.Page("monitor.py", title="Monitor", icon="📈")
     transact = st.Page("transact.py", title="Transact", icon="💸")
     runner = st.Page("runner.py", title="Runner", icon="▶️")
@@ -54,31 +53,64 @@ def main():
     pg = st.navigation([monitor, transact, strategy, runner, performance])
     pg.run()
 
+def setup_market():
+    if st.session_state.get("market") is None:
+        st.session_state.market = fetch_realtime(code_styler=st.session_state.styler)
+        st.session_state.timepoints = st.session_state.market.index.get_level_values(0).unique()
+
+def setup_strategy():
     if st.session_state.broker is None:
         st.sidebar.warning("No broker selected")
-    else:
-        selection = st.sidebar.selectbox(f"*select strategy*", [strategy.stem for strategy in STRATEGIES_PATH.glob("*.py")], index=0)
-        if selection is not None:
-            st.session_state.strategy = STRATEGIES_PATH / f"{selection}.py"
-        if st.session_state.get("strategy") is None:
-            st.sidebar.warning("No strategy selected")
+        return
+    
+    selection = st.sidebar.selectbox(f"*select strategy*", [strategy.stem for strategy in STRATEGIES_PATH.glob("*.py")], index=None)
+    if selection is not None:
+        try:
+            update_strategy(selection)
+        except Exception as e:
+            st.sidebar.error(f"Error in strategy {selection}: {e}")
+            return
+    
+    if st.session_state.get("strategy") is None:
+        st.sidebar.warning("No strategy selected")
+        return
+    
+    st.sidebar.write(f"CURRENT STRATEGY: **{st.session_state.strategy.__name__}**")
+    with st.sidebar.container():
+        st.session_state.strategy_kwargs = getattr(st.session_state.strategy, "params")()
+    
+    runonce = st.sidebar.checkbox("*run once*", value=True)
+    col1, col2 = st.sidebar.columns(2)
+    if col1.button("*run*", use_container_width=True):
+        update_market()
+        st.session_state.broker.data = st.session_state.market
+        st.session_state.broker.timepoints = st.session_state.timepoints
+        getattr(st.session_state.strategy, "init")(
+            broker=st.session_state.broker, 
+            time=st.session_state.market.index[0][0], 
+            **st.session_state.strategy_kwargs
+        )
+        if runonce:
+            st.session_state.strategy_stop = True
+            getattr(st.session_state.strategy, "update")(
+                broker=st.session_state.broker, 
+                time=st.session_state.market.index[0][0], 
+                **st.session_state.strategy_kwargs
+            )
         else:
-            st.sidebar.write(f"CURRENT STRATEGY: **{st.session_state.strategy.stem}**")
-            module = importlib.reload(importlib.import_module(
-                str(STRATEGIES_PATH / f"{st.session_state.strategy.stem}").replace("/", ".").replace("\\", ".")
-            ))
-            with st.sidebar.container():
-                params = getattr(module, "params")()
-            
-            col1, col2 = st.sidebar.columns(2)
-            if col1.button("*run*", use_container_width=True):
-                getattr(module, "init")(st.session_state.broker, pd.to_datetime('now'), **params)
-                st.rerun()
-            if col2.button("*remove*", use_container_width=True):
-                st.session_state.strategy = None
-                (STRATEGIES_PATH / f"{selection}.py").unlink()
-                st.rerun()
+            st.session_state.strategy_stop = False
+        st.rerun()
+    if col2.button("*remove*", use_container_width=True):
+        st.session_state.strategy = None
+        (STRATEGIES_PATH / f"{selection}.py").unlink()
+        st.rerun()
 
+def main():
+    setup_styler()
+    setup_broker()
+    setup_market()
+    setup_strategy()
+    setup_page()
     with st.sidebar.container():
         update_broker()
 

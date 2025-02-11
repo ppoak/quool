@@ -1,42 +1,41 @@
 import pandas as pd
 import streamlit as st
-from quool.app import fetch_realtime, BROKER_PATH, REFRESH_INTERVAL, read_market
+from quool.app import BROKER_PATH, REFRESH_INTERVAL
 
 
 @st.fragment(run_every=REFRESH_INTERVAL)
 def display_monitor(placeholder):
-    market = fetch_realtime()
     broker = st.session_state.broker
+    market = st.session_state.market
+    timepoints = st.session_state.timepoints
+    value = broker.get_value(market.loc[timepoints[-1]])
+    pre_value = broker.get_value(market.loc[timepoints[-2]]) if len(timepoints) > 1 else value
+    orders = broker.orders
+    pendings = broker.pendings
+    if not orders.empty:
+        orders["ordid"] = orders["ordid"].str.slice(0, 5)
+    if not pendings.empty:
+        pendings["ordid"] = pendings["ordid"].str.slice(0, 5)
     placeholder.empty()
     with placeholder.container():
-        orders = broker.orders
-        pendings = broker.pendings
-        if not orders.empty:
-            orders["ordid"] = orders["ordid"].str.slice(0, 5)
-        if not pendings.empty:
-            pendings["ordid"] = pendings["ordid"].str.slice(0, 5)
-        st.header("Status")
-        st.dataframe(pd.Series({
-            "balance": broker.balance, 
-            "value": broker.balance + (market["close"] * pd.Series(broker.positions)).sum(),
-            "pendings": len(broker.pendings),
-            "orders": len(broker.orders),
-        }, name="status").to_frame().T)
+        st.header("Metrics")
+        st.metric("Total Value", value=round(value, 3), delta=value - pre_value)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Balance", value=round(broker.balance, 3))
+        with col2:
+            st.metric("Market", value=round(value - broker.balance, 3))
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Number of Pendings", value=len(broker.pendings))
+        with col2:
+            st.metric("Number of Orders", value=len(broker.orders))
         st.header("Positions")
-        if not broker.positions.empty:
-            st.dataframe(pd.concat([broker.positions, market], axis=1, join="inner"))
-        else:
-            st.write("Empty")
-        st.header("Pendings")
-        if not pendings.empty:
-            st.dataframe(pendings, hide_index=True)
-        else:
-            st.write("Empty")
-        st.header("History")
-        if not orders.empty:
-            st.dataframe(orders, hide_index=True)
-        else:
-            st.write("Empty")
+        st.dataframe(pd.concat([broker.positions, market.loc[timepoints[-1]]], axis=1, join="inner"))
+        st.header("Pending Orders")
+        st.dataframe(pendings, hide_index=True)
+        st.header("History Orders")
+        st.dataframe(orders, hide_index=True)
     broker.store(BROKER_PATH / f"{broker.brokid}.json")
 
 def layout():
