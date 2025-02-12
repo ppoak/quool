@@ -23,7 +23,6 @@ def display_monitor(refresh_interval: str | int, placeholder, broker_path: Path)
             orders["ordid"] = orders["ordid"].str[:5]
         placeholder.empty()
         with placeholder.container():
-            st.header("Metrics")
             st.metric("Total Value", value=round(value, 3), delta=value - pre_value)
             col1, col2 = st.columns(2)
             with col1:
@@ -34,11 +33,11 @@ def display_monitor(refresh_interval: str | int, placeholder, broker_path: Path)
             with col1:
                 st.metric("Number of Pendings", value=len(broker.pendings))
                 with st.expander("Pendings"):
-                    st.dataframe(pendings)
+                    st.dataframe(pendings, hide_index=True)
             with col2:
                 st.metric("Number of Orders", value=len(broker.orders))
                 with st.expander("Orders"):
-                    st.dataframe(orders)
+                    st.dataframe(orders, hide_index=True)
         broker.store(Path(broker_path) / f"{broker.brokid}.json")
     return _display_monitor(placeholder)
 
@@ -189,6 +188,7 @@ def display_performance(quotes_path: str):
     backadj = st.checkbox("Back-adjusted", value=True)
     with st.spinner("Loading market...", show_time=True):
         data = read_quotes(quotes_path, ledger["time"].min(), ledger["time"].max(), backadj=backadj)
+        data = pd.concat([data, st.session_state.market[["open", "high", "low", "close", "volume"]]])
     
     st.header("Performance")
     evaluation = broker.evaluate(data)
@@ -203,7 +203,7 @@ def layout(
 ):
     broker_path = Path(broker_path)
     broker_path.mkdir(parents=True, exist_ok=True)
-    st.title("METRIC")
+    st.title("METRICS")
     setup_market()
     setup_broker(broker_path=broker_path)
     placeholder = st.empty()

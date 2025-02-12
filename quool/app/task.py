@@ -14,7 +14,10 @@ def setup_task(task_path):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         st.session_state.task = module
-    st.sidebar.write(f"**CURRENT TASK: {st.session_state.task.__name__}**")
+    if st.session_state.get("task") is not None:
+        st.sidebar.write(f"**CURRENT TASK: {st.session_state.task.__name__}**")
+    else:
+        st.sidebar.warning("*no task selected*")
 
 def get_status(task_path, name):
     status_path = task_path / f"{name}.status"
@@ -42,21 +45,21 @@ def display_launcher(task_path):
             col1, col2 = st.columns([1, 2])
             with col1:
                 if st.button(f"thread anyway", use_container_width=True):
-                    t = threading.Thread(target=task(task_path)(getattr(st.session_state.task, name))())
+                    t = threading.Thread(target=task(task_path, sender, password, receiver, cc)(getattr(st.session_state.task, name))())
                     t.start()
             with col2:
                 if st.button(f"multiprocessing anyway", use_container_width=True):
-                    t = multiprocessing.Process(target=task(task_path)(getattr(st.session_state.task, name))())
+                    t = multiprocessing.Process(target=task(task_path, sender, password, receiver, cc)(getattr(st.session_state.task, name))())
                     t.start()
         else:
             col1, col2 = st.columns([1, 2])
             with col1:
                 if st.button(f"threading", use_container_width=True):
-                    t = threading.Thread(target=task(task_path)(getattr(st.session_state.task, name))())
+                    t = threading.Thread(target=task(task_path, sender, password, receiver, cc)(getattr(st.session_state.task, name))())
                     t.start()
             with col2:
                 if st.button(f"multiprocessing", use_container_width=True):
-                    t = multiprocessing.Process(target=task(task_path)(getattr(st.session_state.task, name))())
+                    t = multiprocessing.Process(target=task(task_path, sender, password, receiver, cc)(getattr(st.session_state.task, name))())
                     t.start()
 
 def layout(task_path: str | Path = "app/task"):

@@ -6,6 +6,7 @@ try:
     import quool.app.tool as tool
     import quool.app.broker as broker
     import quool.app.strategy as strategy
+    import quool.app.chat as chat
 
 
     def layout(
@@ -27,8 +28,9 @@ try:
 
         broker_page = st.Page(partial(broker.layout, quotes_path=quotes_path, broker_path=broker_path, refresh_interval=refresh_interval, keep_kline=keep_kline), title="Broker", icon="📊", url_path="broker")
         strategy_page = st.Page(partial(strategy.layout, quotes_path=quotes_path, broker_path=broker_path, strategy_path=strategy_path, keep_kline=keep_kline), title="Strategy", icon="💡", url_path="strategy")
+        chat_page = st.Page(chat.layout, title="Chat", icon="💬", url_path="chat")
         task_page = st.Page(partial(task.layout, task_path=task_path), title="Task", icon="📅", url_path="task")
-        pg = st.navigation([broker_page, strategy_page, task_page])
+        pg = st.navigation([broker_page, strategy_page, chat_page, task_page])
         pg.run()
 
 except ImportError as e:
