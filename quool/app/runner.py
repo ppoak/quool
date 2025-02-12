@@ -6,16 +6,15 @@ from joblib import Parallel, delayed
 from quool import Broker, setup_logger
 from .tool import (
     read_market, update_strategy,
-    STRATEGIES_PATH, LOG_PATH, BROKER_PATH
 )
 
 
 @delayed
-def run_strategy(name, data, init, update, stop, since, params):
+def run_strategy(app_path, name, data, init, update, stop, since, params):
     timepoints = data.index.get_level_values(0).unique()
     broker = Broker(brokid=name)
     broker.logger = setup_logger(
-        name=name, file=LOG_PATH / f"{name}.log", 
+        name=name, file=(Path(app_path) / "log") / f"{name}.log", 
         stream=False, clear=True, replace=True
     )
     broker.data = data
@@ -29,7 +28,7 @@ def run_strategy(name, data, init, update, stop, since, params):
         update(time=tp, broker=broker, **params)
     if stop is not None:
         stop(broker=broker, time=timepoints[-1], **params)
-    broker.store(BROKER_PATH / f"{broker.brokid}.json", since)
+    broker.store((Path(app_path) / "broker") / f"{broker.brokid}.json", since)
 
 def display_market():
     error_nomarket = st.empty()
@@ -50,16 +49,16 @@ def display_market():
             st.toast(f"Error loading market: {e}", icon="❌")
     error_nomarket.empty()
 
-def display_selector():
+def display_selector(app_path: str | Path):
     st.header("Strategies Selector")
-    strategies = list(STRATEGIES_PATH.glob("*.py"))
+    strategies = list((Path(app_path) / "strategy").glob("*.py"))
     strategy = st.selectbox("*Select an existing strategy*", [strat.stem for strat in strategies])
     if strategy is not None:
         update_strategy(strategy)
     else:
         st.error("No strategy selected", icon="❌")
 
-def display_strategy():
+def display_strategy(app_path: str | Path):
     st.header(f"Strategy")
     if st.session_state.get("market") is None:
         st.warning("No market selected")
@@ -99,7 +98,7 @@ def display_strategy():
                 st.session_state.param = {st.session_state.strategy.__name__: param}
             
             for name in st.session_state.param.keys():
-                path = LOG_PATH / f"{name}.log"
+                path = (Path(app_path) / "log") / f"{name}.log"
                 if path.exists():
                     path.unlink()
             with st.spinner("Running...", show_time=True):
@@ -117,10 +116,7 @@ def display_strategy():
                 ) for name, para in st.session_state.param.items())
             st.toast(f"strategy {st.session_state.strategy.__name__} executed", icon="✅")
 
-def layout():
+def layout(app_path: str | Path = "app"):
     st.title("STRATEGIES RUNNER")
     display_market()
-    # display_selector()
-    # if st.button("edit", use_container_width=True):
-        # display_editor(Path(st.session_state.strategy.__file__).read_text())
-    display_strategy()
+    display_strategy(app_path=app_path)

@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-app = ["streamlit", "akshare", "plotly", "ollama"]
+app = ["streamlit", "akshare", "plotly", "langchain", "langchain-ollama", "xlsxwriter"]
 
 [project.urls]
 Homepage = "https://github.com/ppoak/quool"

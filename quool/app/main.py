@@ -1,30 +1,22 @@
 import streamlit as st
-import quool.app.tool as tool
 from quool import Broker
+from pathlib import Path
+from functools import partial
 from .monitor import layout as monitor_layout
 from .performance import layout as performance_layout
 from .runner import layout as runner_layout
 from .strategy import layout as strategy_layout
 from .transact import layout as transact_layout
 from .tool import (
-    fetch_realtime,
+    fetch_realtime, raw2ricequant,
     update_broker, update_market, update_strategy,
-    ASSET_PATH, BROKER_PATH, LOG_PATH, STRATEGIES_PATH,
 )
 
 
-def setup_styler():
-    styler = st.sidebar.text_input("*input code styler*", value="raw2ricequant")
-    styler = getattr(tool, styler, None)
-    if styler is None:
-        st.sidebar.warning(f"No styler named: {styler.__name__}")
-    else:
-        st.session_state.styler = styler
-
-def setup_broker():
-    selection = st.sidebar.selectbox(f"*select broker*", [broker.stem for broker in BROKER_PATH.glob("*.json")], index=0)
+def setup_broker(app_path: Path):
+    selection = st.sidebar.selectbox(f"*select broker*", [broker.stem for broker in (Path(app_path) / "broker").glob("*.json")], index=0)
     if selection is not None:
-        st.session_state.broker = Broker.restore(path=BROKER_PATH / f"{selection}.json")
+        st.session_state.broker = Broker.restore(path=(Path(app_path) / "broker") / f"{selection}.json")
     if st.session_state.get("broker") is None:
         st.sidebar.warning("No broker selected")
     else:
@@ -34,36 +26,36 @@ def setup_broker():
     col1, col2, col3 = st.sidebar.columns(3)
     if col1.button("*create*", use_container_width=True):
         broker = Broker(brokid=name)
-        broker.store(BROKER_PATH / f"{name}.json")
+        broker.store((Path(app_path) / "broker") / f"{name}.json")
         st.session_state.broker = broker
         st.rerun()
     if col2.button("*save*", use_container_width=True):
-        st.session_state.broker.store(BROKER_PATH / f"{name}.json")
+        st.session_state.broker.store((Path(app_path) / "broker") / f"{name}.json")
     if col3.button("*delete*", use_container_width=True):
         st.session_state.broker = None
-        (BROKER_PATH / f"{name}.json").unlink()
+        ((Path(app_path) / "broker") / f"{name}.json").unlink()
         st.rerun()
 
-def setup_page():
-    monitor = st.Page(monitor_layout, title="Monitor", icon="📈", url_path="monitor")
-    transact = st.Page(transact_layout, title="Transact", icon="💸", url_path="transact")
-    runner = st.Page(runner_layout, title="Runner", icon="▶️", url_path="runner")
+def setup_page(app_path: str | Path = "app", refresh_interval: int | str = "30s"):
+    monitor = st.Page(partial(monitor_layout, refresh_interval=refresh_interval, app_path=app_path), title="Monitor", icon="📈", url_path="monitor")
+    transact = st.Page(partial(transact_layout, app_path=app_path, refresh_interval=refresh_interval), title="Transact", icon="💸", url_path="transact")
+    runner = st.Page(partial(runner_layout, app_path=app_path), title="Runner", icon="▶️", url_path="runner")
     performance = st.Page(performance_layout, title="Performance", icon="📊", url_path="performance")
-    strategy = st.Page(strategy_layout, title="Strategy", icon="💡", url_path="strategy")
+    strategy = st.Page(partial(strategy_layout, app_path=app_path), title="Strategy", icon="💡", url_path="strategy")
     pg = st.navigation([monitor, transact, strategy, runner, performance])
     pg.run()
 
 def setup_market():
     if st.session_state.get("market") is None:
-        st.session_state.market = fetch_realtime(code_styler=st.session_state.styler)
+        st.session_state.market = fetch_realtime(code_styler=raw2ricequant)
         st.session_state.timepoints = st.session_state.market.index.get_level_values(0).unique()
 
-def setup_strategy():
+def setup_strategy(strategy_path: Path, keep_kline: int):
     if st.session_state.get('broker') is None:
         st.sidebar.warning("No broker selected")
         return
     
-    selection = st.sidebar.selectbox(f"*select strategy*", [strategy.stem for strategy in STRATEGIES_PATH.glob("*.py")], index=None)
+    selection = st.sidebar.selectbox(f"*select strategy*", [strategy.stem for strategy in strategy_path.glob("*.py")], index=None)
     if selection is not None:
         try:
             update_strategy(selection)
@@ -82,7 +74,7 @@ def setup_strategy():
     runonce = st.sidebar.checkbox("*run once*", value=True)
     col1, col2 = st.sidebar.columns(2)
     if col1.button("*run*", use_container_width=True):
-        update_market()
+        update_market(keep_kline=keep_kline)
         st.session_state.broker.data = st.session_state.market
         st.session_state.broker.timepoints = st.session_state.timepoints
         getattr(st.session_state.strategy, "init")(
@@ -102,18 +94,21 @@ def setup_strategy():
         st.rerun()
     if col2.button("*remove*", use_container_width=True):
         st.session_state.strategy = None
-        (STRATEGIES_PATH / f"{selection}.py").unlink()
+        (strategy_path / f"{selection}.py").unlink()
         st.rerun()
 
-def layout():
-    ASSET_PATH.mkdir(parents=True, exist_ok=True)
-    BROKER_PATH.mkdir(parents=True, exist_ok=True)
-    STRATEGIES_PATH.mkdir(parents=True, exist_ok=True)
-    LOG_PATH.mkdir(parents=True, exist_ok=True)
-    setup_styler()
-    setup_broker()
+def layout(app_path: str = "app", refresh_interval: str | int = "3s", keep_kline: int = 240):
+    app_path = Path(app_path)
+    broker_path = app_path / "broker"
+    strategy_path = app_path / "strategy"
+    log_path = app_path / "log"
+    app_path.mkdir(parents=True, exist_ok=True)
+    broker_path.mkdir(parents=True, exist_ok=True)
+    strategy_path.mkdir(parents=True, exist_ok=True)
+    log_path.mkdir(parents=True, exist_ok=True)
+    setup_broker(app_path=app_path)
     setup_market()
-    setup_strategy()
-    setup_page()
+    setup_strategy(strategy_path=strategy_path, keep_kline=keep_kline)
+    setup_page(refresh_interval=refresh_interval, app_path=app_path)
     with st.sidebar.container():
-        update_broker()
+        update_broker(app_path=app_path, refresh_interval=refresh_interval, keep_kline=keep_kline)()

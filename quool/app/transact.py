@@ -1,10 +1,8 @@
 import pandas as pd
-from io import BytesIO
 import streamlit as st
-from .tool import (
-    display_realtime,
-    BROKER_PATH, REFRESH_INTERVAL
-)
+from io import BytesIO
+from pathlib import Path
+from .tool import display_realtime
 
 
 def display_transact():
@@ -33,25 +31,27 @@ def display_transact():
             )
             st.toast(f"**{order}**", icon="✅")
 
-@st.fragment(run_every=REFRESH_INTERVAL)
-def display_cancel():
-    broker = st.session_state.broker
-    st.header("Cancel")
-    options = broker.pendings["ordid"].tolist() if not broker.pendings.empty else []
-    ordids = st.multiselect(
-        "*cancel some order(s)*", options=sorted(options), 
-        format_func=lambda x: str(broker.get_order(x))
-    )
-    for ordid in ordids:
-        broker.cancel(ordid)
-        st.toast(f"**order {ordid[:5]} canceled**", icon="✅")
+def display_cancel(refresh_interval="3s"):
+    @st.fragment(run_every=refresh_interval)
+    def display_cancel():
+        broker = st.session_state.broker
+        st.header("Cancel")
+        options = broker.pendings["ordid"].tolist() if not broker.pendings.empty else []
+        ordids = st.multiselect(
+            "*cancel some order(s)*", options=sorted(options), 
+            format_func=lambda x: str(broker.get_order(x))
+        )
+        for ordid in ordids:
+            broker.cancel(ordid)
+            st.toast(f"**order {ordid[:5]} canceled**", icon="✅")
+    return display_cancel
 
-def display_transfer():
+def display_transfer(app_path: str | Path):
     amount = st.number_input("*transfer principle*", value=1000000, step=10000)
     broker = st.session_state.broker
     if st.button("transfer", use_container_width=True):
         broker.transfer(time=None, amount=amount)
-        broker.store(BROKER_PATH / f"{broker.brokid}.json")
+        broker.store((Path(app_path) / "broker") / f"{broker.brokid}.json")
         st.toast("**transfered**", icon="✅")
 
 def display_bracket_transact():
@@ -83,17 +83,17 @@ def display_bracket_transact():
                 item.pop("side")
                 broker.sell(**item)
 
-def layout():
+def layout(app_path: str | Path = "app", refresh_interval: int | str = "30s"):
     st.title("TRANSACT")
     broker = st.session_state.get("broker")
     if broker is None:
         st.warning("No broker selected")
         return
-    display_realtime()
+    display_realtime(refresh_interval=refresh_interval)()
     col1, col2 = st.columns(2)
     with col1:
         display_transact()
     with col2:
-        display_transfer()
-        display_cancel()
+        display_transfer(app_path=app_path)
+        display_cancel(refresh_interval=refresh_interval)()
         display_bracket_transact()

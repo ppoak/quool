@@ -3,15 +3,15 @@ import ollama
 import streamlit as st
 from pathlib import Path
 from quool import Order, Broker
-from .tool import STRATEGIES_PATH, display_editor, update_strategy
+from .tool import display_editor, update_strategy
 
 
-def generate_strategy(model: str, prompt: str):
+def generate_strategy(app_path: str, model: str, prompt: str):
     def _generate():
         nonlocal prompt
         refs = re.findall(r"<(.*)>", prompt)
         for ref in refs:
-            ref_path = STRATEGIES_PATH / f"{ref}.py"
+            ref_path = (Path(app_path) / "strategy") / f"{ref}.py"
             if ref_path.exists():
                 prompt = prompt.replace(f"<{ref}>", f"<reference>\n```\n{ref_path.read_text()}\n```\n</reference>")
         full_prompt = """
@@ -52,8 +52,6 @@ def generate_strategy(model: str, prompt: str):
         # ParquetManager is a class to manage parquet files
         # setup_logger is a function to setup logger
         from quool import ParquetManager, Broker, setup_logger
-        # some basic parameters exist in quool.app, you can import them if needed
-        from quool.app import LOG_PATH
         # other imports can be imported
         import pandas as pd
 
@@ -127,7 +125,7 @@ def generate_strategy(model: str, prompt: str):
             yield word["message"]["content"]
     return _generate()
 
-def display_creator():
+def display_creator(app_path: str | Path):
     name = st.text_input("*strategy name*", value="test")
     text = st.text_area("*Write your strategy here*")
     col1, col2 = st.columns(2)
@@ -143,7 +141,7 @@ def display_creator():
     if clicked:
         response = strategy_placeholder.write_stream(generate_strategy(model, text))
         code = re.findall(r"```(python)?\s*([\s\S]*)\s*```", response)[0][-1]
-        (STRATEGIES_PATH / f"{name}.py").write_text(code)
+        ((Path(app_path) / "strategy") / f"{name}.py").write_text(code)
         try:
             update_strategy(name)
         except Exception as e:
@@ -153,18 +151,18 @@ def display_creator():
     elif not clicked:
         code_placeholder = st.empty()
         code_placeholder.code(Path(st.session_state.strategy.__file__).read_text())
-    if (STRATEGIES_PATH / f"{name}.py").exists():
+    if ((Path(app_path) / "strategy") / f"{name}.py").exists():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("edit", use_container_width=True):
-                display_editor((STRATEGIES_PATH / f"{name}.py").read_text(), name)
+                display_editor(Path(app_path), ((Path(app_path) / "strategy") / f"{name}.py").read_text(), name)
         with col2:
             if st.button("discard", use_container_width=True):
-                Path(STRATEGIES_PATH / f"{name}.py").unlink()
+                Path((Path(app_path) / "strategy") / f"{name}.py").unlink()
                 st.session_state.strategy = None
                 code_placeholder.empty()
                 st.toast("strategy deleted", icon="✅")
         
-def layout():
+def layout(app_path: str | Path = "app"):
     st.title("STRATEGY CREATEOR")
-    display_creator()
+    display_creator(app_path=app_path)

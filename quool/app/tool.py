@@ -1,29 +1,10 @@
-import argparse
 import importlib
+import numpy as np
 import pandas as pd
 import akshare as ak
 import streamlit as st
-import plotly.subplots as sp
-import plotly.graph_objects as go
 from pathlib import Path
 from quool import ParquetManager
-
-
-def parsearg():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-r', "--refresh", type=int, default=60, help="refresh interval")
-    parser.add_argument('-p', "--root", type=str, default="app", help="root path")
-    parser.add_argument('-k', "--kline", type=int, default=60, help="how many klines kept in memory")
-    args = parser.parse_args()
-    return args
-
-args = parsearg()
-REFRESH_INTERVAL = args.refresh
-ASSET_PATH = Path(args.root)
-BROKER_PATH = Path(ASSET_PATH) / "broker"
-STRATEGIES_PATH = Path(ASSET_PATH) / "strategy"
-LOG_PATH = Path(ASSET_PATH) / "log"
-KEEP_KLINE = args.kline
 
 
 def is_trading_time(time = None):
@@ -50,7 +31,7 @@ def fetch_realtime(code_styler: callable = None):
     data["high"] = data["最新价"]
     data["low"] = data["最新价"]
     data["close"] = data["最新价"]
-    data["volume"] = data["成交量"]
+    data["volume"] = data["成交量"] * 100
     if code_styler is not None:
         data.index = pd.MultiIndex.from_product([
             [pd.to_datetime("now")], data.index.map(code_styler)
@@ -87,8 +68,8 @@ def read_market(begin, end, backadj: bool = True, extra: str = None):
     else:
         return None
 
-def update_strategy(name):
-    filepath = str(STRATEGIES_PATH / f"{name}.py")
+def update_strategy(app_path: str , name: str):
+    filepath = str((Path(app_path) / "strategy") / f"{name}.py")
     spec = importlib.util.spec_from_file_location(name, filepath)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -98,10 +79,10 @@ def update_strategy(name):
     if params is None or update is None:
         raise ValueError("Strategy must have params, update functions")
 
-def update_market():
+def update_market(keep_kline: int):
     timepoints = st.session_state.timepoints
-    market = fetch_realtime(st.session_state.styler)
-    if timepoints.size >= KEEP_KLINE:
+    market = fetch_realtime(raw2ricequant)
+    if timepoints.size >= keep_kline:
         st.session_state.market = pd.concat([
             st.session_state.market.loc[timepoints[-239]:, :], market
         ])
@@ -109,61 +90,47 @@ def update_market():
         st.session_state.market = pd.concat([st.session_state.market, market])
     st.session_state.timepoints = st.session_state.market.index.get_level_values(0).unique()
 
-@st.fragment(run_every=REFRESH_INTERVAL)
-def update_broker():
-    broker = st.session_state.get('broker')
-    strategy = st.session_state.get('strategy')
-    strategy_stop = st.session_state.get('strategy_stop', True)
-    strategy_args = st.session_state.get('strategy_args', {})
-    if broker is not None and is_trading_time():
-        update_market()
-        market = st.session_state.market
-        print(market)
-        timepoints = market.index.get_level_values(0).unique()
-        market_now = market.loc[timepoints[-1]].copy()
-        market_pre = market.loc[timepoints[-2]]
-        market_now["open"] = market_pre["close"]
-        market_now["high"] = market_now["high"].max(market_pre["high"])
-        market_now["low"] = market_now["low"].min(market_pre["low"])
-        market_now["volume"] = market_now["volume"] - market_pre["volume"]
-        if not strategy_stop:
-            module = importlib.import_module(
-                str(strategy).replace("/", ".").replace("\\", ".")[:-3]
-            )
-            getattr(module, "update")(broker, pd.to_datetime('now'), **strategy_args)
-        broker.update(time=pd.to_datetime('now'), market=market_now)
-        broker.store(BROKER_PATH / f"{broker.brokid}.json")
-    elif broker is not None:
-        broker.update(time=pd.to_datetime('now'), market=pd.DataFrame())
-        broker.store(BROKER_PATH / f"{broker.brokid}.json")
+def update_broker(app_path: str | Path, refresh_interval: int | str, keep_kline: int):
+    @st.fragment(run_every=refresh_interval)
+    def _update_broker():
+        broker = st.session_state.get('broker')
+        strategy = st.session_state.get('strategy')
+        strategy_stop = st.session_state.get('strategy_stop', True)
+        strategy_args = st.session_state.get('strategy_args', {})
+        if broker is not None and is_trading_time():
+            update_market(keep_kline=keep_kline)
+            market = st.session_state.market
+            timepoints = market.index.get_level_values(0).unique()
+            market_now = market.loc[timepoints[-1]].copy()
+            market_pre = market.loc[timepoints[-2]]
+            market_now["open"] = market_pre["close"]
+            market_now["high"] = np.maximum(market_now["high"], market_pre["high"])
+            market_now["low"] = np.minimum(market_now["low"], market_pre["low"])
+            market_now["volume"] = market_now["volume"] - market_pre["volume"]
+            if not strategy_stop:
+                module = importlib.import_module(
+                    str(strategy).replace("/", ".").replace("\\", ".")[:-3]
+                )
+                getattr(module, "update")(broker, pd.to_datetime('now'), **strategy_args)
+            broker.update(time=pd.to_datetime('now'), market=market_now)
+            broker.store((Path(app_path) / "broker") / f"{broker.brokid}.json")
+        elif broker is not None:
+            broker.update(time=pd.to_datetime('now'), market=pd.DataFrame())
+            broker.store((Path(app_path) / "broker") / f"{broker.brokid}.json")
+    return _update_broker
 
-@st.fragment(run_every=REFRESH_INTERVAL)
-def display_realtime():
-    st.header("Realtime")
-    market = st.session_state.market.loc[st.session_state.timepoints[-1]]
-    selection = st.dataframe(market, selection_mode="single-row", on_select='rerun')
-    if selection['selection']["rows"]:
-        code = market.index[selection['selection']["rows"][0]]
-        name = market.loc[code, "名称"]
-        kline =fetch_kline(symbol=code)
-        fig = sp.make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.8, 0.2])
-        fig.add_trace(go.Candlestick(
-            x=kline.index,
-            open=kline.open,
-            high=kline.high,
-            low=kline.low,
-            close=kline.close,
-            name=name,
-        ), row=1, col=1)
-        fig.add_trace(go.Bar(
-            x=kline.index, y=kline.volume, name="volume"
-        ), row=2, col=1)
-        st.plotly_chart(fig)
+def display_realtime(refresh_interval: int | str = "3s"):
+    @st.fragment(run_every=refresh_interval)
+    def _display_realtime():
+        st.header("Realtime")
+        market = st.session_state.market.loc[st.session_state.timepoints[-1]]
+        st.dataframe(market)
+    return _display_realtime
 
 @st.dialog("Edit your strategy", width="large")
-def display_editor(code, name):
+def display_editor(app_path, code, name):
     height = max(len(code.split("\n")) * 20, 68)
     code = st.text_area(label="*edit your strategy*", value=code, height=height)
     if st.button("save", use_container_width=True):
-        (STRATEGIES_PATH / f"{name}.py").write_text(code)
+        ((Path(app_path) / "strategy") / f"{name}.py").write_text(code)
         st.rerun()
