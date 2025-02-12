@@ -192,14 +192,14 @@ def setup_broker(broker_path: Path):
     col1, col2, col3 = st.sidebar.columns(3)
     if col1.button("*create*", use_container_width=True):
         broker = Broker(brokid=name)
-        broker.store((Path(broker_path) / "broker") / f"{name}.json")
+        broker.store(broker_path / f"{name}.json")
         st.session_state.broker = broker
         st.rerun()
     if col2.button("*save*", use_container_width=True):
-        st.session_state.broker.store((Path(broker_path) / "broker") / f"{name}.json")
+        st.session_state.broker.store(broker_path / f"{name}.json")
     if col3.button("*delete*", use_container_width=True):
         st.session_state.broker = None
-        ((Path(broker_path) / "broker") / f"{name}.json").unlink()
+        (broker_path / f"{name}.json").unlink()
         st.rerun()
 
 def display_realtime(refresh_interval: int | str = "3s"):
