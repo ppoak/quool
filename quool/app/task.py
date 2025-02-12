@@ -39,23 +39,23 @@ def display_launcher(task_path):
         if status:= get_status(task_path, name):
             st.info(f"{name} status: {status}")
             st.session_state.task_name = name
-            col1, col2 = st.columns([1, 3])
+            col1, col2 = st.columns([1, 2])
             with col1:
-                if st.button(f"run thread anyway", use_container_width=True):
+                if st.button(f"thread anyway", use_container_width=True):
                     t = threading.Thread(target=task(task_path)(getattr(st.session_state.task, name))())
                     t.start()
             with col2:
-                if st.button(f"run multiprocessing anyway", use_container_width=True):
+                if st.button(f"multiprocessing anyway", use_container_width=True):
                     t = multiprocessing.Process(target=task(task_path)(getattr(st.session_state.task, name))())
                     t.start()
         else:
-            col1, col2 = st.columns([1, 3])
+            col1, col2 = st.columns([1, 2])
             with col1:
-                if st.button(f"start {name} with threading", use_container_width=True):
+                if st.button(f"threading", use_container_width=True):
                     t = threading.Thread(target=task(task_path)(getattr(st.session_state.task, name))())
                     t.start()
             with col2:
-                if st.button(f"start {name} with multiprocessing", use_container_width=True):
+                if st.button(f"multiprocessing", use_container_width=True):
                     t = multiprocessing.Process(target=task(task_path)(getattr(st.session_state.task, name))())
                     t.start()
 

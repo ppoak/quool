@@ -4,7 +4,7 @@ import plotly.subplots as sp
 import plotly.graph_objects as go
 from io import BytesIO
 from pathlib import Path
-from .tool import setup_broker, read_market, setup_market, update_broker
+from .tool import setup_broker, read_quotes, setup_market, update_broker
 
 
 def display_monitor(refresh_interval: str | int, placeholder, broker_path: Path):
@@ -173,7 +173,7 @@ def display_evaluation(evaluation, trades):
     st.subheader("Trades")
     st.dataframe(trades)
 
-def display_performance():
+def display_performance(quotes_path: str):
     broker = st.session_state.broker
     ledger = broker.ledger
     if ledger.empty:
@@ -181,14 +181,19 @@ def display_performance():
         return
     backadj = st.checkbox("Back-adjusted", value=True)
     with st.spinner("Loading market...", show_time=True):
-        data = read_market(ledger["time"].min(), ledger["time"].max(), backadj=backadj)
+        data = read_quotes(quotes_path, ledger["time"].min(), ledger["time"].max(), backadj=backadj)
     
     st.header("Performance")
     evaluation = broker.evaluate(data)
     display_curve(evaluation["values"])
     display_evaluation(evaluation["evaluation"], evaluation["trades"])
 
-def layout(broker_path: Path = "app/broker", refresh_interval: int | str ="3s", keep_kline: int = 240):
+def layout(
+    broker_path: Path = "app/broker", 
+    quotes_path: str = "app/quotes",
+    refresh_interval: int | str ="3s",
+    keep_kline: int = 240
+):
     broker_path = Path(broker_path)
     broker_path.mkdir(parents=True, exist_ok=True)
     st.title("METRIC")
@@ -212,4 +217,4 @@ def layout(broker_path: Path = "app/broker", refresh_interval: int | str ="3s", 
         display_bracket_transact()
     st.divider()
     st.title("PERFORMANCE")
-    display_performance()
+    display_performance(quotes_path=quotes_path)

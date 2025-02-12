@@ -9,6 +9,7 @@ try:
 
 
     def layout(
+        quotes_path: str | Path,
         app_path: str | Path = "app", 
         refresh_interval: int | str = "30s", 
         keep_kline: int = 240
@@ -24,8 +25,8 @@ try:
         log_path.mkdir(parents=True, exist_ok=True)
         task_path.mkdir(parents=True, exist_ok=True)
 
-        broker_page = st.Page(partial(broker.layout, broker_path=broker_path, refresh_interval=refresh_interval, keep_kline=keep_kline), title="Broker", icon="📊", url_path="broker")
-        strategy_page = st.Page(partial(strategy.layout, broker_path=broker_path, strategy_path=strategy_path, keep_kline=keep_kline), title="Strategy", icon="💡", url_path="strategy")
+        broker_page = st.Page(partial(broker.layout, quotes_path=quotes_path, broker_path=broker_path, refresh_interval=refresh_interval, keep_kline=keep_kline), title="Broker", icon="📊", url_path="broker")
+        strategy_page = st.Page(partial(strategy.layout, quotes_path=quotes_path, broker_path=broker_path, strategy_path=strategy_path, keep_kline=keep_kline), title="Strategy", icon="💡", url_path="strategy")
         task_page = st.Page(partial(task.layout, task_path=task_path), title="Task", icon="📅", url_path="task")
         pg = st.navigation([broker_page, strategy_page, task_page])
         pg.run()

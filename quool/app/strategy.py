@@ -7,7 +7,7 @@ from io import BytesIO
 from joblib import Parallel, delayed
 from quool import Order, Broker, setup_logger
 from .tool import (
-    display_editor, update_strategy, read_market, 
+    display_editor, update_strategy, read_quotes, 
     setup_strategy, setup_broker, setup_market,
 )
 
@@ -189,7 +189,7 @@ def run_strategy(log_path, broker_path, name, data, init, update, stop, since, p
         stop(broker=broker, time=timepoints[-1], **params)
     broker.store(Path(broker_path) / f"{broker.brokid}.json", since)
 
-def display_market():
+def display_market(quotes_path: str):
     error_nomarket = st.empty()
     if st.session_state.get("market") is None:
         error_nomarket.error("No market selected")
@@ -202,7 +202,7 @@ def display_market():
         extra = st.text_input("extra fields for market loading", value="")
     with st.spinner("Loading market...", show_time=True):
         try:
-            data = read_market(begin, end, backadj=backadj, extra=extra)
+            data = read_quotes(quotes_path, begin, end, backadj=backadj, extra=extra)
             st.session_state.data = data
         except Exception as e:
             st.toast(f"Error loading market: {e}", icon="❌")
@@ -278,6 +278,7 @@ def display_strategy(log_path: str | Path, broker_path: str | Path):
             st.toast(f"strategy {st.session_state.strategy.__name__} executed", icon="✅")
 
 def layout(
+    quotes_path: str | Path = "app/quotes",
     broker_path: str | Path = "app/broker", 
     strategy_path: str | Path = "app/strategy",
     log_path: str | Path = "app/log", 
@@ -293,6 +294,6 @@ def layout(
     display_creator(strategy_path=strategy_path)
     st.divider()
     st.title("RUNNER")
-    display_market()
+    display_market(quotes_path=quotes_path)
     display_strategy(log_path=log_path, broker_path=broker_path)
 

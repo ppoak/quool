@@ -53,11 +53,16 @@ def fetch_kline(symbol, format=True):
         data.set_index("datetime", inplace=True)
     return data
 
-def read_market(begin, end, backadj: bool = True, extra: str = None):
+def read_quotes(
+    quotes_path: str, 
+    begin: str, end: str, 
+    backadj: bool = True, 
+    extra: str = None
+):
     if not (begin is None and end is None):
         begin = begin or pd.Timestamp("2015-01-01")
         end = end or pd.Timestamp.now()
-        quotes_day = ParquetManager("D:/Documents/DataBase/quotes_day")
+        quotes_day = ParquetManager(quotes_path)
         data = quotes_day.read(
             date__ge=begin, date__le=end, index=["date", "code"],
             columns=["open", "high", "low", "close", "volume"] + (extra.split(',') if extra else [])
