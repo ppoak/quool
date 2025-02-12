@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from email import encoders
+from functools import wraps
 from email import message_from_bytes
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -437,6 +438,7 @@ class Emailer:
             callable: A decorated function.
         """
         def decorator(task):
+            @wraps(task)
             def wrapper(*args, **kwargs):
                 try:
                     success = True
@@ -470,10 +472,13 @@ class Emailer:
                     kwargs = {key: str(value).replace(">", "&gt;").replace("<", "&lt;") for key, value in kwargs.items()}
                     duration = end - begin
                     message = (
-                        "```\n{'\n'.join([trace.replace('^', '') for trace in traceback.format_exception(type(e), e, e.__traceback__)])}\n```\n\n"
+                        "```\n{traces}\n```\n\n"
                         "> *Parameters: {args} {kwargs}*\n\n"
                         "> *Run from {begin} to {end} ({duration})*"
-                    ).format(args=args, kwargs=kwargs, begin=begin, end=end, duration=duration)
+                    ).format(
+                        traces='\n'.join([trace.replace('^', '') for trace in traceback.format_exception(type(e), e, e.__traceback__)]), 
+                        args=args, kwargs=kwargs, begin=begin, end=end, duration=duration
+                    )
                 finally:
                     emailer = Emailer(root_url=address.split('@')[-1])
                     subject = f"Task {task.__name__} {'success' if success else 'failure'}"
