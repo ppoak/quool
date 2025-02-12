@@ -15,6 +15,12 @@ def display_monitor(refresh_interval: str | int, placeholder, broker_path: Path)
         timepoints = st.session_state.timepoints
         value = broker.get_value(market.loc[timepoints[-1]])
         pre_value = broker.get_value(market.loc[timepoints[-2]]) if len(timepoints) > 1 else value
+        pendings = broker.pendings
+        orders = broker.orders
+        if not pendings.empty:
+            pendings["ordid"] = pendings["ordid"].str[:5]
+        if not orders.empty:
+            orders["ordid"] = orders["ordid"].str[:5]
         placeholder.empty()
         with placeholder.container():
             st.header("Metrics")
@@ -27,12 +33,16 @@ def display_monitor(refresh_interval: str | int, placeholder, broker_path: Path)
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Number of Pendings", value=len(broker.pendings))
+                with st.expander("Pendings"):
+                    st.dataframe(pendings)
             with col2:
                 st.metric("Number of Orders", value=len(broker.orders))
+                with st.expander("Orders"):
+                    st.dataframe(orders)
         broker.store(Path(broker_path) / f"{broker.brokid}.json")
     return _display_monitor(placeholder)
 
-def display_transact():
+def display_transact(broker_path: Path):
     st.header("Transact")
     broker = st.session_state.broker
     code = st.text_input("*input symbol*")
@@ -48,6 +58,7 @@ def display_transact():
                 code=code, quantity=quantity, limit=limit, 
                 trigger=trigger, exectype=exectype, valid=valid
             )
+            broker.store(broker_path / f"{broker.brokid}.json")
             st.toast(f"**{order}**", icon="✅")
                 
     with subcol2:
@@ -56,6 +67,7 @@ def display_transact():
                 code=code, quantity=quantity, limit=limit,
                 trigger=trigger, exectype=exectype, valid=valid
             )
+            broker.store(broker_path / f"{broker.brokid}.json")
             st.toast(f"**{order}**", icon="✅")
 
 def display_cancel(refresh_interval="3s"):
@@ -71,7 +83,7 @@ def display_cancel(refresh_interval="3s"):
         for ordid in ordids:
             broker.cancel(ordid)
             st.toast(f"**order {ordid[:5]} canceled**", icon="✅")
-    return display_cancel
+    return display_cancel()
 
 def display_transfer(broker_path: str | Path):
     amount = st.number_input("*transfer principle*", value=1000000, step=10000)
@@ -205,10 +217,10 @@ def layout(
     st.title("TRANSACTION")
     col1, col2 = st.columns(2)
     with col1:
-        display_transact()
+        display_transact(broker_path=broker_path)
     with col2:
         display_transfer(broker_path=broker_path)
-        display_cancel(refresh_interval=refresh_interval)()
+        display_cancel(refresh_interval=refresh_interval)
         display_bracket_transact()
     st.divider()
     st.title("PERFORMANCE")

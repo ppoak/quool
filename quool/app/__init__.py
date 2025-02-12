@@ -11,7 +11,7 @@ try:
     def layout(
         quotes_path: str | Path,
         app_path: str | Path = "app", 
-        refresh_interval: int | str = "30s", 
+        refresh_interval: int | str = "5s", 
         keep_kline: int = 240
     ):
         app_path = Path(app_path)

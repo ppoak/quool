@@ -125,7 +125,7 @@ def update_broker(broker_path: str | Path, refresh_interval: int | str, keep_kli
         elif broker is not None:
             broker.update(time=pd.to_datetime('now'), market=pd.DataFrame())
             broker.store(broker_path / f"{broker.brokid}.json")
-    return _update_broker
+    return _update_broker()
 
 def setup_market():
     if st.session_state.get("market") is None:
@@ -208,7 +208,7 @@ def display_realtime(refresh_interval: int | str = "3s"):
         st.header("Realtime")
         market = st.session_state.market.loc[st.session_state.timepoints[-1]]
         st.dataframe(market)
-    return _display_realtime
+    return _display_realtime()
 
 @st.dialog("Edit your strategy", width="large")
 def display_editor(path, name):
