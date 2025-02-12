@@ -210,7 +210,10 @@ def setup_broker(broker_path: Path):
         st.session_state.broker.store(broker_path / f"{name}.json")
     if col3.button("*delete*", use_container_width=True):
         st.session_state.broker = None
-        (broker_path / f"{name}.json").unlink()
+        if (broker_path / f"{name}.json").exists():
+            (broker_path / f"{name}.json").unlink()
+        else:
+            st.toast(f"Broker {name} not found")
         st.rerun()
 
 def display_realtime(refresh_interval: int | str = "3s"):

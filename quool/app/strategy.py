@@ -229,38 +229,33 @@ def display_strategy(log_path: str | Path, broker_path: str | Path):
     else:
         data = st.session_state.data
         strategy = st.session_state.strategy
-        params = getattr(strategy, "params")
         init = getattr(strategy, "init", None)
         update = getattr(strategy, "update")
         stop = getattr(strategy, "stop", None)
         st.write(strategy.__doc__ or "User is too lazy to write a docstring")
-        subcol1, subcol2 = st.columns(2)
-        with subcol1:
-            param = params()
-        with subcol2:
-            bio = BytesIO()
-            writer = pd.ExcelWriter(bio, engine="xlsxwriter")
-            pd.DataFrame([param], index=[strategy.__name__]).to_excel(writer, sheet_name="params")
-            writer._save()
-            bio.seek(0)
-            st.download_button(
-                "*download param template*", 
-                data=bio.read(),
-                file_name="param_template.xlsx"
-            )
-            file = st.file_uploader("*upload param file*", type="xlsx")
+        bio = BytesIO()
+        writer = pd.ExcelWriter(bio, engine="xlsxwriter")
+        pd.DataFrame([st.session_state.strategy_kwargs], index=[strategy.__name__]).to_excel(writer, sheet_name="params")
+        writer._save()
+        bio.seek(0)
+        st.download_button(
+            "*download param template*", 
+            data=bio.read(),
+            file_name="param_template.xlsx"
+        )
+        file = st.file_uploader("*upload param file*", type="xlsx")
         since = st.date_input("*save since*", value=data.index.levels[0].min())
-        if st.button("Run", use_container_width=True):
+        if st.button("Backtest", use_container_width=True):
             if file is not None:
                 st.session_state.param = pd.read_excel(BytesIO(file.getvalue()), index_col=0).to_dict(orient="index")
             else:
-                st.session_state.param = {st.session_state.strategy.__name__: param}
+                st.session_state.param = {st.session_state.strategy.__name__: st.session_state.strategy_kwargs}
             
             for name in st.session_state.param.keys():
                 path = Path(log_path) / f"{name}.log"
                 if path.exists():
                     path.unlink()
-            with st.spinner("Running...", show_time=True):
+            with st.spinner("Backtesting...", show_time=True):
                 Parallel(
                     n_jobs=min(len(st.session_state.param), 4), 
                     backend="loky"

@@ -42,13 +42,18 @@ def display_monitor(refresh_interval: str | int, placeholder, broker_path: Path)
     return _display_monitor(placeholder)
 
 def display_transact(broker_path: Path):
-    st.header("Transact")
     broker = st.session_state.broker
+    exectype = st.selectbox("*execution type*", ["MARKET", "LIMIT", "STOP", "STOPLIMIT"], index=0)
     code = st.text_input("*input symbol*")
     quantity = st.number_input("*input quantity*", step=100)
-    limit = st.number_input("*limit price*", step=0.01, value=None)
-    trigger = st.number_input("*trigger price*", step=0.01, value=None)
-    exectype = st.selectbox("*execution type*", ["MARKET", "LIMIT", "STOP", "STOPLIMIT"], index=0)
+    if exectype in ["LIMIT", "STOPLIMIT"]:
+        limit = st.number_input("*limit price*", step=0.01, value=None)
+    else:
+        limit = None
+    if exectype in ["STOP", "STOPLIMIT"]:
+        trigger = st.number_input("*trigger price*", step=0.01, value=None)
+    else:
+        trigger = None
     valid = pd.to_datetime(st.text_input("*valid time*", value=None))
     subcol1, subcol2 = st.columns(2)
     with subcol1:
