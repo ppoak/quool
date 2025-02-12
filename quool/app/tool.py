@@ -1,10 +1,13 @@
+import traceback
 import importlib
 import numpy as np
 import pandas as pd
 import akshare as ak
 import streamlit as st
 from pathlib import Path
-from quool import ParquetManager
+from quool import Broker
+from functools import wraps
+from quool import ParquetManager, Emailer
 
 
 def is_trading_time(time = None):
@@ -68,8 +71,8 @@ def read_market(begin, end, backadj: bool = True, extra: str = None):
     else:
         return None
 
-def update_strategy(app_path: str , name: str):
-    filepath = str((Path(app_path) / "strategy") / f"{name}.py")
+def update_strategy(strategy_path: Path , name: str):
+    filepath = str(strategy_path / f"{name}.py")
     spec = importlib.util.spec_from_file_location(name, filepath)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -90,7 +93,7 @@ def update_market(keep_kline: int):
         st.session_state.market = pd.concat([st.session_state.market, market])
     st.session_state.timepoints = st.session_state.market.index.get_level_values(0).unique()
 
-def update_broker(app_path: str | Path, refresh_interval: int | str, keep_kline: int):
+def update_broker(broker_path: str | Path, refresh_interval: int | str, keep_kline: int):
     @st.fragment(run_every=refresh_interval)
     def _update_broker():
         broker = st.session_state.get('broker')
@@ -113,11 +116,86 @@ def update_broker(app_path: str | Path, refresh_interval: int | str, keep_kline:
                 )
                 getattr(module, "update")(broker, pd.to_datetime('now'), **strategy_args)
             broker.update(time=pd.to_datetime('now'), market=market_now)
-            broker.store((Path(app_path) / "broker") / f"{broker.brokid}.json")
+            broker.store(broker_path / f"{broker.brokid}.json")
         elif broker is not None:
             broker.update(time=pd.to_datetime('now'), market=pd.DataFrame())
-            broker.store((Path(app_path) / "broker") / f"{broker.brokid}.json")
+            broker.store(broker_path / f"{broker.brokid}.json")
     return _update_broker
+
+def setup_market():
+    if st.session_state.get("market") is None:
+        st.session_state.market = fetch_realtime(code_styler=raw2ricequant)
+        st.session_state.timepoints = st.session_state.market.index.get_level_values(0).unique()
+
+def setup_strategy(strategy_path: Path, keep_kline: int):
+    if st.session_state.get('broker') is None:
+        st.sidebar.warning("No broker selected")
+        return
+    
+    selection = st.sidebar.selectbox(f"*select strategy*", [strategy.stem for strategy in strategy_path.glob("*.py")], index=None)
+    if selection is not None:
+        try:
+            update_strategy(strategy_path, selection)
+        except Exception as e:
+            st.sidebar.error(f"Error in strategy {selection}: {e}")
+            return
+    
+    if st.session_state.get("strategy") is None:
+        st.sidebar.warning("No strategy selected")
+        return
+    
+    st.sidebar.write(f"CURRENT STRATEGY: **{st.session_state.strategy.__name__}**")
+    with st.sidebar.container():
+        st.session_state.strategy_kwargs = getattr(st.session_state.strategy, "params")()
+    
+    runonce = st.sidebar.checkbox("*run once*", value=True)
+    col1, col2 = st.sidebar.columns(2)
+    if col1.button("*run*", use_container_width=True):
+        update_market(keep_kline=keep_kline)
+        st.session_state.broker.data = st.session_state.market
+        st.session_state.broker.timepoints = st.session_state.timepoints
+        getattr(st.session_state.strategy, "init")(
+            broker=st.session_state.broker, 
+            time=st.session_state.market.index[0][0], 
+            **st.session_state.strategy_kwargs
+        )
+        if runonce:
+            st.session_state.strategy_stop = True
+            getattr(st.session_state.strategy, "update")(
+                broker=st.session_state.broker, 
+                time=st.session_state.market.index[0][0], 
+                **st.session_state.strategy_kwargs
+            )
+        else:
+            st.session_state.strategy_stop = False
+        st.rerun()
+    if col2.button("*remove*", use_container_width=True):
+        st.session_state.strategy = None
+        (strategy_path / f"{selection}.py").unlink()
+        st.rerun()
+
+def setup_broker(broker_path: Path):
+    selection = st.sidebar.selectbox(f"*select broker*", [broker.stem for broker in Path(broker_path).glob("*.json")], index=0)
+    if selection is not None:
+        st.session_state.broker = Broker.restore(path=Path(broker_path) / f"{selection}.json")
+    if st.session_state.get("broker") is None:
+        st.sidebar.warning("No broker selected")
+    else:
+        st.sidebar.write(f"CURRENT BROKER: **{st.session_state.broker.brokid}**")
+
+    name = st.sidebar.text_input("*input broker id*", value="default")
+    col1, col2, col3 = st.sidebar.columns(3)
+    if col1.button("*create*", use_container_width=True):
+        broker = Broker(brokid=name)
+        broker.store((Path(broker_path) / "broker") / f"{name}.json")
+        st.session_state.broker = broker
+        st.rerun()
+    if col2.button("*save*", use_container_width=True):
+        st.session_state.broker.store((Path(broker_path) / "broker") / f"{name}.json")
+    if col3.button("*delete*", use_container_width=True):
+        st.session_state.broker = None
+        ((Path(broker_path) / "broker") / f"{name}.json").unlink()
+        st.rerun()
 
 def display_realtime(refresh_interval: int | str = "3s"):
     @st.fragment(run_every=refresh_interval)
@@ -128,9 +206,32 @@ def display_realtime(refresh_interval: int | str = "3s"):
     return _display_realtime
 
 @st.dialog("Edit your strategy", width="large")
-def display_editor(app_path, code, name):
+def display_editor(path, name):
+    code = (path / f"{name}.py").read_text()
     height = max(len(code.split("\n")) * 20, 68)
     code = st.text_area(label="*edit your strategy*", value=code, height=height)
     if st.button("save", use_container_width=True):
-        ((Path(app_path) / "strategy") / f"{name}.py").write_text(code)
+        (Path(path) / f"{name}.py").write_text(code)
         st.rerun()
+
+def task(task_path: Path, address: str = None, password: str = None, receiver: str = None, cc: str = None):
+    def decorated(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            task_file = task_path / f"{func.__name__}.status"
+            task_file.write_text(str(0))
+            if address is not None and password is not None and receiver is not None:
+                result = Emailer.notify(address, password, receiver, cc)(func)(*args, **kwargs)
+            else:
+                try:
+                    result = func(*args, **kwargs)
+                except Exception as e:
+                    task_file.write_text(e)
+                    task_file.write_text('\n'.join([
+                        trace.replace('^', '') for trace in traceback.format_exception(type(e), e, e.__traceback__)
+                    ]))
+            if task_file.exists():
+                task_file.unlink()
+            return result
+        return wrapper
+    return decorated
