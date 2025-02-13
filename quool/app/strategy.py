@@ -1,5 +1,4 @@
 import re
-import ollama
 import pandas as pd
 import streamlit as st
 from pathlib import Path
@@ -8,11 +7,11 @@ from joblib import Parallel, delayed
 from quool import Order, Broker, setup_logger
 from .tool import (
     display_editor, update_strategy, read_quotes, 
-    setup_strategy, setup_broker, setup_market,
+    setup_strategy, setup_broker, setup_market, setup_model,
 )
 
 
-def generate_strategy(strategy_path: str, model: str, prompt: str):
+def generate_strategy(strategy_path: str, prompt: str):
     def _generate():
         nonlocal prompt
         refs = re.findall(r"<(.*)>", prompt)
@@ -120,32 +119,19 @@ def generate_strategy(strategy_path: str, model: str, prompt: str):
         {prompt}
         </task>
         """.format(broker_doc=Broker.__doc__, order_doc=Order.__doc__, prompt=prompt)
-        stream = ollama.chat(
-            model=model,
-            messages=[
-                {'role': 'user', 'content': full_prompt},
-            ],
-            stream=True,
-        )
-        for word in stream:
-            yield word["message"]["content"]
+        return st.session_state.model.stream(full_prompt)
     return _generate()
 
 def display_creator(strategy_path: str | Path):
     name = st.text_input("*strategy name*", value="test")
     text = st.text_area("*Write your strategy here*")
-    col1, col2 = st.columns(2)
-    with col1:
-        try:
-            model = st.selectbox("*select a model*", [model.model for model in ollama.list().models])
-        except:
-            st.error("no model available")
-            return
-    with col2:
-        clicked = st.button("generate", use_container_width=True)
+    if st.session_state.get("model") is None:
+        st.error("no model selected")
+        return
+    clicked = st.button("generate", use_container_width=True)
     strategy_placeholder = st.empty()
     if clicked:
-        response = strategy_placeholder.write_stream(generate_strategy(strategy_path, model, text))
+        response = strategy_placeholder.write_stream(generate_strategy(strategy_path, text))
         code = re.findall(r"```(python)?\s*([\s\S]*)\s*```", response)[0][-1]
         (Path(strategy_path) / f"{name}.py").write_text(code)
         try:
@@ -285,6 +271,7 @@ def layout(
     setup_market()
     setup_broker(broker_path=broker_path)
     setup_strategy(strategy_path=strategy_path, keep_kline=keep_kline)
+    setup_model()
     st.title("CREATEOR")
     display_creator(strategy_path=strategy_path)
     st.divider()

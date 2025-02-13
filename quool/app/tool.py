@@ -7,7 +7,7 @@ import streamlit as st
 from pathlib import Path
 from quool import Broker
 from functools import wraps
-from langchain_ollama import ChatOllama
+from langchain_openai import OpenAI
 from quool import ParquetManager, Emailer
 
 
@@ -181,14 +181,17 @@ def setup_strategy(strategy_path: Path, keep_kline: int):
         st.rerun()
 
 def setup_model():
-    model = st.sidebar.selectbox("*Select a Model*", ["deepseek-r1:32b", "deepseek-r1:7b", "qwen:32b"])
+    api_base = st.sidebar.input_text("*Input API Base*", "http://localhost:11434")
+    api_key = st.sidebar.input_text("*Input API Key*", "ollama", type="password")
+    model = st.sidebar.input_text("*Input Model*", "deepseek-r1:7b")
     if model is not None:
-        st.session_state.model = ChatOllama(model=model)
+        st.session_state.model = OpenAI(model=model, api_base=api_base, api_key=api_key)
     if st.session_state.get("model") is None:
         st.sidebar.error("Please select a model first.")
+    else:
+        st.sidebar.write(f"**CURRENT MODEL: {st.session_state.model.model}**")
     if st.session_state.get("history") is None:
         st.session_state.history = []
-    st.sidebar.write(f"**CURRENT MODEL: {model}**")
 
 def setup_broker(broker_path: Path):
     selection = st.sidebar.selectbox(f"*select broker*", [broker.stem for broker in Path(broker_path).glob("*.json")], index=0)

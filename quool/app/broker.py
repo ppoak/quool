@@ -38,6 +38,10 @@ def display_monitor(refresh_interval: str | int, placeholder, broker_path: Path)
                 st.metric("Number of Orders", value=len(broker.orders))
                 with st.expander("Orders"):
                     st.dataframe(orders, hide_index=True)
+            with st.expander("Positions"):
+                st.dataframe(pd.concat([
+                    broker.positions, st.session_state.market.loc[timepoints[-1]]
+                ], axis=1, join="inner"))
         broker.store(Path(broker_path) / f"{broker.brokid}.json")
     return _display_monitor(placeholder)
 

@@ -34,5 +34,4 @@ try:
         pg.run()
 
 except ImportError as e:
-    print(e)
-
+    pass
