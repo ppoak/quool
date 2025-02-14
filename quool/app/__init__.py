@@ -1,37 +1,52 @@
 try:
-    from pathlib import Path
-    from functools import partial
     import streamlit as st
-    import quool.app.task as task
-    import quool.app.tool as tool
-    import quool.app.broker as broker
-    import quool.app.strategy as strategy
-    import quool.app.chat as chat
+    import quool.app.backend as backend
+    import quool.app.frontend as frontend
+    from pathlib import Path
 
-
-    def layout(
-        quotes_path: str | Path,
-        app_path: str | Path = "app", 
-        refresh_interval: int | str = "5s", 
-        keep_kline: int = 240
+    def run(
+        quotes_path: str | Path = None,
+        app_path: str | Path = "app",
+        refresh_interval: int | str = "5s",
+        max_timepoints: int = 240,
+        log_level: str = "INFO",
     ):
-        app_path = Path(app_path)
-        broker_path = app_path / "broker"
-        strategy_path = app_path / "strategy"
-        log_path = app_path / "log"
-        task_path = app_path / "task"
-        app_path.mkdir(parents=True, exist_ok=True)
-        broker_path.mkdir(parents=True, exist_ok=True)
-        strategy_path.mkdir(parents=True, exist_ok=True)
-        log_path.mkdir(parents=True, exist_ok=True)
-        task_path.mkdir(parents=True, exist_ok=True)
+        broker = frontend.BrokerPage(
+            quotes_path=quotes_path, 
+            app_path=app_path, 
+            refresh_interval=refresh_interval, 
+            max_timepoints=max_timepoints, 
+            log_level=log_level
+        )
+        strategy = frontend.StrategyPage(
+            quotes_path=quotes_path, 
+            app_path=app_path, 
+            refresh_interval=refresh_interval, 
+            max_timepoints=max_timepoints, 
+            log_level=log_level
+        )
+        schedule = frontend.SchedulePage(
+            quotes_path=quotes_path, 
+            app_path=app_path, 
+            refresh_interval=refresh_interval, 
+            max_timepoints=max_timepoints, 
+            log_level=log_level
+        )
+        chat = frontend.ChatPage(
+            quotes_path=quotes_path, 
+            app_path=app_path, 
+            refresh_interval=refresh_interval, 
+            max_timepoints=max_timepoints, 
+            log_level=log_level
+        )
+        broker_page = st.Page(broker.run, title="Broker", icon="📊", url_path="broker")
+        strategy_page = st.Page(strategy.run, title="Strategy", icon="📈", url_path="strategy")
+        schedule_page = st.Page(schedule.run, title="Schedule", icon="📅", url_path="schedule")
+        chat_page = st.Page(chat.run, title="Chat", icon="💬", url_path="chat")
 
-        broker_page = st.Page(partial(broker.layout, quotes_path=quotes_path, broker_path=broker_path, refresh_interval=refresh_interval, keep_kline=keep_kline), title="Broker", icon="📊", url_path="broker")
-        strategy_page = st.Page(partial(strategy.layout, quotes_path=quotes_path, broker_path=broker_path, strategy_path=strategy_path, keep_kline=keep_kline), title="Strategy", icon="💡", url_path="strategy")
-        chat_page = st.Page(chat.layout, title="Chat", icon="💬", url_path="chat")
-        task_page = st.Page(partial(task.layout, task_path=task_path), title="Task", icon="📅", url_path="task")
-        pg = st.navigation([broker_page, strategy_page, chat_page, task_page])
-        pg.run()
+        nav = st.navigation([broker_page, strategy_page, schedule_page, chat_page])
+        nav.run()
+        
 
 except ImportError as e:
     pass
