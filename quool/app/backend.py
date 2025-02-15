@@ -6,7 +6,8 @@ import pandas as pd
 import akshare as ak
 from pathlib import Path
 from langchain_openai import OpenAI
-from quool import ParquetManager, Broker, setup_logger, Emailer
+from quool.contrib import ParquetManager
+from quool import Broker, setup_logger, Emailer
 
 
 def raw2ricequant(code: str):
@@ -119,7 +120,7 @@ class App:
         self.logger.debug("market data initialized")
 
     def set_broker(self, name: str):
-        self.broker = Broker(name)
+        self.broker = Broker.restore(self.broker_path / f"{name}.json")
         self.logger.debug(f"broker {name} initialized")
     
     def delete_broker(self):
