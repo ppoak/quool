@@ -1,7 +1,7 @@
-import random
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from ..base import SourceBase
 from joblib import Parallel, delayed
 
 
@@ -349,7 +349,7 @@ class ParquetManager:
             else:
                 combined_data = data
             combined_data.to_parquet(partition_path, index=False)
-
+    
     def read(self, index=None, columns=None, pivot=None, **kwargs):
         """
         Reads data from the Parquet database, optionally filtering, indexing, and pivoting.
@@ -434,56 +434,52 @@ class ParquetManager:
         return self.__str__()
 
 
-class SampleManager(ParquetManager):
-    """An extended version of ParquetManager that supports sampling data."""
+class ParquetSource(SourceBase, ParquetManager):
 
-    def __init__(self, base_path, partition_col=None, index_col=None):
-        super().__init__(base_path, partition_col, index_col)
-        self.sampled_records = set()  # Tracks already sampled records (index_col values or partition+index for no index_col)
+    def __init__(
+        self, 
+        begin: str,
+        end: str,
+        path: str | Path, 
+        extra: list = None,
+        date_col: str = "date",
+        code_col: str = "code",
+        adj_col: str = "adjfactor",
+        index: str | list = None, 
+        partition: str = None,
+    ):
+        ParquetManager.__init__(self, path=path, index=index, partition=partition)
+        timepoint = ParquetManager.read(
+            self, index=date_col, **{
+                f"{date_col}__ge": begin, 
+                f"{date_col}__le": end
+        }).index
+        SourceBase.__init__(self, timepoint=timepoint)
+        self.extra = extra or []
+        self.fields =  ["open", "high", "low", "close", "volume"] + self.extra
+        self.date_col = date_col
+        self.code_col = code_col
+        self.adj_col = adj_col
+    
+    def update(self):
+        future = self._timepoint[self._timepoint > self.time]
+        if future.empty:
+            return None
+        self._time = future.min()
+        if self.adj_col:
+            data = ParquetManager.read(
+                self, index=self.code_col,
+                columns=self.fields + [self.adj_col],
+                **{self.date_col: self._time}
+            )
+            multipler = ["open", "high", "low", "close"]
+            data[multipler] = data[multipler].mul(data[self.adj_col], axis=0)
+            data = data.drop(columns=self.adj_col)
+        else:
+            data = ParquetManager.read(
+                self, index=self.code_col, 
+                columns=self.fields, 
+                **{self.date_col: self._time}
+            )
+        return data
 
-    def sample(self, limit=1, replace=False):
-        """
-        Randomly samples 'limit' records from the Parquet database.
-
-        Args:
-            limit (int): Number of records to sample.
-            replace (bool): If True, samples with replacement.
-
-        Returns:
-            pd.DataFrame: The sampled data.
-        """
-        sampled_data = pd.DataFrame()
-
-        # Randomly select a partition to read data from
-        partitions = list(self.path.glob(fr"{self.name}__[partition__{self.partition}=*.parquet")) if self.partition else [self.path / f"{self.name}.parquet"]
-        random.shuffle(partitions)
-
-        for partition_path in partitions:
-            partition_data = pd.read_parquet(partition_path)
-
-            if not replace:
-                if self.index:
-                    unsampled_data = partition_data[~partition_data[self.index].isin(self.sampled_records)]
-                else:
-                    unsampled_data = partition_data[~partition_data.index.isin([record[1] for record in self.sampled_records if record[0] == partition_path.name])]
-
-                if unsampled_data.empty:
-                    continue
-            else:
-                unsampled_data = partition_data
-
-            # Sample data from the unsampled data
-            sampled = unsampled_data.sample(n=min(limit - len(sampled_data), len(unsampled_data)), replace=False, random_state=random.randint(0, 1000))
-            sampled_data = pd.concat([sampled_data, sampled])
-
-            # Update sampled records for no-replacement sampling
-            if not replace:
-                if self.index:
-                    self.sampled_records.update(sampled[self.index])
-                else:
-                    self.sampled_records.update([(partition_path.name, idx) for idx in sampled.index])
-
-            if len(sampled_data) >= limit:
-                break
-
-        return sampled_data.head(limit)
