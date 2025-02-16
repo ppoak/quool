@@ -1,7 +1,7 @@
 from .base import CommissionBase, OrderBase
 
 
-class Commission(CommissionBase):
+class AjustedCommission(CommissionBase):
     """Concrete commission model implementation for equity trading scenarios.
 
     Inherits from CommissionBase to provide a standard Chinese stock market

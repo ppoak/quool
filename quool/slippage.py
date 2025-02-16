@@ -2,7 +2,7 @@ import pandas as pd
 from .base import SlippageBase, OrderBase
 
 
-class Slippage(SlippageBase):
+class RateSlippage(SlippageBase):
     """Concrete slippage model implementation for order price adjustment.
 
     Inherits from SlippageBase to provide volume-weighted price impact simulation
