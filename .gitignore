@@ -184,4 +184,4 @@ test*
 script
 strategy/coilysis.py
 
-app/*
+.quool_history
