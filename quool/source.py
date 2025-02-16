@@ -125,9 +125,17 @@ class DataFrameSource(SourceBase):
     """
 
     def __init__(self, data: pd.DataFrame):
-        timepoint = data.index.get_level_values(0).unique().sort_values()
-        super().__init__(self, timepoint=timepoint)
         self._data = data
+        self._times = data.index.get_level_values(0).unique().sort_values()
+        self._time = self._times.min()
+    
+    @property
+    def times(self):
+        return self._times[self._times <= self.time]
+    
+    @property
+    def time(self):
+        return self._time
     
     @property
     def datas(self):

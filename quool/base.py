@@ -8,39 +8,31 @@ from joblib import Parallel, delayed
 
 
 class SourceBase(ABC):
-
-    def __init__(self, timepoint: list):
-        self._timepoint = pd.to_datetime(timepoint)
-        self._time = timepoint[0]
-        self._data = list()
     
     @property
-    def timepoint(self):
-        return self._timepoint[self.timepoint <= self.time]
-
-    @property
-    def datas(self):
-        return pd.concat(
-            self._data[:len(self.timepoint)],
-            axis=0, keys=self.timepoint, names=['time', 'code']
-        )
+    @abstractmethod
+    def times(self):
+        raise NotImplementedError
     
     @property
-    def data(self):
-        return self._data[len(self.timepoint) - 1]
-    
-    @property
+    @abstractmethod
     def time(self):
-        return self._time
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def datas(self):
+        raise NotImplementedError
+    
+    @property
+    @abstractmethod
+    def data(self):
+        raise NotImplementedError
     
     @abstractmethod
     def update(self):
         raise NotImplementedError
 
-    @abstractmethod
-    def read(self, **kwargs):
-        raise NotImplementedError
-    
     def __str__(self):
         return (
             f'{self.__class__.__name__}@[{self.time}]\n'
