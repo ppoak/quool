@@ -388,20 +388,24 @@ class StrategyBase(ABC):
         pass
 
     def run(self, **kwargs):
+        data = self.source.update()
+        if data is None:
+            self.status = self.STOPPED
+        
+        self.broker.update(time=self.source.time, data=data)
+        if self.status == self.INIT:
+            self.init(**kwargs)
+            self.status = self.RUNNING
+        elif self.status == self.RUNNING:
+            self.update(**kwargs)
+        elif self.status == self.STOPPED:
+            self.stop(**kwargs)
+
+    def backtest(self, **kwargs):
         while True:
-            data = self.source.update()
-            if data is None:
-                self.status = self.STOPPED
-            
-            self.broker.update(time=self.source.time, data=data)
-            if self.status == self.INIT:
-                self.init(**kwargs)
-                self.status = self.RUNNING
-            elif self.status == self.RUNNING:
-                self.update(**kwargs)
-            elif self.status == self.STOPPED:
-                self.stop(**kwargs)
+            if self.status == self.STOPPED:
                 break
+            self.run(**kwargs)
 
     def __call__(
         self, 
@@ -410,7 +414,7 @@ class StrategyBase(ABC):
         n_jobs: int = -1
     ):
         Parallel(n_jobs=n_jobs, backend="loky")(
-            delayed(self.run)(param, path, since) for path, param in params.items()
+            delayed(self.backtest)(param, path, since) for path, param in params.items()
         )
     
     def __str__(self) -> str:
