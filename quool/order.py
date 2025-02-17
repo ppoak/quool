@@ -1,66 +1,134 @@
-from .base import OrderBase
+import numpy as np
+import pandas as pd
+from uuid import uuid4
 
 
-class Order(OrderBase):
-    """A implement for representing a financial trading order.
+class Order:
 
-    This class provides core functionality for order management including execution, cancellation,
-    status tracking, and serialization. It defines standard order types, statuses, and directions.
+    CREATED = "CREATED"
+    SUBMITTED = "SUBMITTED"
+    PARTIAL = "PARTIAL"
+    FILLED = "FILLED"
+    CANCELED = "CANCELED"
+    EXPIRED = "EXPIRED"
+    REJECTED = "REJECTED"
 
-    Class Attributes:
-        Order Status Constants:
-            CREATED (str): Order created but not yet submitted
-            SUBMITTED (str): Order submitted to market but not executed
-            PARTIAL (str): Order partially filled
-            FILLED (str): Order completely filled
-            CANCELED (str): Order canceled by user
-            EXPIRED (str): Order expired due to validity period
-            REJECTED (str): Order rejected by exchange
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+    STOP = "STOP"
+    STOPLIMIT = "STOPLIMIT"
 
-        Order Type Constants:
-            MARKET (str): Market order type
-            LIMIT (str): Limit order type
-            STOP (str): Stop order type
-            STOPLIMIT (str): Stop-limit order type
+    BUY = "BUY"
+    SELL = "SELL"
 
-        Direction Constants:
-            BUY (str): Buy direction
-            SELL (str): Sell direction
+    def __init__(
+        self,
+        time: str,
+        side: str,
+        code: str,
+        quantity: int,
+        exectype: str = MARKET,
+        limit: float = None,
+        trigger: float = None,
+        id: str = None,
+        valid: str = None,
+    ):
+        self.id = id or str(uuid4())
+        self.creatime = pd.to_datetime(time)
+        self.side = side
+        self.code = code
+        self.quantity = quantity
+        self.exectype = exectype
+        self.limit = limit
+        self.trigger = trigger
+        self.status = self.CREATED
+        self.filled = 0
+        self.value = 0
+        self.exectime = None
+        self.execprice = None
+        self.commission = 0
+        self.valid = pd.to_datetime(valid) if valid else None
 
-    Attributes:
-        id (str): Unique order identifier (auto-generated if not provided)
-        broker (BrokerBase): Associated broker instance handling the order
-        creatime (datetime): Order creation time (parsed from ISO string)
-        side (str): Trade direction (BUY/SELL)
-        code (str): Financial instrument code/symbol
-        quantity (int): Total order quantity
-        exectype (str): Order execution type (MARKET/LIMIT/STOP/STOPLIMIT)
-        limit (float): Limit price for limit orders (None for market orders)
-        trigger (float): Trigger price for stop orders
-        status (str): Current order status (from status constants)
-        filled (int): Number of shares/contracts filled
-        value (float): Total executed value (filled * execution price)
-        exectime (datetime): Time of last execution (None if not executed)
-        execprice (float): Price of last execution (None if not executed)
-        commission (float): Accumulated commission fees
-        valid (datetime): Order validity expiration time (None for GTC orders)
+    def execute(self, time: str | pd.Timestamp, price: float, quantity: int) -> None:
+        quantity = min(quantity, self.quantity - self.filled)
 
-    Args:
-        broker: Broker instance responsible for order execution
-        time: Order creation time (ISO 8601 format string)
-        side: Trade direction (use class constants BUY/SELL)
-        code: Trading instrument identifier
-        quantity: Total order quantity (must be > 0)
-        exectype: Order type (default: MARKET)
-        limit: Limit price for LIMIT/STOPLIMIT orders
-        trigger: Trigger price for STOP/STOPLIMIT orders
-        id: Custom order ID (auto-generated if None)
-        valid: Order validity period (ISO 8601 format string)
+        self.execprice = price
+        self.filled += quantity
+        value = quantity * price
+        self.value += value
 
-    Methods:
-        execute(price, quantity): Execute order at specified price/quantity
-        cancel(): Cancel the order if cancellable
-        is_alive(): Check if order is still active/executable
-        dump(): Serialize order to dictionary
-        load(data, broker): Classmethod to reconstruct order from dict
-    """
+        if self.filled == self.quantity:
+            self.status = self.FILLED
+        else:
+            self.status = self.PARTIAL
+        self.exectime = pd.to_datetime(time)
+
+    def cancel(self) -> None:
+        if self.status in {self.CREATED, self.PARTIAL, self.SUBMITTED}:
+            self.status = self.CANCELED
+
+    def is_alive(self, time: pd.Timestamp) -> bool:
+        if self.status in {self.CREATED, self.SUBMITTED, self.PARTIAL}:
+            if self.valid and pd.to_datetime(time) > self.valid:
+                self.status = self.EXPIRED
+                return False
+            return True
+        return False
+
+    def dump(self) -> dict:
+        return {
+            "id": self.id,
+            "creatime": self.creatime.isoformat(),
+            "side": self.side,
+            "code": self.code,
+            "quantity": self.quantity,
+            "exectype": self.exectype,
+            "limit": self.limit,
+            "trigger": self.trigger,
+            "execprice": self.execprice,
+            "status": self.status,
+            "filled": self.filled,
+            "value": self.value,
+            "exectime": self.exectime.isoformat() if self.exectime else None,
+            "commission": self.commission,
+            "valid": self.valid.isoformat() if self.valid else None,
+        }
+
+    @classmethod
+    def load(cls, data: dict) -> 'Order':
+        order = cls(
+            time=pd.to_datetime(data["creatime"]),
+            side=data["side"],
+            code=data["code"],
+            quantity=data["quantity"],
+            exectype=data.get("exectype", cls.MARKET),
+            limit=data.get("limit", None),
+            trigger=data.get("trigger", None),
+            id=data["id"],
+            valid=data.get("valid"),
+        )
+        # Load additional attributes
+        order.status = data.get("status", cls.CREATED)
+        order.filled = data.get("filled", 0)
+        order.value = data.get("value", 0)
+        order.exectime = pd.to_datetime(data["exetime"]) if data.get("exetime") else None
+        order.execprice = data.get("exeprice")
+        order.commission = data.get("commission", 0)
+        
+        return order
+
+    def __str__(self) -> str:
+        latest_date = self.creatime if self.exectime is None else self.exectime
+        latest_price = (
+            self.value / (self.filled or np.nan)
+            if self.status in {self.FILLED, self.PARTIAL}
+            else self.limit
+        )
+        latest_price = latest_price if latest_price else 0
+        return (
+            f"{self.__class__.__name__}({self.id[:5]})@{latest_date} [{self.status}]\n"
+            f"{self.exectype} {self.side} {self.code} {self.quantity:.2f}x${latest_price:.2f})"
+        )
+
+    def __repr__(self) -> str:
+        return self.__str__()
