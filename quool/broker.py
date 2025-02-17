@@ -324,53 +324,6 @@ class Broker:
     def get_positions(self) -> pd.Series:
         return pd.Series(self._positions, name="positions")
 
-    def report(self, benchmark: pd.Series = None):
-        """
-        Generates a report of the broker's performance.
-
-        Returns:
-            dict: A dictionary containing the broker's performance metrics.
-        """
-        ledger = self.ledger.set_index(["time", "code"]).sort_index()
-        prices = self.market["close"].unstack("code")
-
-        # cash, position, trades, total_value, market_value calculation 
-        cash = ledger.groupby("time")[["amount", "commission"]].sum()
-        cash = (cash["amount"] - cash["commission"]).cumsum()
-        positions = ledger.drop(index="CASH", level=1).groupby(["time", "code"])["unit"].sum().unstack().fillna(0).cumsum()
-        timepoints = prices.index.union(cash.index).union(positions.index)
-        cash = cash.reindex(timepoints).ffill()
-        positions = positions.reindex(timepoints).ffill().fillna(0)
-        market = (positions * prices).sum(axis=1)
-        total = cash + market
-        delta = positions.diff()
-        delta.iloc[0] = positions.iloc[0]
-        turnover = (delta * prices).abs().sum(axis=1) / total.shift(1).fillna(cash.iloc[0])
-        
-        ledger = ledger.drop(index="CASH", level=1)
-        ledger["stock_cumsum"] = ledger.groupby("code")["unit"].cumsum()
-        ledger["trade_mark"] = ledger["stock_cumsum"] == 0
-        ledger["trade_num"] = ledger.groupby("code")["trade_mark"].shift(1).astype("bool").groupby("code").cumsum()
-        trades = ledger.groupby(["code", "trade_num"]).apply(
-            lambda x: pd.Series({
-                "open_amount": -x[x["unit"] > 0]["amount"].sum(),
-                "open_at": x[x["unit"] > 0].index.get_level_values("time")[0],
-                "close_amount": x[x["unit"] < 0]["amount"].sum() if x["unit"].sum() == 0 else np.nan,
-                "close_at": x[x["unit"] < 0].index.get_level_values("time")[-1] if x["unit"].sum() == 0 else np.nan,
-            })
-        )
-        trades["duration"] = pd.to_datetime(trades["close_at"]) - pd.to_datetime(trades["open_at"])
-        trades["return"] = (trades["close_amount"] - trades["open_amount"]) / trades["open_amount"]
-        return {
-            "evaluation": evaluate(value=total, benchmark=benchmark, turnover=turnover, trades=trades),
-            "values": pd.concat(
-                [total, market, cash, turnover], 
-                axis=1, keys=["total", "market", "cash", "turnover"]
-            ),
-            "positions": positions,
-            "trades": trades,
-        }
-
     def dump(self, since: pd.Timestamp) -> dict:
         since = pd.to_datetime(since or 0)
         ledger = self.get_ledger()

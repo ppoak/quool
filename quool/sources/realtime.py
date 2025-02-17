@@ -1,6 +1,6 @@
 import pandas as pd
 from collections import deque
-from quool.base import Source
+from quool.source import Source
 from quool.sources import proxy_request
 
 
