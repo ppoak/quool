@@ -1,5 +1,5 @@
-from quool.base import SourceBase
-from quool.source import ParquetManager
+from quool.source import SourceBase
+from quool.sources import ParquetManager
 
 
 class ParquetSource(SourceBase):
@@ -15,23 +15,20 @@ class ParquetSource(SourceBase):
         adj_col: str = "adjfactor",
     ):
         self.manager = manager
-        timepoint = self.manager.read(
+        self._times = self.manager.read(
             self, index=date_col, **{
                 f"{date_col}__ge": begin, 
                 f"{date_col}__le": end
         }).index.unique()
-        super().__init__(timepoint=timepoint)
+        self._time = self._times.min()
         self.extra = extra or []
         self.fields =  ["open", "high", "low", "close", "volume"] + self.extra
         self.date_col = date_col
         self.code_col = code_col
         self.adj_col = adj_col
-    
-    def update(self):
-        future = self._timepoint[self._timepoint > self.time]
-        if future.empty:
-            return None
-        self._time = future.min()
+
+    @property
+    def data(self):
         if self.adj_col:
             data = ParquetManager.read(
                 self, index=self.code_col,
@@ -48,4 +45,11 @@ class ParquetSource(SourceBase):
                 **{self.date_col: self._time}
             )
         return data
+
+    def update(self):
+        future = self._timepoint[self._timepoint > self.time]
+        if future.empty:
+            return None
+        self._time = future.min()
+        return self.data
 

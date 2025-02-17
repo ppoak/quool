@@ -7,42 +7,6 @@ from abc import ABC, abstractmethod
 from joblib import Parallel, delayed
 
 
-class SourceBase(ABC):
-    
-    @property
-    @abstractmethod
-    def times(self):
-        raise NotImplementedError
-    
-    @property
-    @abstractmethod
-    def time(self):
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def datas(self):
-        raise NotImplementedError
-    
-    @property
-    @abstractmethod
-    def data(self):
-        raise NotImplementedError
-    
-    @abstractmethod
-    def update(self):
-        raise NotImplementedError
-
-    def __str__(self):
-        return (
-            f'{self.__class__.__name__}@[{self.time}]\n'
-            f'from {self.timepoint[0]} to {self.timepoint[-1]}'
-        )
-    
-    def __repr__(self):
-        return super().__repr__()
-
-
 class OrderBase(ABC):
 
     CREATED = "CREATED"
