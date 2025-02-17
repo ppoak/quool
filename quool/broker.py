@@ -1,46 +1,95 @@
+import numpy as np
 import pandas as pd
-from .base import BrokerBase, OrderBase
+from uuid import uuid4
+from .order import Order
+from .util import evaluate
+from collections import deque
+from .friction import FixedRateCommission, FixedRateSlippage
 
 
-class Broker(BrokerBase):
-    """Broker class is a interface for managing trading operations and market matching.
+class Broker:
 
-    Attributes:        
-        brokid (str): The unique identifier for the broker instance. If not provided when initializing, uuid will be generated.
-        commission (float): The commission rate for transactions. Defaults to 0.001 (0.1%).
-        time (pd.Timestamp): The current time of the broker. Indicating the latest time when broker called `update()`.
-        balance (float): The current balance of the broker.
-        positions (pd.Series): The current positions held by the broker. A pd.Series with code index and share value.
-        pendings (pd.DataFrame): The pending orders of the broker. A pd.DataFrame with detailed information of each order.
-            For detailed field of the DataFrame, please refer to attributes of `Order` class.
-        orders (pd.DataFrame): The history of processed orders. A pd.DataFrame with detailed information of each order.
-            For detailed field of the DataFrame, please refer to attributes of `Order` class.
-        ledger (pd.DataFrame): The history of balance changes. A pd.DataFrame with detailed information of each balance change.
+    order_type = Order
 
-    Methods:
-        update(time: pd.Timestamp, market: pd.DataFrame): Update the broker's state to the given time.
-            market (pd.DataFrame): The market data for trading. which contains a standard format:
-                1. Index (pd.Index): The stock codes and their corresponding levels.
-                2. Columns:
-                    - 'open': The opening price of the stock.
-                    - 'high': The highest price of the stock.
-                    - 'low': The lowest price of the stock.
-                    - 'close': The closing price of the stock.
-                    - 'volume': The trading volume of the stock.
-        buy(code: str, quantity: float, limit: float, trigger: float, exectype: str, valid: pd.Timestamp): Place a buy order.
-            limit: The limit price for the order. Only fits for `exectype = "LIMIT"` or `exectype = "STOP_LIMIT"`.
-            trigger: The trigger price for the order. Only fits for `exectype = "STOP"` or `exectype = "STOP_LIMIT"`.
-            exectype: The execution type of the order. Only fits for `exectype = "MARKET"` or `exectype = "LIMIT"` or `exectype = "STOP"` or `exectype = "STOP_LIMIT"`.
-            valid: The validity period of the order. You should provide it in pd.Timestamp format.
-        sell(code: str, quantity: float, limit: float, trigger: float, exectype: str, valid: pd.Timestamp): Place a sell order.
-            see more information in `buy()`.
-        cancel(orderid: str): Cancel the order with the given orderid.
-        close(code: str, limit: float, trigger: float, exectype: str, valid: pd.Timestamp): Close the position with the given code.
-            see more information in `buy()`.
-        get_value(market: pd.DataFrame): Calculate the current value of the broker's portfolio.
-            market (pd.DataFrame): The market data for trading. please refer to `update()` for more information.
-    """
+    def __init__(
+        self,
+        id: str,
+        commission: FixedRateCommission,
+        slippage: FixedRateSlippage,
+    ):
+        self.id = id or str(uuid4())
+        self.commission = commission
+        self.slippage = slippage
+        self._time = None
+        self._balance = 0
+        self._positions = {}
+        self._pendings = deque()
+        self._ledger = [] # Key parameter to restore the state of the broker
+        self._orders = []  # History of processed orders
+        self._order_dict = {}
 
+    @property
+    def time(self) -> pd.Timestamp:
+        return self._time
+
+    @property
+    def balance(self) -> float:
+        return self._balance
+
+    @property
+    def positions(self) -> dict:
+        return self._positions
+
+    @property
+    def pendings(self) -> deque[Order]:
+        return self._pendings
+    
+    @property
+    def orders(self) -> list[Order]:
+        return self._orders
+    
+    @property
+    def ledger(self) -> list:
+        return self._ledger
+
+    def submit(self, order: Order) -> None:
+        self._pendings.append(order)
+        self._order_dict[order.id] = order
+        order.status = order.SUBMITTED
+
+    def create(
+        self,
+        side: str,
+        code: str,
+        quantity: int,
+        exectype: str,
+        limit: float = None,
+        trigger: float = None,
+        id: str = None,
+        valid: str = None,
+    ) -> Order:
+        if self._time is None:
+            raise ValueError("broker must be initialized with a time")
+        order = self.order_type(
+            time=self._time,
+            side=side,
+            code=code,
+            quantity=quantity,
+            limit=limit,
+            trigger=trigger,
+            ordtype=exectype,
+            id=id,
+            valid=valid,
+        )
+        self.submit(order)
+        return order
+    
+    def cancel(self, order_or_id: str | Order) -> Order:
+        if isinstance(order_or_id, str):
+            order_or_id = self.get_order(order_or_id)
+        order_or_id.cancel()
+        return order_or_id
+    
     def _post(
         self,
         time: pd.Timestamp,
@@ -87,7 +136,7 @@ class Broker(BrokerBase):
         trigger: float = None,
         id: str = None,
         valid: str = None,
-    ) -> OrderBase:
+    ) -> Order:
         """
         Creates and submits a buy order.
 
@@ -122,7 +171,7 @@ class Broker(BrokerBase):
         trigger: float = None,
         id: str = None,
         valid: str = None,
-    ) -> OrderBase:
+    ) -> Order:
         """
         Creates and submits a sell order.
 
@@ -172,7 +221,7 @@ class Broker(BrokerBase):
                 self._pendings.append(order)
             order = self._pendings.popleft()
 
-    def _match(self, order: OrderBase, data: pd.DataFrame) -> None:
+    def _match(self, order: Order, data: pd.DataFrame) -> None:
         """
         Matches an order with market data and determines the execution price and quantity.
 
@@ -217,7 +266,7 @@ class Broker(BrokerBase):
         if quantity > 0:
             self._execute(order, price, quantity)
 
-    def _execute(self, order: OrderBase, price: float, quantity: int) -> None:
+    def _execute(self, order: Order, price: float, quantity: int) -> None:
         """
         Executes an order and updates broker's balance and positions.
 
@@ -233,7 +282,7 @@ class Broker(BrokerBase):
             if cost > self._balance:
                 order.status = order.REJECTED
             else:
-                order.execute(price, quantity)
+                order.execute(self.time, price, quantity)
                 order.commission = getattr(order, "commission", 0) + commission
                 self._post(
                     time=self.time, code=order.code, ttype=order.side, 
@@ -246,7 +295,7 @@ class Broker(BrokerBase):
             if self._positions.get(order.code, 0) < quantity:
                 order.status = order.REJECTED
             else:
-                order.execute(price, quantity)
+                order.execute(self.time, price, quantity)
                 order.commission = getattr(order, "commission", 0) + commission
                 self._post(
                     time=self.time, code=order.code, ttype=order.side, 
@@ -257,3 +306,142 @@ class Broker(BrokerBase):
                 if self._positions[order.code] == 0:
                     del self._positions[order.code]
     
+    def get_value(self, data: pd.DataFrame) -> float:
+        return (self.get_positions() * data["close"]).sum()
+        
+    def get_order(self, id: str) -> Order:
+        return self._orders.get[id]
+    
+    def get_ledger(self) -> pd.DataFrame:
+        return pd.DataFrame(self.ledger)
+    
+    def get_pendings(self) -> pd.DataFrame:
+        return pd.DataFrame([order.dump() for order in self.pendings])
+    
+    def get_orders(self) -> pd.DataFrame:
+        return pd.DataFrame([order.dump() for order in self.orders]), 
+    
+    def get_positions(self) -> pd.Series:
+        return pd.Series(self._positions, name="positions")
+
+    def report(self, benchmark: pd.Series = None):
+        """
+        Generates a report of the broker's performance.
+
+        Returns:
+            dict: A dictionary containing the broker's performance metrics.
+        """
+        ledger = self.ledger.set_index(["time", "code"]).sort_index()
+        prices = self.market["close"].unstack("code")
+
+        # cash, position, trades, total_value, market_value calculation 
+        cash = ledger.groupby("time")[["amount", "commission"]].sum()
+        cash = (cash["amount"] - cash["commission"]).cumsum()
+        positions = ledger.drop(index="CASH", level=1).groupby(["time", "code"])["unit"].sum().unstack().fillna(0).cumsum()
+        timepoints = prices.index.union(cash.index).union(positions.index)
+        cash = cash.reindex(timepoints).ffill()
+        positions = positions.reindex(timepoints).ffill().fillna(0)
+        market = (positions * prices).sum(axis=1)
+        total = cash + market
+        delta = positions.diff()
+        delta.iloc[0] = positions.iloc[0]
+        turnover = (delta * prices).abs().sum(axis=1) / total.shift(1).fillna(cash.iloc[0])
+        
+        ledger = ledger.drop(index="CASH", level=1)
+        ledger["stock_cumsum"] = ledger.groupby("code")["unit"].cumsum()
+        ledger["trade_mark"] = ledger["stock_cumsum"] == 0
+        ledger["trade_num"] = ledger.groupby("code")["trade_mark"].shift(1).astype("bool").groupby("code").cumsum()
+        trades = ledger.groupby(["code", "trade_num"]).apply(
+            lambda x: pd.Series({
+                "open_amount": -x[x["unit"] > 0]["amount"].sum(),
+                "open_at": x[x["unit"] > 0].index.get_level_values("time")[0],
+                "close_amount": x[x["unit"] < 0]["amount"].sum() if x["unit"].sum() == 0 else np.nan,
+                "close_at": x[x["unit"] < 0].index.get_level_values("time")[-1] if x["unit"].sum() == 0 else np.nan,
+            })
+        )
+        trades["duration"] = pd.to_datetime(trades["close_at"]) - pd.to_datetime(trades["open_at"])
+        trades["return"] = (trades["close_amount"] - trades["open_amount"]) / trades["open_amount"]
+        return {
+            "evaluation": evaluate(value=total, benchmark=benchmark, turnover=turnover, trades=trades),
+            "values": pd.concat(
+                [total, market, cash, turnover], 
+                axis=1, keys=["total", "market", "cash", "turnover"]
+            ),
+            "positions": positions,
+            "trades": trades,
+        }
+
+    def dump(self, since: pd.Timestamp) -> dict:
+        since = pd.to_datetime(since or 0)
+        ledger = self.get_ledger()
+        orders = self.get_orders()
+        pendings = self.get_pendings()
+
+        if not self.ledger.empty:
+            ledger["time"] = ledger["time"].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        
+        return {
+            "id": self.id,
+            "balance": self.balance,
+            "positions": self.positions,
+            "ledger": (
+                ledger[pd.to_datetime(ledger["time"]) >= since].replace(np.nan, None).to_dict(orient="records")
+                if not ledger.empty else []
+            ),
+            "orders": (
+                orders[pd.to_datetime(orders["creatime"]) >= since].replace(np.nan, None).to_dict(orient="records")
+                if not orders.empty else []
+            ),
+            "pendings": pendings.replace(np.nan, None).to_dict(orient="records"),
+            "commission": self.commission,
+            "time": self._time.isoformat() if self._time else None,
+        }
+    
+    @classmethod
+    def load(cls, data: dict, commission: FixedRateCommission, slippage: FixedRateSlippage) -> 'Broker':
+        """
+        Restores a Broker instance from a dictionary.
+        Market data must be provided externally.
+
+        Args:
+            data (dict): A dictionary containing the serialized Broker state.
+            market_data (pd.DataFrame): Market data required for the Broker.
+
+        Returns:
+            Broker: The restored Broker instance.
+        """
+        # Initialize Broker with external market data and commission
+        broker = cls(id=data["id"], commission=commission, slippage=slippage)
+
+        # Restore basic attributes
+        broker._time = pd.to_datetime(data["time"])
+        broker._balance = data["balance"]
+        broker._positions = data["positions"]
+        ledger = pd.DataFrame(data["ledger"])
+        ledger["time"] = pd.to_datetime(ledger["time"])
+        broker._ledger = ledger.to_dict(orient="records")
+
+        # Restore orders
+        for order_data in data["orders"]:
+            order = Order.load(order_data, broker)
+            broker._orders.append(order)
+
+        # Restore pending orders
+        for order_data in data["pendings"]:
+            order = Order.load(order_data, broker)
+            broker._pendings.put(order)
+
+        return broker
+
+    def __str__(self) -> str:
+        return (
+            f"{self.__class__.__name__}({self.id})@{self.time}\n"
+            f"balance: ${self.balance:.2f}\n"
+            f"commission: {self.commission}\n"
+            f"slippage: {self.slippage}\n"
+            f"#pending: {len(self.pendings)} & #over: {len(self.orders)}\n"
+            f"position: {self.positions}\n"
+        )
+    
+    def __repr__(self):
+        return self.__str__()
