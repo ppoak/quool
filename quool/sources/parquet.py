@@ -1,8 +1,8 @@
-from quool.source import SourceBase
+from quool.source import Source
 from quool.sources import ParquetManager
 
 
-class ParquetSource(SourceBase):
+class ParquetSource(Source):
 
     def __init__(
         self, 

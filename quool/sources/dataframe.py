@@ -1,8 +1,8 @@
 import pandas as pd
-from quool.source import SourceBase
+from quool.source import Source
 
 
-class DataFrameSource(SourceBase):
+class DataFrameSource(Source):
 
     def __init__(self, data: pd.DataFrame):
         self._data = data

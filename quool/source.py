@@ -1,8 +1,7 @@
 import pandas as pd
-from .base import SourceBase
 
 
-class SourceBase:
+class Source:
     
     def __init__(self, time: pd.Timestamp, data: pd.DataFrame):
         self._time = time

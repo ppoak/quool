@@ -1,6 +1,6 @@
 import pandas as pd
 from collections import deque
-from quool.base import SourceBase
+from quool.base import Source
 from quool.sources import proxy_request
 
 
@@ -112,7 +112,7 @@ def read_realtime(proxies: list[dict] = None):
     )
     return temp_df
 
-class RealtimeSource(SourceBase):
+class RealtimeSource(Source):
 
     def __init__(self, proxies: list | dict = None, limit: int = 3000):
         self.limit = limit
