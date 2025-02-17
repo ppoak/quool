@@ -91,21 +91,21 @@ def setup_logger(
         if rotation == 'size':
             # Use size-based rotation
             file_handler = RotatingFileHandler(
-                file,
+                file, encoding='utf-8',
                 maxBytes=max_bytes or 10 * 1024 * 1024,  # Default to 10 MB
                 backupCount=backup_count or 5  # Default to 5 backups
             )
         elif rotation == 'time':
             # Use time-based rotation
             file_handler = TimedRotatingFileHandler(
-                file,
+                file, encoding='utf-8',
                 when=when or 'midnight',  # Default to midnight
                 interval=interval or 1,  # Default to 1 day
                 backupCount=backup_count or 7  # Default to 7 backups
             )
         else:
             # No rotation
-            file_handler = logging.FileHandler(file)
+            file_handler = logging.FileHandler(file, encoding='utf-8')
 
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
