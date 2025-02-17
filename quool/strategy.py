@@ -36,22 +36,30 @@ class Strategy:
         self.update(**kwargs)
         return True
 
-    def backtest(self, **kwargs):
+    def backtest(self, benchmark: pd.Series, **kwargs):
         self.init(**kwargs)
         while True:
             if not self.run(**kwargs):
                 break
         self.stop(**kwargs)
+        self.evaluate(benchmark=benchmark)
 
     def __call__(
         self, 
-        params: dict | list[dict], 
+        params: dict, 
         since: pd.Timestamp = None, 
         n_jobs: int = -1
     ):
-        Parallel(n_jobs=n_jobs, backend="loky")(
+        grid_params = pd.MultiIndex.from_product(
+            [param for param in params.values()],
+            names=[name for name in params.keys()],
+        )
+        results = Parallel(n_jobs=n_jobs, backend="loky")(
             delayed(self.backtest)(param, path, since) for path, param in params.items()
         )
+        evaluations = pd.concat([result["evaluation"] for result in results])
+        evaluations.index = grid_params
+        return evaluations
     
     def __str__(self) -> str:
         return (
@@ -127,7 +135,8 @@ class Strategy:
         id: str = None,
         valid: str = None,
     ) -> Order:
-        quantity = (value / self.source.data.loc[code, "close"] // 100) * 100
+        delta = value - self.get_positions().get(code, 0) * self.source.data.loc[code, "close"]
+        quantity = (delta / self.source.data.loc[code, "close"] // 100) * 100
         if quantity > 0:
             side = self.broker.order_type.BUY
         else:
@@ -146,22 +155,17 @@ class Strategy:
     def order_target_percent(
         self,
         code: str,
-        value: float,
+        percent: float,
         exectype: str,
         limit: float = None,
         trigger: float = None,
         id: str = None,
         valid: str = None,
     ) -> Order:
-        quantity = (value / self.source.data.loc[code, "close"] // 100) * 100
-        if quantity > 0:
-            side = self.broker.order_type.BUY
-        else:
-            side = self.broker.order_type.SELL
-        return self.broker.create(
-            side=side,
+        value = self.get_value() * percent
+        return self.order_target_value(
             code=code,
-            quantity=abs(quantity),
+            value=value,
             exectype=exectype,
             limit=limit,
             trigger=trigger,
