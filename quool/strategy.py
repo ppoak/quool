@@ -9,11 +9,6 @@ from joblib import Parallel, delayed
 
 class Strategy:
 
-    # Status
-    INIT = "INIT"
-    RUNNING = "RUNNING"
-    STOPPED = "STOPPED"
-
     def __init__(
         self, 
         id: str,
@@ -23,7 +18,6 @@ class Strategy:
         self.id = id
         self.source = source
         self.broker = broker
-        self.status = self.INIT
     
     def init(self, **kwargs):
         pass
@@ -37,22 +31,17 @@ class Strategy:
     def run(self, **kwargs):
         data = self.source.update()
         if data is None:
-            self.status = self.STOPPED
-        
+            return False
         self.broker.update(time=self.source.time, data=data)
-        if self.status == self.INIT:
-            self.init(**kwargs)
-            self.status = self.RUNNING
-        elif self.status == self.RUNNING:
-            self.update(**kwargs)
-        elif self.status == self.STOPPED:
-            self.stop(**kwargs)
+        self.update(**kwargs)
+        return True
 
     def backtest(self, **kwargs):
+        self.init(**kwargs)
         while True:
-            if self.status == self.STOPPED:
+            if not self.run(**kwargs):
                 break
-            self.run(**kwargs)
+        self.stop(**kwargs)
 
     def __call__(
         self, 
