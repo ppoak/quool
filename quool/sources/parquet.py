@@ -1,5 +1,5 @@
 from quool.source import Source
-from quool.sources import ParquetManager
+from .util import ParquetManager
 
 
 class ParquetSource(Source):

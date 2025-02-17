@@ -1,7 +1,7 @@
 import pandas as pd
 from collections import deque
 from quool.source import Source
-from quool.sources import proxy_request
+from .util import proxy_request
 
 
 def read_realtime(proxies: list[dict] = None):
