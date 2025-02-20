@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quool"
-version = "7.0.6"
+version = "7.0.7"
 description = "Quantitative Toolkit - a helper in quant developing"
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
@@ -24,7 +24,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-app = ["streamlit", "akshare", "plotly", "langchain", "langchain-openai", "xlsxwriter"]
+source = ["requests"]
+client = ["apscheduler", "rich", "prompt_toolkit"]
 
 [project.urls]
 Homepage = "https://github.com/ppoak/quool"
