@@ -1,9 +1,10 @@
-from .order import Order
+from .order import Delivery, Order
 from .broker import Broker
 from .strategy import Strategy
 from .source import Source
 from .friction import FixedRateCommission, FixedRateSlippage
-from .util import Emailer, setup_logger, evaluate
+from .evaluator import report, evaluate
+from .util import setup_logger, notify_task
 from .sources import ParquetManager, ParquetSource, DataFrameSource, RealtimeSource
 
 

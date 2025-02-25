@@ -1,9 +1,8 @@
 import numpy as np
 import pandas as pd
 from uuid import uuid4
-from .order import Order
-from .util import evaluate
 from collections import deque
+from .order import Order, Delivery
 from .friction import FixedRateCommission, FixedRateSlippage
 
 
@@ -14,17 +13,17 @@ class Broker:
     def __init__(
         self,
         id: str,
-        commission: FixedRateCommission,
-        slippage: FixedRateSlippage,
+        commission: FixedRateCommission = None,
+        slippage: FixedRateSlippage = None,
     ):
         self.id = id or str(uuid4())
-        self.commission = commission
-        self.slippage = slippage
+        self.commission = commission or FixedRateCommission()
+        self.slippage = slippage or FixedRateSlippage()
         self._time = None
         self._balance = 0
         self._positions = {}
         self._pendings = deque()
-        self._ledger = [] # Key parameter to restore the state of the broker
+        self._delivery = []  # Key parameter to restore the state of the broker
         self._orders = []  # History of processed orders
         self._order_dict = {}
 
@@ -43,14 +42,14 @@ class Broker:
     @property
     def pendings(self) -> deque[Order]:
         return self._pendings
-    
+
     @property
     def orders(self) -> list[Order]:
         return self._orders
-    
+
     @property
-    def ledger(self) -> list:
-        return self._ledger
+    def delivery(self) -> list:
+        return self._delivery
 
     def submit(self, order: Order) -> None:
         self._pendings.append(order)
@@ -77,56 +76,36 @@ class Broker:
             quantity=quantity,
             limit=limit,
             trigger=trigger,
-            ordtype=exectype,
+            exectype=exectype,
             id=id,
             valid=valid,
         )
         self.submit(order)
         return order
-    
+
     def cancel(self, order_or_id: str | Order) -> Order:
         if isinstance(order_or_id, str):
             order_or_id = self.get_order(order_or_id)
         order_or_id.cancel()
         return order_or_id
-    
-    def _post(
-        self,
-        time: pd.Timestamp,
-        code: str,
-        ttype: str,
-        unit: float,
-        amount: float,
-        price: float,
-        commission: float,
-    ):
-        """
-        Records a transaction in the broker's ledger.
 
-        Args:
-            time (pd.Timestamp): The timestamp of the transaction.
-            code (str): The stock code.
-            ttype (str): The transaction type ('BUY' or 'SELL').
-            unit (float): The number of shares transacted.
-            amount (float): The total amount of the transaction.
-            price (float): The price per share.
-            commission (float): The commission fee.
-        """
-        self._ledger.append({
-            "time": time,
-            "code": code,
-            "ttype": ttype,
-            "unit": unit,
-            "amount": amount,
-            "price": price,
-            "commission": commission,
-        })
+    def deliver(self, delivery: Delivery):
+        self._delivery.append(delivery)
 
     def transfer(self, time: pd.Timestamp, amount: float):
         self._balance += amount
         self._time = pd.to_datetime(time)
-        self._post(time=self._time, code="CASH", ttype="TRANSFER", unit=0, amount=amount, price=0, commission=0)
-    
+        self.deliver(
+            Delivery(
+                time=self._time,
+                code="CASH",
+                type="TRANSFER",
+                quantity=0,
+                price=0,
+                amount=amount,
+            )
+        )
+
     def buy(
         self,
         code: str,
@@ -152,14 +131,14 @@ class Broker:
             Order: The created buy order.
         """
         return self.create(
-            side = self.order_type.BUY,
-            code = code,
-            quantity = quantity,
-            exectype = exectype,
-            limit = limit,
-            trigger = trigger,
-            id = id,
-            valid = valid,
+            side=self.order_type.BUY,
+            code=code,
+            quantity=quantity,
+            exectype=exectype,
+            limit=limit,
+            trigger=trigger,
+            id=id,
+            valid=valid,
         )
 
     def sell(
@@ -187,14 +166,14 @@ class Broker:
             Order: The created sell order.
         """
         return self.create(
-            side = self.order_type.SELL,
-            code = code,
-            quantity = quantity,
-            exectype = exectype,
-            limit = limit,
-            trigger = trigger,
-            id = id,
-            valid = valid,
+            side=self.order_type.SELL,
+            code=code,
+            quantity=quantity,
+            exectype=exectype,
+            limit=limit,
+            trigger=trigger,
+            id=id,
+            valid=valid,
         )
 
     def update(self, time: str | pd.Timestamp, data: pd.DataFrame) -> None:
@@ -206,16 +185,16 @@ class Broker:
         """
         if not isinstance(data, pd.DataFrame):
             return
-        
+
         self._time = pd.to_datetime(time)
         if not isinstance(self._time, pd.Timestamp):
             raise ValueError("time must be a pd.Timestamp or convertible to one")
-        
+
         self._pendings.append(None)  # Placeholder for end-of-day processing.
         order = self._pendings.popleft()
         while order is not None:
             self._match(order, data)
-            if not order.is_alive():
+            if not order.is_alive(self.time):
                 self._orders.append(order)
             else:
                 self._pendings.append(order)
@@ -231,16 +210,19 @@ class Broker:
         """
         if order.code not in data.index:
             return
-        
+
         if order.trigger is not None:
             # STOP and STOPLIMIT orders:
-            # Triggered when price higher than trigger for BUY, 
+            # Triggered when price higher than trigger for BUY,
             # or lower than trigger for SELL.
             if order.exectype == order.STOP or order.exectype == order.STOPLIMIT:
-                pricetype = "high" if order.side == order.BUY else "low"
+                pricetype = "high" if order.type == order.BUY else "low"
                 if (
-                    (order.side == order.BUY and data.loc[order.code, pricetype] >= order.trigger)
-                    or (order.side == order.SELL and data.loc[order.code, pricetype] <= order.trigger)
+                    order.type == order.BUY
+                    and data.loc[order.code, pricetype] >= order.trigger
+                ) or (
+                    order.type == order.SELL
+                    and data.loc[order.code, pricetype] <= order.trigger
                 ):
                     # order triggered
                     order.trigger = None
@@ -248,23 +230,18 @@ class Broker:
             else:
                 raise ValueError("Invalid order type for trigger.")
 
-        # If the order type is market or stop order, use the opening price and minimum trading volume
-        if order.exectype == order.MARKET or order.exectype == order.STOP:
-            quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
-            price = self.slippage(order, quantity, data.loc[order.code])
-        # If the order type is limit or stop limit order, check if the price conditions are met
-        elif order.exectype == order.LIMIT or order.exectype == order.STOPLIMIT:
-            if order.side == order.BUY and data.loc[order.code, "low"] <= order.limit:
-                quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
-                price = self.slippage(order, quantity, data.loc[order.code])
-            elif order.side == order.SELL and data.loc[order.code, "high"] >= order.limit:
-                quantity = min(data.loc[order.code, "volume"], order.quantity - order.filled)
-                price = self.slippage(order, quantity, data.loc[order.code])
-            else:
-                return
-                
-        if quantity > 0:
-            self._execute(order, price, quantity)
+        # if the order type is market or stop order, match condition satisfies
+        market_order = order.exectype == order.MARKET or order.exectype == order.STOP
+        # if the order type is limit or stop limit order, check if the price conditions are met
+        limit_order = order.exectype == order.LIMIT or order.exectype == order.STOPLIMIT
+        limit_match = (
+            order.type == order.BUY and data.loc[order.code, "low"] <= order.limit
+        ) or (order.type == order.SELL and data.loc[order.code, "high"] >= order.limit)
+        # if match condition is not satisfied
+        if market_order or (limit_order and limit_match):
+            price, quantity = self.slippage(order, data.loc[order.code], quantity)
+            if quantity > 0:
+                self._execute(order, price, quantity)
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
         """
@@ -277,92 +254,90 @@ class Broker:
         """
         amount = price * quantity
         commission = self.commission(order, price, quantity)
-        if order.side == order.BUY:
+        if order.type == order.BUY:
             cost = amount + commission
             if cost > self._balance:
                 order.status = order.REJECTED
             else:
-                order.execute(self.time, price, quantity)
-                order.commission = getattr(order, "commission", 0) + commission
-                self._post(
-                    time=self.time, code=order.code, ttype=order.side, 
-                    unit=quantity, amount=-amount, price=price, commission=commission
+                delivery = Delivery(
+                    time=self.time,
+                    code=order.code,
+                    type=order.type,
+                    quantity=quantity,
+                    price=price,
+                    amount=cost,
                 )
+                order += delivery
+                self.deliver(delivery)
                 self._balance -= cost
-                self._positions[order.code] = self._positions.get(order.code, 0) + quantity
-        elif order.side == order.SELL:
+                self._positions[order.code] = (
+                    self._positions.get(order.code, 0) + quantity
+                )
+        elif order.type == order.SELL:
             revenue = amount - commission
             if self._positions.get(order.code, 0) < quantity:
                 order.status = order.REJECTED
             else:
-                order.execute(self.time, price, quantity)
-                order.commission = getattr(order, "commission", 0) + commission
-                self._post(
-                    time=self.time, code=order.code, ttype=order.side, 
-                    unit=-quantity, amount=amount, price=price, commission=commission
+                delivery = Delivery(
+                    time=self.time,
+                    code=order.code,
+                    type=order.type,
+                    quantity=quantity,
+                    price=price,
+                    amount=cost,
                 )
+                order += delivery
+                self.deliver(delivery)
                 self._balance += revenue
                 self._positions[order.code] -= quantity
                 if self._positions[order.code] == 0:
                     del self._positions[order.code]
-    
+
     def get_value(self, data: pd.DataFrame) -> float:
-        return (self.get_positions() * data["close"]).sum()
-        
+        return (self.get_positions() * data["close"]).sum() + self.balance
+
     def get_order(self, id: str) -> Order:
         return self._orders.get[id]
-    
-    def get_ledger(self) -> pd.DataFrame:
-        return pd.DataFrame(self.ledger)
-    
+
+    def get_delivery(self) -> pd.DataFrame:
+        return pd.DataFrame([deliv.dump() for deliv in self.delivery])
+
     def get_pendings(self) -> pd.DataFrame:
         return pd.DataFrame([order.dump() for order in self.pendings])
-    
+
     def get_orders(self) -> pd.DataFrame:
-        return pd.DataFrame([order.dump() for order in self.orders]), 
-    
+        return pd.DataFrame([order.dump() for order in self.orders])
+
     def get_positions(self) -> pd.Series:
         return pd.Series(self._positions, name="positions")
 
-    def dump(self, since: pd.Timestamp) -> dict:
-        since = pd.to_datetime(since or 0)
-        ledger = self.get_ledger()
-        orders = self.get_orders()
+    def dump(self, history: bool = True) -> dict:
         pendings = self.get_pendings()
-
-        if not self.ledger.empty:
-            ledger["time"] = ledger["time"].dt.strftime('%Y-%m-%dT%H:%M:%S')
-        
-        return {
+        data = {
             "id": self.id,
             "balance": self.balance,
             "positions": self.positions,
-            "ledger": (
-                ledger[pd.to_datetime(ledger["time"]) >= since].replace(np.nan, None).to_dict(orient="records")
-                if not ledger.empty else []
-            ),
-            "orders": (
-                orders[pd.to_datetime(orders["creatime"]) >= since].replace(np.nan, None).to_dict(orient="records")
-                if not orders.empty else []
-            ),
             "pendings": pendings.replace(np.nan, None).to_dict(orient="records"),
-            "commission": self.commission,
             "time": self._time.isoformat() if self._time else None,
         }
-    
+        if history:
+            delivery = self.get_delivery()
+            orders = self.get_orders()
+            if not self.delivery.empty:
+                delivery["time"] = delivery["time"].dt.strftime("%Y-%m-%dT%H:%M:%S")
+            data["delivery"] = (
+                delivery.to_dict(orient="records") if not delivery.empty else []
+            )
+            data["orders"] = (
+                orders.replace(np.nan, None).to_dict(orient="records")
+                if not orders.empty
+                else []
+            )
+
     @classmethod
-    def load(cls, data: dict, commission: FixedRateCommission, slippage: FixedRateSlippage) -> 'Broker':
-        """
-        Restores a Broker instance from a dictionary.
-        Market data must be provided externally.
-
-        Args:
-            data (dict): A dictionary containing the serialized Broker state.
-            market_data (pd.DataFrame): Market data required for the Broker.
-
-        Returns:
-            Broker: The restored Broker instance.
-        """
+    def load(
+        cls, data: dict, commission: FixedRateCommission, slippage: FixedRateSlippage
+    ) -> "Broker":
         # Initialize Broker with external market data and commission
         broker = cls(id=data["id"], commission=commission, slippage=slippage)
 
@@ -370,19 +345,21 @@ class Broker:
         broker._time = pd.to_datetime(data["time"])
         broker._balance = data["balance"]
         broker._positions = data["positions"]
-        ledger = pd.DataFrame(data["ledger"])
-        ledger["time"] = pd.to_datetime(ledger["time"])
-        broker._ledger = ledger.to_dict(orient="records")
-
-        # Restore orders
-        for order_data in data["orders"]:
-            order = Order.load(order_data, broker)
-            broker._orders.append(order)
 
         # Restore pending orders
         for order_data in data["pendings"]:
-            order = Order.load(order_data, broker)
+            order = Order.load(order_data)
             broker._pendings.put(order)
+
+        # Restore orders
+        for order_data in data.get("orders", []):
+            order = Order.load(order_data)
+            broker._orders.append(order)
+
+        # Restore deliveries
+        for delivery_data in data.get("delivery", []):
+            delivery = Delivery.load(delivery_data)
+            broker._delivery.append(delivery)
 
         return broker
 
@@ -392,9 +369,9 @@ class Broker:
             f"balance: ${self.balance:.2f}\n"
             f"commission: {self.commission}\n"
             f"slippage: {self.slippage}\n"
-            f"#pending: {len(self.pendings)} & #over: {len(self.orders)}\n"
+            f"#pending: {len(self.pendings)} & #over: {len(self.orders)} & #deliveries: {len(self.delivery)}\n"
             f"position: {self.positions}\n"
         )
-    
+
     def __repr__(self):
         return self.__str__()

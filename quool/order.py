@@ -3,7 +3,60 @@ import pandas as pd
 from uuid import uuid4
 
 
-class Order:
+class Delivery:
+
+    def __init__(
+        self,
+        time: str,
+        code: str,
+        type: str,
+        quantity: float,
+        price: float,
+        amount: float,
+        id: str = None,
+    ):
+        self.id = id or str(uuid4())
+        self.time = pd.to_datetime(time)
+        self.type = type
+        self.code = code
+        self.quantity = quantity
+        self.amount = amount
+        self.price = price
+
+    def dump(self) -> dict:
+        return {
+            "id": self.id,
+            "time": self.time.isoformat(),
+            "code": self.code,
+            "type": self.type,
+            "quantity": self.quantity,
+            "amount": self.amount,
+            "price": self.price,
+        }
+
+    @classmethod
+    def load(cls, data: dict) -> "Delivery":
+        return cls(
+            time=data["time"],
+            code=data["code"],
+            type=data["type"],
+            quantity=data["quantity"],
+            amount=data["amount"],
+            price=data["price"],
+            id=data["id"],
+        )
+
+    def __str__(self):
+        return (
+            f"{self.__class__.__name__}({self.id[:5]})@{self.time}"
+            f"{self.type} {self.code} {self.quantity:.2f}x${self.price:.2f})"
+        )
+
+    def __repr__(self):
+        return self.__str__()
+
+
+class Order(Delivery):
 
     CREATED = "CREATED"
     SUBMITTED = "SUBMITTED"
@@ -24,8 +77,8 @@ class Order:
     def __init__(
         self,
         time: str,
-        side: str,
         code: str,
+        type: str,
         quantity: int,
         exectype: str = MARKET,
         limit: float = None,
@@ -33,35 +86,36 @@ class Order:
         id: str = None,
         valid: str = None,
     ):
-        self.id = id or str(uuid4())
-        self.creatime = pd.to_datetime(time)
-        self.side = side
-        self.code = code
-        self.quantity = quantity
+        super().__init__(
+            time=time, code=code, type=type, quantity=quantity, price=0, amount=0, id=id
+        )
+        self.creatime = self.time
         self.exectype = exectype
         self.limit = limit
         self.trigger = trigger
         self.status = self.CREATED
         self.filled = 0
-        self.value = 0
-        self.exectime = None
-        self.execprice = None
-        self.commission = 0
         self.valid = pd.to_datetime(valid) if valid else None
+        self.delivery = []
 
-    def execute(self, time: str | pd.Timestamp, price: float, quantity: int) -> None:
-        quantity = min(quantity, self.quantity - self.filled)
+    def __add__(self, delivery: Delivery) -> "Order":
+        # disabling extra quantity execution
+        if delivery.quantity > self.quantity - self.filled:
+            raise ValueError("Delivery quantity exceeds order remaining")
 
-        self.execprice = price
-        self.filled += quantity
-        value = quantity * price
-        self.value += value
+        self.delivery.append(delivery)
+        self.amount += delivery.amount
+        # latest price
+        self.price = self.amount / (self.filled + delivery.quantity)
+        self.filled += delivery.quantity
 
         if self.filled == self.quantity:
             self.status = self.FILLED
         else:
             self.status = self.PARTIAL
-        self.exectime = pd.to_datetime(time)
+        # latest time
+        self.time = pd.to_datetime(delivery.time)
+        return self
 
     def cancel(self) -> None:
         if self.status in {self.CREATED, self.PARTIAL, self.SUBMITTED}:
@@ -75,31 +129,31 @@ class Order:
             return True
         return False
 
-    def dump(self) -> dict:
-        return {
+    def dump(self, delivery: bool = True) -> dict:
+        data = {
             "id": self.id,
             "creatime": self.creatime.isoformat(),
-            "side": self.side,
             "code": self.code,
+            "type": self.type,
             "quantity": self.quantity,
             "exectype": self.exectype,
             "limit": self.limit,
             "trigger": self.trigger,
-            "execprice": self.execprice,
+            "valid": self.valid.isoformat() if self.valid else None,
             "status": self.status,
             "filled": self.filled,
-            "value": self.value,
-            "exectime": self.exectime.isoformat() if self.exectime else None,
-            "commission": self.commission,
-            "valid": self.valid.isoformat() if self.valid else None,
         }
+        # with delivery
+        if delivery:
+            data["delivery"] = [deliv.dump() for deliv in self.delivery]
+        return data
 
     @classmethod
-    def load(cls, data: dict) -> 'Order':
+    def load(cls, data: dict) -> "Order":
         order = cls(
             time=pd.to_datetime(data["creatime"]),
-            side=data["side"],
             code=data["code"],
+            type=data["type"],
             quantity=data["quantity"],
             exectype=data.get("exectype", cls.MARKET),
             limit=data.get("limit", None),
@@ -110,24 +164,15 @@ class Order:
         # Load additional attributes
         order.status = data.get("status", cls.CREATED)
         order.filled = data.get("filled", 0)
-        order.value = data.get("value", 0)
-        order.exectime = pd.to_datetime(data["exetime"]) if data.get("exetime") else None
-        order.execprice = data.get("exeprice")
-        order.commission = data.get("commission", 0)
-        
+        if data.get("delivery") is not None:
+            order.delivery = [Delivery.load(deliv) for deliv in data["delivery"]]
+
         return order
 
     def __str__(self) -> str:
-        latest_date = self.creatime if self.exectime is None else self.exectime
-        latest_price = (
-            self.value / (self.filled or np.nan)
-            if self.status in {self.FILLED, self.PARTIAL}
-            else self.limit
-        )
-        latest_price = latest_price if latest_price else 0
         return (
-            f"{self.__class__.__name__}({self.id[:5]})@{latest_date} [{self.status}]\n"
-            f"{self.exectype} {self.side} {self.code} {self.quantity:.2f}x${latest_price:.2f})"
+            f"{self.__class__.__name__}({self.id[:5]})@{self.time} [{self.status}]\n"
+            f"{self.exectype} {self.type} {self.code} {self.quantity:.2f}x${self.price:.2f})"
         )
 
     def __repr__(self) -> str:

@@ -21,9 +21,12 @@ class DataFrameSource(Source):
     def data(self):
         return self._data.loc[self.time]
     
-    def update(self):
-        future = self._timepoint[self._timepoint > self.time]
+    def update(self, code: list[str] = None) -> pd.DataFrame:
+        future = self._times[self._times > self.time]
         if future.empty:
             return None
         self._time = future.min()
-        return self._data.loc[self._time]
+        data = self._data.loc[self._time]
+        if code is not None:
+            return data.loc[data.index.isin(code)]
+        return data
