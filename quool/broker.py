@@ -58,7 +58,7 @@ class Broker:
 
     def create(
         self,
-        side: str,
+        type: str,
         code: str,
         quantity: int,
         exectype: str,
@@ -71,7 +71,7 @@ class Broker:
             raise ValueError("broker must be initialized with a time")
         order = self.order_type(
             time=self._time,
-            side=side,
+            type=type,
             code=code,
             quantity=quantity,
             limit=limit,
@@ -131,7 +131,7 @@ class Broker:
             Order: The created buy order.
         """
         return self.create(
-            side=self.order_type.BUY,
+            type=self.order_type.BUY,
             code=code,
             quantity=quantity,
             exectype=exectype,
@@ -166,7 +166,7 @@ class Broker:
             Order: The created sell order.
         """
         return self.create(
-            side=self.order_type.SELL,
+            type=self.order_type.SELL,
             code=code,
             quantity=quantity,
             exectype=exectype,
@@ -231,17 +231,22 @@ class Broker:
                 raise ValueError("Invalid order type for trigger.")
 
         # if the order type is market or stop order, match condition satisfies
-        market_order = order.exectype == order.MARKET or order.exectype == order.STOP
+        market_match = order.exectype == order.MARKET or order.exectype == order.STOP
         # if the order type is limit or stop limit order, check if the price conditions are met
         limit_order = order.exectype == order.LIMIT or order.exectype == order.STOPLIMIT
-        limit_match = (
-            order.type == order.BUY and data.loc[order.code, "low"] <= order.limit
-        ) or (order.type == order.SELL and data.loc[order.code, "high"] >= order.limit)
+        limit_match = limit_order and (
+            (order.type == order.BUY and data.loc[order.code, "low"] <= order.limit)
+            or (
+                order.type == order.SELL and data.loc[order.code, "high"] >= order.limit
+            )
+        )
         # if match condition is not satisfied
-        if market_order or (limit_order and limit_match):
-            price, quantity = self.slippage(order, data.loc[order.code], quantity)
+        if market_match or limit_match:
+            price, quantity = self.slippage(order, data.loc[order.code])
             if quantity > 0:
                 self._execute(order, price, quantity)
+            else:
+                order.status = order.REJECTED
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
         """
@@ -284,7 +289,7 @@ class Broker:
                     type=order.type,
                     quantity=quantity,
                     price=price,
-                    amount=cost,
+                    amount=revenue,
                 )
                 order += delivery
                 self.deliver(delivery)
@@ -299,20 +304,33 @@ class Broker:
     def get_order(self, id: str) -> Order:
         return self._orders.get[id]
 
-    def get_delivery(self) -> pd.DataFrame:
-        return pd.DataFrame([deliv.dump() for deliv in self.delivery])
+    def get_delivery(self, parse_dates: bool = True) -> pd.DataFrame:
+        delivery = pd.DataFrame([deliv.dump() for deliv in self.delivery])
+        if parse_dates:
+            delivery["time"] = pd.to_datetime(delivery["time"])
+        return delivery
 
-    def get_pendings(self) -> pd.DataFrame:
-        return pd.DataFrame([order.dump() for order in self.pendings])
+    def get_pendings(self, parse_dates: bool = True, delivery: bool = True) -> pd.DataFrame:
+        pendings = pd.DataFrame([order.dump(delivery) for order in self.pendings])
+        if parse_dates:
+            pendings["time"] = pd.to_datetime(pendings["time"])
+            pendings["creatime"] = pd.to_datetime(pendings["creatime"])
+            pendings["valid"] = pd.to_datetime(pendings["valid"])
+        return pendings
 
-    def get_orders(self) -> pd.DataFrame:
-        return pd.DataFrame([order.dump() for order in self.orders])
+    def get_orders(self, parse_dates: bool = True, delivery: bool = False) -> pd.DataFrame:
+        orders = pd.DataFrame([order.dump(delivery) for order in self.orders])
+        if parse_dates:
+            orders["time"] = pd.to_datetime(orders["time"])
+            orders["creatime"] = pd.to_datetime(orders["creatime"])
+            orders["valid"] = pd.to_datetime(orders["valid"])
+        return orders
 
     def get_positions(self) -> pd.Series:
         return pd.Series(self._positions, name="positions")
 
     def dump(self, history: bool = True) -> dict:
-        pendings = self.get_pendings()
+        pendings = self.get_pendings(parse_dates=False)
         data = {
             "id": self.id,
             "balance": self.balance,
@@ -321,18 +339,9 @@ class Broker:
             "time": self._time.isoformat() if self._time else None,
         }
         if history:
-            delivery = self.get_delivery()
-            orders = self.get_orders()
-            if not self.delivery.empty:
-                delivery["time"] = delivery["time"].dt.strftime("%Y-%m-%dT%H:%M:%S")
-            data["delivery"] = (
-                delivery.to_dict(orient="records") if not delivery.empty else []
-            )
-            data["orders"] = (
-                orders.replace(np.nan, None).to_dict(orient="records")
-                if not orders.empty
-                else []
-            )
+            data["delivery"] = self.get_delivery(parse_dates=False).replace(np.nan, None).to_dict(orient="records")
+            data["orders"] = self.get_orders(parse_dates=False).replace(np.nan, None).to_dict(orient="records")
+        return data
 
     @classmethod
     def load(

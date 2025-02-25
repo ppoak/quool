@@ -1,9 +1,23 @@
-import numpy as np
 import pandas as pd
 from uuid import uuid4
 
 
 class Delivery:
+
+    AMOUNT_SIGN = {
+        "TRANSFER": 1,
+        "WITHDRAW": -1,
+        "BUY": -1,
+        "SELL": 1,
+        "DIVIDEND": 1,
+    }
+    QUANTITY_SIGN = {
+        "TRANSFER": 1,
+        "WITHDRAW": -1,
+        "BUY": 1,
+        "SELL": -1,
+        "SPLIT": 1,
+    }
 
     def __init__(
         self,
@@ -133,6 +147,7 @@ class Order(Delivery):
         data = {
             "id": self.id,
             "creatime": self.creatime.isoformat(),
+            "time": self.time.isoformat(),
             "code": self.code,
             "type": self.type,
             "quantity": self.quantity,

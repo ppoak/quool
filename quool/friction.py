@@ -33,35 +33,40 @@ class FixedRateSlippage:
     def __init__(self, slip_rate: float = 0.01):
         self.slip_rate = slip_rate
 
-    def __call__(self, order: Order, kline: pd.Series, quantity: float) -> float:
+    def __call__(self, order: Order, kline: pd.Series) -> float:
+        quantity = min(kline["volume"], order.quantity)
+        if quantity == 0:
+            return 0, 0
         if order.type == order.BUY:
             if order.exectype == order.MARKET:
-                return min(
-                    kline["high"],
-                    (kline["high"] - kline["low"])
-                    / kline["volume"]
-                    * quantity
-                    * self.slip_rate
-                    + kline["open"],
-                ), min(kline["volume"], order.quantity)
-            elif order.exectype == order.LIMIT:
-                return min(order.price, kline["high"]), min(
-                    kline["volume"], order.quantity
+                return (
+                    min(
+                        kline["high"],
+                        (kline["high"] - kline["low"])
+                        / kline["volume"]
+                        * quantity
+                        * self.slip_rate
+                        + kline["open"],
+                    ),
+                    quantity,
                 )
+            elif order.exectype == order.LIMIT:
+                return min(order.price, kline["high"]), quantity
         else:
             if order.exectype == order.MARKET:
-                return max(
-                    kline["low"],
-                    (kline["low"] - kline["high"])
-                    / kline["volume"]
-                    * quantity
-                    * self.slip_rate
-                    + kline["open"],
-                ), min(kline["volume"], order.quantity)
-            elif order.exectype == order.LIMIT:
-                return max(order.price, kline["low"]), min(
-                    kline["volume"], order.quantity
+                return (
+                    max(
+                        kline["low"],
+                        (kline["low"] - kline["high"])
+                        / kline["volume"]
+                        * quantity
+                        * self.slip_rate
+                        + kline["open"],
+                    ),
+                    quantity,
                 )
+            elif order.exectype == order.LIMIT:
+                return max(order.price, kline["low"]), quantity
 
     def __str__(self):
         return f"{self.__class__.__name__}(slip_one_cent_rate={self.slip_rate})"

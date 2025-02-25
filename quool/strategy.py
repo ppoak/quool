@@ -25,6 +25,9 @@ class Strategy:
     def init(self, **kwargs):
         pass
 
+    def preupdate(self, **kwargs):
+        pass
+
     def update(self, **kwargs):
         raise NotImplementedError("`update` method must be implemented")
 
@@ -45,9 +48,8 @@ class Strategy:
 
     def backtest(self, benchmark: pd.Series = None, **kwargs):
         self.init(**kwargs)
-        while True:
-            if not self.run(**kwargs):
-                break
+        while self.run(**kwargs):
+            self.preupdate(**kwargs)
         self.stop(**kwargs)
         self.evaluate(benchmark=benchmark)
 
@@ -96,7 +98,7 @@ class Strategy:
         valid: str = None,
     ) -> Order:
         return self.broker.create(
-            side=self.broker.order_type.BUY,
+            type=self.broker.order_type.BUY,
             code=code,
             quantity=quantity,
             exectype=exectype,
@@ -117,7 +119,7 @@ class Strategy:
         valid: str = None,
     ) -> Order:
         return self.broker.create(
-            side=self.broker.order_type.SELL,
+            type=self.broker.order_type.SELL,
             code=code,
             quantity=quantity,
             exectype=exectype,
@@ -143,19 +145,20 @@ class Strategy:
         )
         quantity = (delta / self.source.data.loc[code, "close"] // 100) * 100
         if quantity > 0:
-            side = self.broker.order_type.BUY
-        else:
-            side = self.broker.order_type.SELL
-        return self.broker.create(
-            side=side,
-            code=code,
-            quantity=abs(quantity),
-            exectype=exectype,
-            limit=limit,
-            trigger=trigger,
-            id=id,
-            valid=valid,
-        )
+            type = self.broker.order_type.BUY
+        elif quantity < 0:
+            type = self.broker.order_type.SELL
+        if abs(quantity):
+            return self.broker.create(
+                type=type,
+                code=code,
+                quantity=abs(quantity),
+                exectype=exectype,
+                limit=limit,
+                trigger=trigger,
+                id=id,
+                valid=valid,
+            )
 
     def order_target_percent(
         self,
@@ -188,7 +191,7 @@ class Strategy:
         valid: str = None,
     ) -> Order:
         return self.broker.create(
-            side=self.broker.order_type.SELL,
+            type=self.broker.order_type.SELL,
             code=code,
             quantity=self.broker.positions.get(code),
             exectype=exectype,

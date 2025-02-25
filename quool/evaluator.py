@@ -1,9 +1,12 @@
 import numpy as np
 import pandas as pd
+from .order import Delivery
 
 
 def report(delivery: pd.DataFrame, data: pd.DataFrame):
     delivery = delivery.set_index(["time", "code"]).sort_index()
+    delivery["amount"] *= delivery["type"].map(Delivery.AMOUNT_SIGN)
+    delivery["quantity"] *= delivery["type"].map(Delivery.QUANTITY_SIGN)
     prices = data["close"].unstack("code")
 
     # cash, position, trades, total_value, market_value calculation
