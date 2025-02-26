@@ -1,4 +1,3 @@
-import pandas as pd
 from quool import proxy_request
 
 

@@ -1,5 +1,5 @@
 import pandas as pd
-from quool.source import Source
+from quool import Source
 
 
 class DataFrameSource(Source):

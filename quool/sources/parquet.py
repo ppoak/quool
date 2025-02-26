@@ -1,4 +1,4 @@
-from quool.source import Source
+from quool import Source
 from .util import ParquetManager
 
 

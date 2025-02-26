@@ -1,5 +1,5 @@
 import pandas as pd
-from quool import DataFrameSource
+from .dataframe import DataFrameSource
 
 
 class XtDataPreloadSource(DataFrameSource):
