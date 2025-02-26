@@ -91,17 +91,6 @@ def evaluate(
     turnover: pd.Series = None,
     trades: pd.DataFrame = None,
 ):
-    """Evaluate the performance of a trading strategy.
-
-    Args:
-        value (pd.Series): The value of the portfolio.
-        benchmark (pd.Series, optional): The value of the benchmark. Defaults to None.
-        turnover (pd.Series, optional): The turnover rate. Defaults to None.
-        trades (pd.Series): The trading records.
-
-    Returns:
-        dict: A dictionary containing the evaluation results.
-    """
     net_value = value / value.iloc[0]
     returns = net_value.pct_change(fill_method=None).fillna(0)
     drawdown = net_value / net_value.cummax() - 1

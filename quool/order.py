@@ -186,7 +186,7 @@ class Order(Delivery):
 
     def __str__(self) -> str:
         return (
-            f"{self.__class__.__name__}({self.id[:5]})@{self.time} [{self.status}]\n"
+            f"{self.__class__.__name__}({self.id[:5]})@{self.time} [{self.status}]"
             f"{self.exectype} {self.type} {self.code} {self.quantity:.2f}x${self.price:.2f})"
         )
 

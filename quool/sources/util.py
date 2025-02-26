@@ -7,31 +7,6 @@ from copy import deepcopy
 from joblib import Parallel, delayed
 
 
-def proxy_request(
-    url: str,
-    method: str = "GET",
-    proxies: dict = None,
-    delay: float = 1,
-    **kwargs
-):
-    proxies = proxies or []
-    if not isinstance(proxies, list):
-        proxies = [proxies]
-    proxies = deepcopy(proxies)
-    for proxy in proxies:
-        try:
-            response = requests.request(method=method, url=url, proxies=proxy, **kwargs)
-            response.raise_for_status()
-            return response
-        except requests.exceptions.RequestException:
-            time.sleep(delay)
-    else:
-        response = requests.request(method=method, url=url, **kwargs)
-        response.raise_for_status()
-        print(f"success finally")
-        return response
-        
-
 class ParquetManager:
     """Class to manage Parquet database operations, including data insertions, updates, and reading.
 

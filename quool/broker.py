@@ -110,26 +110,12 @@ class Broker:
         self,
         code: str,
         quantity: int,
-        exectype: str,
+        exectype: str = Order.MARKET,
         limit: float = None,
         trigger: float = None,
         id: str = None,
         valid: str = None,
     ) -> Order:
-        """
-        Creates and submits a buy order.
-
-        Args:
-            code (str): The stock code (e.g., "AAPL").
-            quantity (int): The number of shares to buy.
-            trigger (float, optional): The trigger price for the order. Defaults to None.
-            limit (float, optional): The limit price for the order. Defaults to None.
-            exectype (str): The execution type ('MARKET' or 'LIMIT'). Defaults to 'MARKET'.
-            valid (str, optional): The validity period for the order. Defaults to None.
-
-        Returns:
-            Order: The created buy order.
-        """
         return self.create(
             type=self.order_type.BUY,
             code=code,
@@ -145,26 +131,12 @@ class Broker:
         self,
         code: str,
         quantity: int,
-        exectype: str,
+        exectype: str = Order.MARKET,
         limit: float = None,
         trigger: float = None,
         id: str = None,
         valid: str = None,
     ) -> Order:
-        """
-        Creates and submits a sell order.
-
-        Args:
-            code (str): The stock code (e.g., "AAPL").
-            quantity (int): The number of shares to sell.
-            trigger (float, optional): The trigger price for the order. Defaults to None.
-            limit (float, optional): The limit price for the order. Defaults to None.
-            exectype (str): The execution type ('MARKET' or 'LIMIT'). Defaults to 'MARKET'.
-            valid (str, optional): The validity period for the order. Defaults to None.
-
-        Returns:
-            Order: The created sell order.
-        """
         return self.create(
             type=self.order_type.SELL,
             code=code,
@@ -177,12 +149,6 @@ class Broker:
         )
 
     def update(self, time: str | pd.Timestamp, data: pd.DataFrame) -> None:
-        """
-        Updates the broker's state for a new trading day.
-
-        Args:
-            time (str): The current trading day.
-        """
         if not isinstance(data, pd.DataFrame):
             return
 
@@ -201,13 +167,6 @@ class Broker:
             order = self._pendings.popleft()
 
     def _match(self, order: Order, data: pd.DataFrame) -> None:
-        """
-        Matches an order with market data and determines the execution price and quantity.
-
-        Args:
-            order (Order): The order to be matched.
-            data (pd.DataFrame): The market data containing open, high, low, close, and volume information.
-        """
         if order.code not in data.index:
             return
 
@@ -249,14 +208,6 @@ class Broker:
                 order.status = order.REJECTED
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
-        """
-        Executes an order and updates broker's balance and positions.
-
-        Args:
-            order (Order): The order to be executed.
-            price (float): The price at which the order is executed.
-            quantity (int): The quantity of shares executed.
-        """
         amount = price * quantity
         commission = self.commission(order, price, quantity)
         if order.type == order.BUY:

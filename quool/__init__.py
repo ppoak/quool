@@ -4,7 +4,8 @@ from .strategy import Strategy
 from .source import Source
 from .friction import FixedRateCommission, FixedRateSlippage
 from .evaluator import report, evaluate
-from .util import setup_logger, notify_task
+from .util import setup_logger, notify_task, proxy_request
+from .brokers import XueQiu, XueQiuBroker
 from .sources import ParquetManager, ParquetSource, DataFrameSource, RealtimeSource
 
 

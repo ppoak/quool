@@ -1,10 +1,14 @@
 import re
+import time
 import logging
 import smtplib
+import requests
 import markdown
 import traceback
 import pandas as pd
+from retry import retry
 from pathlib import Path
+from copy import deepcopy
 from email import encoders
 from functools import wraps
 from email.mime.text import MIMEText
@@ -28,31 +32,6 @@ def setup_logger(
     when: str = None,
     interval: int = None,
 ):
-    """
-    Set up a logger with specified file and stream handlers, with various formatting styles and optional log rotation.
-
-    Args:
-        name (str): Name of the logger.
-        file (str or Path, optional): File path for file handler. If None, no file output is used.
-        stream (bool, optional): Whether to add a stream handler for console output. Defaults to True.
-        level (int, optional): Logging level. Defaults to logging.INFO.
-        style (int, optional): Integer representing the desired logging style for formatting output.
-                               Style 1: Basic info
-                               Style 2: Medium info
-                               Style 3: Detailed info
-                               Style 4: Full info
-        rotation (str, optional): Type of log rotation. Options are:
-                                  - 'size': Rotate based on file size.
-                                  - 'time': Rotate based on time intervals.
-                                  - None: No rotation (default).
-        max_bytes (int, optional): Maximum size of a log file before rotation (only for 'size' rotation).
-        backup_count (int, optional): Number of backup files to keep (default: 5 for 'size', 7 for 'time').
-        when (str, optional): Time unit for rotation (e.g., 'midnight', 'H') (only for 'time' rotation).
-        interval (int, optional): Interval for time-based rotation (default: 1, only for 'time' rotation).
-
-    Returns:
-        logging.Logger: Configured logger.
-    """
     if file and clear:
         Path(file).write_text("")
 
@@ -257,3 +236,28 @@ def notify_task(
         return wrapper
 
     return wrapper
+
+
+@retry(exceptions=(requests.exceptions.RequestException,), tries=5, delay=1, backoff=2)
+def proxy_request(
+    url: str,
+    method: str = "GET",
+    proxies: dict = None,
+    delay: float = 1,
+    **kwargs
+):
+    proxies = proxies or []
+    if not isinstance(proxies, list):
+        proxies = [proxies]
+    proxies = deepcopy(proxies)
+    for proxy in proxies:
+        try:
+            response = requests.request(method=method, url=url, proxies=proxy, **kwargs)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.RequestException:
+            time.sleep(delay)
+    else:
+        response = requests.request(method=method, url=url, **kwargs)
+        response.raise_for_status()
+        return response
