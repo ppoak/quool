@@ -1,4 +1,5 @@
+from .dataframe import DataFrameSource
 from .parquet import ParquetSource
 from .realtime import RealtimeSource
-from .dataframe import DataFrameSource
+from .xuntou import XtDataPreloadSource
 from .util import ParquetManager
