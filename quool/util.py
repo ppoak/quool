@@ -240,11 +240,7 @@ def notify_task(
 
 @retry(exceptions=(requests.exceptions.RequestException,), tries=5, delay=1, backoff=2)
 def proxy_request(
-    url: str,
-    method: str = "GET",
-    proxies: dict = None,
-    delay: float = 1,
-    **kwargs
+    url: str, method: str = "GET", proxies: dict = None, delay: float = 1, **kwargs
 ):
     proxies = proxies or []
     if not isinstance(proxies, list):

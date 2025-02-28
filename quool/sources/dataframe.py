@@ -8,19 +8,19 @@ class DataFrameSource(Source):
         self._data = data
         self._times = data.index.get_level_values(0).unique().sort_values()
         self._time = self._times.min()
-    
+
     @property
     def times(self):
         return self._times[self._times <= self.time]
-    
+
     @property
     def datas(self):
-        return self._data.loc[:self.time]
-    
+        return self._data.loc[: self.time]
+
     @property
     def data(self):
         return self._data.loc[self.time]
-    
+
     def update(self, code: list[str] = None) -> pd.DataFrame:
         future = self._times[self._times > self.time]
         if future.empty:

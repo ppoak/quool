@@ -261,7 +261,9 @@ class Broker:
             delivery["time"] = pd.to_datetime(delivery["time"])
         return delivery
 
-    def get_pendings(self, parse_dates: bool = True, delivery: bool = True) -> pd.DataFrame:
+    def get_pendings(
+        self, parse_dates: bool = True, delivery: bool = True
+    ) -> pd.DataFrame:
         pendings = pd.DataFrame([order.dump(delivery) for order in self.pendings])
         if parse_dates:
             pendings["time"] = pd.to_datetime(pendings["time"])
@@ -269,7 +271,9 @@ class Broker:
             pendings["valid"] = pd.to_datetime(pendings["valid"])
         return pendings
 
-    def get_orders(self, parse_dates: bool = True, delivery: bool = False) -> pd.DataFrame:
+    def get_orders(
+        self, parse_dates: bool = True, delivery: bool = False
+    ) -> pd.DataFrame:
         orders = pd.DataFrame([order.dump(delivery) for order in self.orders])
         if parse_dates:
             orders["time"] = pd.to_datetime(orders["time"])
@@ -290,8 +294,16 @@ class Broker:
             "time": self._time.isoformat() if self._time else None,
         }
         if history:
-            data["delivery"] = self.get_delivery(parse_dates=False).replace(np.nan, None).to_dict(orient="records")
-            data["orders"] = self.get_orders(parse_dates=False).replace(np.nan, None).to_dict(orient="records")
+            data["delivery"] = (
+                self.get_delivery(parse_dates=False)
+                .replace(np.nan, None)
+                .to_dict(orient="records")
+            )
+            data["orders"] = (
+                self.get_orders(parse_dates=False)
+                .replace(np.nan, None)
+                .to_dict(orient="records")
+            )
         return data
 
     @classmethod

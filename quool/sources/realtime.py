@@ -111,6 +111,7 @@ def read_realtime(proxies: list[dict] = None):
     )
     return temp_df
 
+
 class RealtimeSource(Source):
 
     def __init__(self, proxies: list | dict = None, limit: int = 3000):
@@ -120,18 +121,20 @@ class RealtimeSource(Source):
         now = pd.Timestamp("now")
         self._times = deque([now], maxlen=self.limit)
         self._time = now
-    
+
     @property
     def times(self):
         return self._times
-    
+
     @property
     def time(self):
         return self._time
-    
+
     @property
     def datas(self):
-        return pd.concat(self._data, axis=0, keys=self._times, names=["datetime", "code"])
+        return pd.concat(
+            self._data, axis=0, keys=self._times, names=["datetime", "code"]
+        )
 
     @property
     def data(self):

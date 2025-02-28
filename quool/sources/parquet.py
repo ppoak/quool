@@ -5,7 +5,7 @@ from .util import ParquetManager
 class ParquetSource(Source):
 
     def __init__(
-        self, 
+        self,
         manager: ParquetManager,
         begin: str,
         end: str,
@@ -16,13 +16,11 @@ class ParquetSource(Source):
     ):
         self.manager = manager
         self._times = self.manager.read(
-            self, index=date_col, **{
-                f"{date_col}__ge": begin, 
-                f"{date_col}__le": end
-        }).index.unique()
+            self, index=date_col, **{f"{date_col}__ge": begin, f"{date_col}__le": end}
+        ).index.unique()
         self._time = self._times.min()
         self.extra = extra or []
-        self.fields =  ["open", "high", "low", "close", "volume"] + self.extra
+        self.fields = ["open", "high", "low", "close", "volume"] + self.extra
         self.date_col = date_col
         self.code_col = code_col
         self.adj_col = adj_col
@@ -31,18 +29,20 @@ class ParquetSource(Source):
     def data(self):
         if self.adj_col:
             data = ParquetManager.read(
-                self, index=self.code_col,
+                self,
+                index=self.code_col,
                 columns=self.fields + [self.adj_col],
-                **{self.date_col: self._time}
+                **{self.date_col: self._time},
             )
             multipler = ["open", "high", "low", "close"]
             data[multipler] = data[multipler].mul(data[self.adj_col], axis=0)
             data = data.drop(columns=self.adj_col)
         else:
             data = ParquetManager.read(
-                self, index=self.code_col, 
-                columns=self.fields, 
-                **{self.date_col: self._time}
+                self,
+                index=self.code_col,
+                columns=self.fields,
+                **{self.date_col: self._time},
             )
         return data
 
@@ -52,4 +52,3 @@ class ParquetSource(Source):
             return None
         self._time = future.min()
         return self.data
-

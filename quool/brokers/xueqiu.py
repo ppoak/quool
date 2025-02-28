@@ -15,8 +15,8 @@ class XueQiuBroker(XueQiu, Broker):
     QUOTE_URL = "https://stock.xueqiu.com/v5/stock/batch/quote.json"
 
     def __init__(
-        self, 
-        token: str, 
+        self,
+        token: str,
         name: str,
         reconstruct: bool = False,
         commission: FixedRateCommission = None,
@@ -37,21 +37,29 @@ class XueQiuBroker(XueQiu, Broker):
         elif not reconstruct:
             self._gid = existing_gids[existing_names.index(name)]
             self._balance = self.get_balance()
-            self._positions = {code: info["shares"] for code, info in self.get_positions().items()}
+            self._positions = {
+                code: info["shares"] for code, info in self.get_positions().items()
+            }
         else:
             self._gid = existing_gids[existing_names.index(name)]
             self._delete_investment_group(self._gid)
             self._gid = self._add_investment_group(name)["result_data"]["gid"]
-    
+
     def transfer(self, time: pd.Timestamp, amount: float):
-        self._bank_transfer(self._gid, 1, str(pd.to_datetime(time).date()), "CHA", amount)
+        self._bank_transfer(
+            self._gid, 1, str(pd.to_datetime(time).date()), "CHA", amount
+        )
         Broker.transfer(self, time=time, amount=amount)
 
     def get_positions(self):
         portfolio = self._get_portfolio_performance(self._gid)
         if portfolio["result_code"] == self.SUCCESS_CODE:
             markets = portfolio["result_data"]["performances"]
-            positions = {position.pop("symbol"): position for market in markets for position in market["list"]}
+            positions = {
+                position.pop("symbol"): position
+                for market in markets
+                for position in market["list"]
+            }
         else:
             raise ValueError(f"Failed to get positions: {portfolio['result_msg']}")
         return positions
@@ -66,15 +74,19 @@ class XueQiuBroker(XueQiu, Broker):
         return cash
 
     def get_all_records(self, row: int = 50):
-        transaction_url = f"{self.BASE_URL_TRADE}transaction/list.json?row={row}&gid={self._gid}"
-        bank_transfer_url = f"{self.BASE_URL_TRADE}bank_transfer/query.json?row={row}&gid={self._gid}"
+        transaction_url = (
+            f"{self.BASE_URL_TRADE}transaction/list.json?row={row}&gid={self._gid}"
+        )
+        bank_transfer_url = (
+            f"{self.BASE_URL_TRADE}bank_transfer/query.json?row={row}&gid={self._gid}"
+        )
 
         transaction_data = self._get_request(transaction_url)
         bank_transfer_data = self._get_request(bank_transfer_url)
 
         return {
             "transaction_records": transaction_data,
-            "bank_transfer_records": bank_transfer_data
+            "bank_transfer_records": bank_transfer_data,
         }
 
     def _execute(self, order: Order, price: float, quantity: int):
@@ -94,9 +106,13 @@ class XueQiuBroker(XueQiu, Broker):
                     amount=cost,
                 )
                 result = self._execute_transaction(
-                    symbol=order.code, shares=quantity, 
-                    transaction_type=1, date=self.time, 
-                    price=price, tax_rate=0, commission_rate=0
+                    symbol=order.code,
+                    shares=quantity,
+                    transaction_type=1,
+                    date=self.time,
+                    price=price,
+                    tax_rate=0,
+                    commission_rate=0,
                 )
                 if result["result_code"] == self.SUCCESS_CODE:
                     order += delivery
@@ -122,9 +138,13 @@ class XueQiuBroker(XueQiu, Broker):
                     amount=revenue,
                 )
                 result = self._execute_transaction(
-                    symbol=order.code, shares=quantity, 
-                    transaction_type=1, date=self.time, 
-                    price=price, tax_rate=0, commission_rate=0
+                    symbol=order.code,
+                    shares=quantity,
+                    transaction_type=1,
+                    date=self.time,
+                    price=price,
+                    tax_rate=0,
+                    commission_rate=0,
                 )
                 if result["result_code"] == self.SUCCESS_CODE:
                     order += delivery
