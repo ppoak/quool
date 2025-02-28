@@ -42,7 +42,8 @@ class Strategy:
         data = self.source.update()
         if data is None:
             return False
-        self.broker.update(time=self.source.time, data=data)
+        for notif in self.broker.update(time=self.source.time, data=data):
+            self.notify(notif)
         self.update(**kwargs)
         return True
 
@@ -80,6 +81,9 @@ class Strategy:
             logging.getLevelNamesMapping().get(level, 0),
             f"[{self.source.time}]: {message}",
         )
+
+    def notify(self, notif: Order):
+        self.log(notif)
 
     def get_value(self):
         return self.broker.get_value(self.source.data)

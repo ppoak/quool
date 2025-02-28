@@ -17,7 +17,7 @@ class XtDataPreloadSource(DataFrameSource):
         xtdata.data_dir = path
         self.begin = pd.to_datetime(begin).strftime(r"%Y%m%d%H%M%S")
         self.end = pd.to_datetime(end).strftime(r"%Y%m%d%H%M%S")
-        self._stocFk_list = xtdata.get_stock_list_in_sector(sector)
+        self._stock_list = xtdata.get_stock_list_in_sector(sector)
         data = xtdata.get_market_data_ex(
             stock_list=self._stock_list,
             period=period,

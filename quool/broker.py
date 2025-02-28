@@ -156,15 +156,18 @@ class Broker:
         if not isinstance(self._time, pd.Timestamp):
             raise ValueError("time must be a pd.Timestamp or convertible to one")
 
+        notify = []
         self._pendings.append(None)  # Placeholder for end-of-day processing.
         order = self._pendings.popleft()
         while order is not None:
             self._match(order, data)
             if not order.is_alive(self.time):
                 self._orders.append(order)
+                notify.append(order)
             else:
                 self._pendings.append(order)
             order = self._pendings.popleft()
+        return notify
 
     def _match(self, order: Order, data: pd.DataFrame) -> None:
         if order.code not in data.index:
