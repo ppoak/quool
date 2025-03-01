@@ -15,7 +15,7 @@ class Source:
     def data(self):
         return self._data
 
-    def update(self, code: list[str]) -> pd.DataFrame:
+    def update(self) -> pd.DataFrame:
         raise NotImplementedError
 
     def __str__(self):
