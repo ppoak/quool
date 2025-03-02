@@ -46,6 +46,27 @@ class ParquetSource(Source):
             )
         return data
 
+    @property
+    def datas(self):
+        if self.adj_col:
+            data = ParquetManager.read(
+                self,
+                index=self.code_col,
+                columns=self.fields + [self.adj_col],
+                **{f"{self.date_col}__ge": self._time},
+            )
+            multipler = ["open", "high", "low", "close"]
+            data[multipler] = data[multipler].mul(data[self.adj_col], axis=0)
+            data = data.drop(columns=self.adj_col)
+        else:
+            data = ParquetManager.read(
+                self,
+                index=self.code_col,
+                columns=self.fields,
+                **{f"{self.date_col}__ge": self._time},
+            )
+        return data
+
     def update(self):
         future = self._timepoint[self._timepoint > self.time]
         if future.empty:
