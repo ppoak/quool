@@ -42,32 +42,43 @@ class Strategy:
     def time(self):
         return self.source.time
 
-    def _run(self, **kwargs):
+    def _run(self, store: str = None, history: bool = False, **kwargs):
         self.data = self.source.update()
         if self.data is None:
             return False
         for notif in self.broker.update(time=self.source.time, data=self.data):
             self.notify(notif)
         self.update(**kwargs)
+        if store:
+            self.broker.store(store, history)
         return True
 
-    def run(self, interval: int = 3, scheduler: BlockingScheduler = None, **kwargs):
+    def run(
+        self,
+        store: str = None,
+        history: bool = False,
+        interval: int = 3,
+        scheduler: BlockingScheduler = None,
+        **kwargs,
+    ):
         scheduler = scheduler or BlockingScheduler()
-        job = scheduler.get_job(self.__class__.__name__)
-        if job is not None:
-            job.resume()
-        else:
-            scheduler.add_job(
-                self._run,
-                "interval",
-                seconds=interval,
-                kwargs=kwargs,
-                id=self.__class__.__name__,
-            )
+        scheduler.add_job(
+            self._run,
+            "interval",
+            seconds=interval,
+            kwargs={"store": store, "history": history, **kwargs},
+            id=self.__class__.__name__,
+        )
         scheduler.start()
-        return scheduler
 
-    def arun(self, interval: int = 3, scheduler: BackgroundScheduler = None, **kwargs):
+    def arun(
+        self,
+        store: str = None,
+        history: bool = False,
+        interval: int = 3,
+        scheduler: BackgroundScheduler = None,
+        **kwargs,
+    ):
         scheduler = scheduler or BackgroundScheduler()
         job = scheduler.get_job(self.__class__.__name__)
         if job is not None:
@@ -77,7 +88,7 @@ class Strategy:
                 self._run,
                 "interval",
                 seconds=interval,
-                kwargs=kwargs,
+                kwargs={"store": store, "history": history, **kwargs},
                 id=self.__class__.__name__,
             )
         scheduler.start()

@@ -3,6 +3,18 @@ from collections import deque
 from quool import Source, proxy_request
 
 
+def is_trading_time(time: str) -> bool:
+    time = pd.to_datetime(time)
+    trading_hours = [("09:30:00", "11:30:00"), ("13:00:00", "15:00:00")]
+
+    if time.weekday() >= 5:
+        return False
+    for start, end in trading_hours:
+        if start <= time <= end:
+            return True
+    return False
+
+
 def read_realtime(proxies: list[dict] = None):
     url = "https://82.push2.eastmoney.com/api/qt/clist/get"
     params = {
@@ -26,29 +38,29 @@ def read_realtime(proxies: list[dict] = None):
     temp_df = pd.DataFrame(data_json["data"]["diff"])
     temp_df.columns = [
         "_",
-        "最新价",
-        "涨跌幅",
-        "涨跌额",
-        "成交量",
-        "成交额",
-        "振幅",
-        "换手率",
-        "市盈率-动态",
-        "量比",
-        "5分钟涨跌",
-        "代码",
+        "close",
+        "change_pct",
+        "change_amt",
+        "volume",
+        "turnover",
+        "amplitude",
+        "turnover_rate",
+        "pe_ratio",
+        "volume_ratio",
+        "5min_change",
+        "code",
         "_",
-        "名称",
-        "最高",
-        "最低",
-        "今开",
-        "昨收",
-        "总市值",
-        "流通市值",
-        "涨速",
-        "市净率",
-        "60日涨跌幅",
-        "年初至今涨跌幅",
+        "name",
+        "high",
+        "low",
+        "open",
+        "prev_close",
+        "market_cap",
+        "float_market_cap",
+        "rise_speed",
+        "pb_ratio",
+        "60day_change",
+        "ytd_change",
         "-",
         "-",
         "-",
@@ -59,57 +71,57 @@ def read_realtime(proxies: list[dict] = None):
     ]
     temp_df.reset_index(inplace=True)
     temp_df["index"] = temp_df.index + 1
-    temp_df.rename(columns={"index": "序号"}, inplace=True)
+    temp_df.rename(columns={"index": "serial_num"}, inplace=True)
     temp_df = temp_df[
         [
-            "序号",
-            "代码",
-            "名称",
-            "最新价",
-            "涨跌幅",
-            "涨跌额",
-            "成交量",
-            "成交额",
-            "振幅",
-            "最高",
-            "最低",
-            "今开",
-            "昨收",
-            "量比",
-            "换手率",
-            "市盈率-动态",
-            "市净率",
-            "总市值",
-            "流通市值",
-            "涨速",
-            "5分钟涨跌",
-            "60日涨跌幅",
-            "年初至今涨跌幅",
+            "serial_num",
+            "code",
+            "name",
+            "close",
+            "change_pct",
+            "change_amt",
+            "volume",
+            "turnover",
+            "amplitude",
+            "high",
+            "low",
+            "open",
+            "prev_close",
+            "volume_ratio",
+            "turnover_rate",
+            "pe_ratio",
+            "pb_ratio",
+            "market_cap",
+            "float_market_cap",
+            "rise_speed",
+            "5min_change",
+            "60day_change",
+            "ytd_change",
         ]
     ]
-    temp_df["最新价"] = pd.to_numeric(temp_df["最新价"], errors="coerce")
-    temp_df["涨跌幅"] = pd.to_numeric(temp_df["涨跌幅"], errors="coerce")
-    temp_df["涨跌额"] = pd.to_numeric(temp_df["涨跌额"], errors="coerce")
-    temp_df["成交量"] = pd.to_numeric(temp_df["成交量"], errors="coerce")
-    temp_df["成交额"] = pd.to_numeric(temp_df["成交额"], errors="coerce")
-    temp_df["振幅"] = pd.to_numeric(temp_df["振幅"], errors="coerce")
-    temp_df["最高"] = pd.to_numeric(temp_df["最高"], errors="coerce")
-    temp_df["最低"] = pd.to_numeric(temp_df["最低"], errors="coerce")
-    temp_df["今开"] = pd.to_numeric(temp_df["今开"], errors="coerce")
-    temp_df["昨收"] = pd.to_numeric(temp_df["昨收"], errors="coerce")
-    temp_df["量比"] = pd.to_numeric(temp_df["量比"], errors="coerce")
-    temp_df["换手率"] = pd.to_numeric(temp_df["换手率"], errors="coerce")
-    temp_df["市盈率-动态"] = pd.to_numeric(temp_df["市盈率-动态"], errors="coerce")
-    temp_df["市净率"] = pd.to_numeric(temp_df["市净率"], errors="coerce")
-    temp_df["总市值"] = pd.to_numeric(temp_df["总市值"], errors="coerce")
-    temp_df["流通市值"] = pd.to_numeric(temp_df["流通市值"], errors="coerce")
-    temp_df["涨速"] = pd.to_numeric(temp_df["涨速"], errors="coerce")
-    temp_df["5分钟涨跌"] = pd.to_numeric(temp_df["5分钟涨跌"], errors="coerce")
-    temp_df["60日涨跌幅"] = pd.to_numeric(temp_df["60日涨跌幅"], errors="coerce")
-    temp_df["年初至今涨跌幅"] = pd.to_numeric(
-        temp_df["年初至今涨跌幅"], errors="coerce"
+    temp_df["close"] = pd.to_numeric(temp_df["close"], errors="coerce")
+    temp_df["change_pct"] = pd.to_numeric(temp_df["change_pct"], errors="coerce")
+    temp_df["change_amt"] = pd.to_numeric(temp_df["change_amt"], errors="coerce")
+    temp_df["volume"] = pd.to_numeric(temp_df["volume"], errors="coerce")
+    temp_df["turnover"] = pd.to_numeric(temp_df["turnover"], errors="coerce")
+    temp_df["amplitude"] = pd.to_numeric(temp_df["amplitude"], errors="coerce")
+    temp_df["high"] = pd.to_numeric(temp_df["high"], errors="coerce")
+    temp_df["low"] = pd.to_numeric(temp_df["low"], errors="coerce")
+    temp_df["open"] = pd.to_numeric(temp_df["open"], errors="coerce")
+    temp_df["prev_close"] = pd.to_numeric(temp_df["close"], errors="coerce")
+    temp_df["volume_ratio"] = pd.to_numeric(temp_df["volume_ratio"], errors="coerce")
+    temp_df["turnover_rate"] = pd.to_numeric(temp_df["turnover_rate"], errors="coerce")
+    temp_df["pe_ratio"] = pd.to_numeric(temp_df["pe_ratio"], errors="coerce")
+    temp_df["pb_ratio"] = pd.to_numeric(temp_df["pb_ratio"], errors="coerce")
+    temp_df["market_cap"] = pd.to_numeric(temp_df["market_cap"], errors="coerce")
+    temp_df["float_market_cap"] = pd.to_numeric(
+        temp_df["float_market_cap"], errors="coerce"
     )
-    return temp_df
+    temp_df["rise_speed"] = pd.to_numeric(temp_df["rise_speed"], errors="coerce")
+    temp_df["5min_change"] = pd.to_numeric(temp_df["5min_change"], errors="coerce")
+    temp_df["60day_change"] = pd.to_numeric(temp_df["60day_change"], errors="coerce")
+    temp_df["ytd_change"] = pd.to_numeric(temp_df["ytd_change"], errors="coerce")
+    return temp_df.set_index("code")
 
 
 class RealtimeSource(Source):
@@ -117,10 +129,9 @@ class RealtimeSource(Source):
     def __init__(self, proxies: list | dict = None, limit: int = 3000):
         self.limit = limit
         self.proxies = proxies
-        self._data = deque([read_realtime(self.proxies)], maxlen=self.limit)
+        self._datas = deque([read_realtime(self.proxies)], maxlen=self.limit)
         now = pd.Timestamp("now")
         self._times = deque([now], maxlen=self.limit)
-        self._time = now
 
     @property
     def times(self):
@@ -128,18 +139,22 @@ class RealtimeSource(Source):
 
     @property
     def time(self):
-        return self._time
+        return self._times[-1]
 
     @property
     def datas(self):
         return pd.concat(
-            self._data, axis=0, keys=self._times, names=["datetime", "code"]
+            self._datas, axis=0, keys=self._times, names=["datetime", "code"]
         )
 
     @property
     def data(self):
-        return self._data[-1]
+        return self._datas[-1]
 
     def update(self):
-        self._data.append(read_realtime(self.proxies))
-        self._times.append(pd.Timestamp("now"))
+        now = pd.Timestamp("now")
+        if not is_trading_time(self._times[-1]):
+            return None
+        self._times.append(now)
+        self._datas.append(read_realtime(self.proxies))
+        return self._datas[-1]

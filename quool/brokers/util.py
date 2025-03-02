@@ -127,8 +127,8 @@ class XueQiu:
         }
         return self._post_request(url, data)
 
-    def get_positions(self):
-        portfolio = self._get_portfolio_performance()
+    def get_positions(self, gid: str):
+        portfolio = self._get_portfolio_performance(gid)
         if portfolio["result_code"] == self.SUCCESS_CODE:
             markets = portfolio["result_data"]["performances"]
             positions = {
@@ -140,14 +140,8 @@ class XueQiu:
             raise ValueError(f"Failed to get positions: {portfolio['result_msg']}")
         return positions
 
-    def get_balance(self):
-        """
-        Retrieves the current balance of the account.
-
-        Returns:
-            float: The current balance.
-        """
-        portfolio = self._get_portfolio_performance()
+    def get_balance(self, gid: str):
+        portfolio = self._get_portfolio_performance(gid)
         if portfolio["result_code"] == self.SUCCESS_CODE:
             markets = portfolio["result_data"]["performances"]
             cash = markets[0]["cash"]
@@ -155,12 +149,12 @@ class XueQiu:
             raise ValueError(f"Failed to get cash: {portfolio['result_msg']}")
         return cash
 
-    def get_all_records(self, row: int = 50):
+    def get_all_records(self, gid: str, row: int = 50):
         transaction_url = (
-            f"{self.BASE_URL_TRADE}transaction/list.json?row={row}&gid={self._gid}"
+            f"{self.BASE_URL_TRADE}transaction/list.json?row={row}&gid={gid}"
         )
         bank_transfer_url = (
-            f"{self.BASE_URL_TRADE}bank_transfer/query.json?row={row}&gid={self._gid}"
+            f"{self.BASE_URL_TRADE}bank_transfer/query.json?row={row}&gid={gid}"
         )
 
         transaction_data = self._get_request(transaction_url)

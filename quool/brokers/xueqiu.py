@@ -38,7 +38,7 @@ class XueQiuBroker(XueQiu, Broker):
             self._gid = existing_gids[existing_names.index(name)]
             self._balance = self.get_balance()
             self._positions = {
-                code: info["shares"] for code, info in self.get_positions().items()
+                code: info["shares"] for code, info in self.get_xueqiu_positions().items()
             }
         else:
             self._gid = existing_gids[existing_names.index(name)]
@@ -52,6 +52,9 @@ class XueQiuBroker(XueQiu, Broker):
         Broker.transfer(self, time=time, amount=amount)
 
     def get_positions(self):
+        return Broker.get_positions(self)
+
+    def get_xueqiu_positions(self):
         portfolio = self._get_portfolio_performance(self._gid)
         if portfolio["result_code"] == self.SUCCESS_CODE:
             markets = portfolio["result_data"]["performances"]

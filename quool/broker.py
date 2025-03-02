@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import pandas as pd
 from uuid import uuid4
@@ -309,6 +310,11 @@ class Broker:
             )
         return data
 
+    def store(self, path: str, history: bool = True):
+        data = self.dump(history)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=4, ensure_ascii=True)
+
     @classmethod
     def load(
         cls, data: dict, commission: FixedRateCommission, slippage: FixedRateSlippage
@@ -337,6 +343,14 @@ class Broker:
             broker._delivery.append(delivery)
 
         return broker
+
+    @classmethod
+    def restore(
+        cls, path: str, commission: FixedRateCommission, slippage: FixedRateSlippage
+    ):
+        with open(path, "r") as f:
+            data = json.load(f)
+        return cls.load(data, commission, slippage)
 
     def __str__(self) -> str:
         return (
