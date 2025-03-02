@@ -1,15 +1,15 @@
 import numpy as np
 import pandas as pd
 from .order import Delivery
-from .strategy import Strategy
+from .broker import Broker
+from .source import Source
 
 
 class Evaluator:
 
-    def __init__(self, strategy: Strategy):
-        self.strategy = strategy
-        self.broker = strategy.broker
-        self.source = strategy.source
+    def __init__(self, broker: Broker, source: Source):
+        self.broker = broker
+        self.source = source
     
     def report(self, benchmark: pd.Series = None):
         delivery = self.broker.get_delivery()
