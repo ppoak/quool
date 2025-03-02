@@ -93,6 +93,9 @@ class Evaluator:
             "positions": positions,
             "trades": trades,
             "evaluation": self.evaluate(total, benchmark, turnover, trades),
+            "orders": self.broker.get_orders(),
+            "pendings": self.broker.get_pendings(),
+            "delivery": self.broker.get_delivery(),
         }
 
     @staticmethod

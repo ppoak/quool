@@ -4,9 +4,11 @@ from .order import Order
 from .source import Source
 from .broker import Broker
 from .util import setup_logger
-from .evaluator import report, evaluate
+from .evaluator import Evaluator
 from .friction import FixedRateCommission, FixedRateSlippage
 from joblib import Parallel, delayed
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 
 
 class Strategy:
@@ -40,7 +42,7 @@ class Strategy:
     def time(self):
         return self.source.time
 
-    def run(self, **kwargs):
+    def _run(self, **kwargs):
         self.data = self.source.update()
         if self.data is None:
             return False
@@ -49,12 +51,44 @@ class Strategy:
         self.update(**kwargs)
         return True
 
+    def run(self, interval: int = 3, scheduler: BlockingScheduler = None, **kwargs):
+        scheduler = scheduler or BlockingScheduler()
+        job = scheduler.get_job(self.__class__.__name__)
+        if job is not None:
+            job.resume()
+        else:
+            scheduler.add_job(
+                self._run,
+                "interval",
+                seconds=interval,
+                kwargs=kwargs,
+                id=self.__class__.__name__,
+            )
+        scheduler.start()
+        return scheduler
+
+    def arun(self, interval: int = 3, scheduler: BackgroundScheduler = None, **kwargs):
+        scheduler = scheduler or BackgroundScheduler()
+        job = scheduler.get_job(self.__class__.__name__)
+        if job is not None:
+            job.resume()
+        else:
+            scheduler.add_job(
+                self._run,
+                "interval",
+                seconds=interval,
+                kwargs=kwargs,
+                id=self.__class__.__name__,
+            )
+        scheduler.start()
+        return scheduler
+
     def backtest(self, benchmark: pd.Series = None, **kwargs):
         self.init(**kwargs)
-        while self.run(**kwargs):
+        while self._run(**kwargs):
             self.preupdate(**kwargs)
         self.stop(**kwargs)
-        self.evaluate(benchmark=benchmark)
+        return self.evaluate(benchmark=benchmark)
 
     def __call__(self, params: dict, since: pd.Timestamp = None, n_jobs: int = -1):
         grid_params = pd.MultiIndex.from_product(
@@ -210,14 +244,7 @@ class Strategy:
     def evaluate(self, benchmark: pd.Series = None):
         if self.broker.get_delivery().empty:
             raise ValueError("No delivery data available")
-        summary = report(self.broker.get_delivery(), self.source.datas)
-        evaluation = evaluate(
-            summary["values"]["total"],
-            benchmark=benchmark,
-            turnover=summary["values"]["turnover"],
-            trades=summary["trades"],
-        )
-        summary["evaluation"] = evaluation
+        summary = Evaluator(self).report(benchmark)
         return summary
 
     def cancel(self, order_or_id: str | Order) -> Order:
