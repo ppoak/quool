@@ -118,8 +118,8 @@ class Strategy:
             f"[{self.source.time}]: {message}",
         )
 
-    def notify(self, notif: Order):
-        self.log(notif)
+    def notify(self, order: Order):
+        self.log(order)
 
     def get_value(self):
         return self.broker.get_value(self.source.data)

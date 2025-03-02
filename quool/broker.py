@@ -12,7 +12,7 @@ class Broker:
 
     def __init__(
         self,
-        id: str,
+        id: str = None,
         commission: FixedRateCommission = None,
         slippage: FixedRateSlippage = None,
     ):
@@ -150,7 +150,7 @@ class Broker:
 
     def update(self, time: str | pd.Timestamp, data: pd.DataFrame) -> None:
         if not isinstance(data, pd.DataFrame):
-            return
+            return []
 
         self._time = pd.to_datetime(time)
         if not isinstance(self._time, pd.Timestamp):
@@ -260,7 +260,7 @@ class Broker:
 
     def get_delivery(self, parse_dates: bool = True) -> pd.DataFrame:
         delivery = pd.DataFrame([deliv.dump() for deliv in self.delivery])
-        if parse_dates:
+        if parse_dates and not delivery.empty:
             delivery["time"] = pd.to_datetime(delivery["time"])
         return delivery
 
@@ -268,7 +268,7 @@ class Broker:
         self, parse_dates: bool = True, delivery: bool = True
     ) -> pd.DataFrame:
         pendings = pd.DataFrame([order.dump(delivery) for order in self.pendings])
-        if parse_dates:
+        if parse_dates and not pendings.empty:
             pendings["time"] = pd.to_datetime(pendings["time"])
             pendings["creatime"] = pd.to_datetime(pendings["creatime"])
             pendings["valid"] = pd.to_datetime(pendings["valid"])
@@ -278,7 +278,7 @@ class Broker:
         self, parse_dates: bool = True, delivery: bool = False
     ) -> pd.DataFrame:
         orders = pd.DataFrame([order.dump(delivery) for order in self.orders])
-        if parse_dates:
+        if parse_dates and not orders.empty:
             orders["time"] = pd.to_datetime(orders["time"])
             orders["creatime"] = pd.to_datetime(orders["creatime"])
             orders["valid"] = pd.to_datetime(orders["valid"])
