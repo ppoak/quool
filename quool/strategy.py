@@ -183,7 +183,7 @@ class Strategy:
             value
             - self.get_positions().get(code, 0) * self.source.data.loc[code, "close"]
         )
-        quantity = (delta / self.source.data.loc[code, "close"] // 100) * 100
+        quantity = delta / self.source.data.loc[code, "close"]
         if quantity > 0:
             type = self.broker.order_type.BUY
         elif quantity < 0:
