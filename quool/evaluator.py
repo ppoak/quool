@@ -91,7 +91,7 @@ class Evaluator:
                 keys=["total", "market", "cash", "turnover"],
             ),
             "positions": positions,
-            "trades": trades,
+            "trades": trades.reset_index(),
             "evaluation": self.evaluate(total, benchmark, turnover, trades),
             "orders": self.broker.get_orders(),
             "pendings": self.broker.get_pendings(),
