@@ -5,6 +5,7 @@ from .source import Source
 from .broker import Broker
 from .util import setup_logger
 from .evaluator import report, evaluate
+from .friction import FixedRateCommission, FixedRateSlippage
 from joblib import Parallel, delayed
 
 
@@ -221,3 +222,18 @@ class Strategy:
 
     def cancel(self, order_or_id: str | Order) -> Order:
         return self.broker.cancel(order_or_id)
+
+    def dump(self, history: bool = True):
+        return self.broker.dump(history=history)
+
+    @classmethod
+    def load(
+        cls,
+        data: dict,
+        commssion: FixedRateCommission,
+        slippage: FixedRateSlippage,
+        source: Source,
+        logger: logging.Logger = None,
+    ):
+        broker = Broker.load(data, commssion, slippage)
+        return cls(broker, source, logger)
