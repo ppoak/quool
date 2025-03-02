@@ -244,7 +244,7 @@ class Strategy:
     def evaluate(self, benchmark: pd.Series = None):
         if self.broker.get_delivery().empty:
             raise ValueError("No delivery data available")
-        summary = Evaluator(self).report(benchmark)
+        summary = Evaluator(self.broker, self.source).report(benchmark)
         return summary
 
     def cancel(self, order_or_id: str | Order) -> Order:
