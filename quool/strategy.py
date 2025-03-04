@@ -57,17 +57,17 @@ class Strategy:
         self,
         store: str = None,
         history: bool = False,
-        interval: int = 3,
-        scheduler: BlockingScheduler = None,
+        trigger: str = "interval",
+        trigger_kwargs: dict = None,
         **kwargs,
     ):
-        scheduler = scheduler or BlockingScheduler()
+        scheduler = BlockingScheduler()
         scheduler.add_job(
             self._run,
-            "interval",
-            seconds=interval,
+            trigger,
             kwargs={"store": store, "history": history, **kwargs},
             id=self.__class__.__name__,
+            **(trigger_kwargs or {"seconds": 30})
         )
         scheduler.start()
 
@@ -75,7 +75,8 @@ class Strategy:
         self,
         store: str = None,
         history: bool = False,
-        interval: int = 3,
+        trigger: str = "interval",
+        trigger_kwargs: dict = None,
         scheduler: BackgroundScheduler = None,
         **kwargs,
     ):
@@ -86,10 +87,10 @@ class Strategy:
         else:
             scheduler.add_job(
                 self._run,
-                "interval",
-                seconds=interval,
+                trigger,
                 kwargs={"store": store, "history": history, **kwargs},
                 id=self.__class__.__name__,
+                **(trigger_kwargs or {"seconds": 30})
             )
         scheduler.start()
         return scheduler
