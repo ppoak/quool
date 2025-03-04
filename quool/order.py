@@ -152,6 +152,7 @@ class Order(Delivery):
             "type": self.type,
             "quantity": self.quantity,
             "exectype": self.exectype,
+            "price": self.price,
             "limit": self.limit,
             "trigger": self.trigger,
             "valid": self.valid.isoformat() if self.valid else None,
@@ -177,6 +178,7 @@ class Order(Delivery):
             valid=data.get("valid"),
         )
         # Load additional attributes
+        order.price = data.get("price", 0)
         order.status = data.get("status", cls.CREATED)
         order.filled = data.get("filled", 0)
         if data.get("delivery") is not None:
