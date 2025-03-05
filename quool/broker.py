@@ -61,7 +61,7 @@ class Broker:
         self,
         type: str,
         code: str,
-        quantity: int,
+        quantity: float,
         exectype: str,
         limit: float = None,
         trigger: float = None,
@@ -110,7 +110,7 @@ class Broker:
     def buy(
         self,
         code: str,
-        quantity: int,
+        quantity: float,
         exectype: str = Order.MARKET,
         limit: float = None,
         trigger: float = None,
@@ -131,7 +131,7 @@ class Broker:
     def sell(
         self,
         code: str,
-        quantity: int,
+        quantity: float,
         exectype: str = Order.MARKET,
         limit: float = None,
         trigger: float = None,
@@ -354,12 +354,13 @@ class Broker:
 
     def __str__(self) -> str:
         return (
-            f"{self.__class__.__name__}({self.id})@{self.time}\n"
-            f"balance: ${self.balance:.2f}\n"
-            f"commission: {self.commission}\n"
-            f"slippage: {self.slippage}\n"
-            f"#pending: {len(self.pendings)} & #over: {len(self.orders)} & #deliveries: {len(self.delivery)}\n"
-            f"position: {self.positions}\n"
+            f"{self.__class__.__name__}(#{self.id}@{self.time}\n"
+            f"  balance: ${self.balance:.2f}\n"
+            f"  commission: {self.commission}\n"
+            f"  slippage: {self.slippage}\n"
+            f"  #pending: {len(self.pendings)} & #over: {len(self.orders)} & #deliveries: {len(self.delivery)}\n"
+            f"  position: {self.positions}\n"
+            ")"
         )
 
     def __repr__(self):
