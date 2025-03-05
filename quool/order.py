@@ -62,7 +62,7 @@ class Delivery:
 
     def __str__(self):
         return (
-            f"{self.__class__.__name__}({self.id[:5]})@{self.time}"
+            f"{self.__class__.__name__}(#{self.id[:5]}@{self.time}"
             f"{self.type} {self.code} {self.quantity:.2f}x${self.price:.2f})"
         )
 

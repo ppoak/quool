@@ -34,7 +34,7 @@ class FixedRateSlippage:
         self.slip_rate = slip_rate
 
     def __call__(self, order: Order, kline: pd.Series) -> float:
-        quantity = min(kline["volume"], order.quantity)
+        quantity = min(kline["volume"], order.quantity - order.filled)
         if quantity == 0:
             return 0, 0
         if order.type == order.BUY:

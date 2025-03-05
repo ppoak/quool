@@ -191,26 +191,29 @@ class Strategy:
         id: str = None,
         valid: str = None,
     ) -> Order:
-        delta = (
-            value
-            - self.get_positions().get(code, 0) * self.source.data.loc[code, "close"]
-        )
-        quantity = delta / self.source.data.loc[code, "close"]
+        if code not in self.source.data.index:
+            quantity = 0
+            type = self.broker.order_type.BUY
+        else:
+            delta = (
+                value
+                - self.get_positions().get(code, 0) * self.source.data.loc[code, "close"]
+            )
+            quantity = delta / self.source.data.loc[code, "close"]
         if quantity > 0:
             type = self.broker.order_type.BUY
         elif quantity < 0:
             type = self.broker.order_type.SELL
-        if abs(quantity):
-            return self.broker.create(
-                type=type,
-                code=code,
-                quantity=abs(quantity),
-                exectype=exectype,
-                limit=limit,
-                trigger=trigger,
-                id=id,
-                valid=valid,
-            )
+        return self.broker.create(
+            type=type,
+            code=code,
+            quantity=abs(quantity),
+            exectype=exectype,
+            limit=limit,
+            trigger=trigger,
+            id=id,
+            valid=valid,
+        )
 
     def order_target_percent(
         self,
