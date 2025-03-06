@@ -23,7 +23,7 @@ def setup_logger(
     file: str | Path = None,
     stream: bool = True,
     level: str = logging.INFO,
-    style: int = 1,
+    style: int | str = 1,
     replace: bool = False,
     clear: bool = False,
     rotation: str = None,
@@ -59,7 +59,7 @@ def setup_logger(
     }
 
     # Select the formatter based on the style parameter
-    formatter = formatter_styles.get(style, formatter_styles[1])  # Default to style 1
+    formatter = formatter_styles.get(style, style)  # Not found, use user setting
 
     # Add stream handler if specified
     if stream:
