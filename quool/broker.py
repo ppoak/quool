@@ -317,7 +317,10 @@ class Broker:
 
     @classmethod
     def load(
-        cls, data: dict, commission: FixedRateCommission, slippage: FixedRateSlippage
+        cls,
+        data: dict,
+        commission: FixedRateCommission = None,
+        slippage: FixedRateSlippage = None,
     ) -> "Broker":
         # Initialize Broker with external market data and commission
         broker = cls(id=data["id"], commission=commission, slippage=slippage)
@@ -346,7 +349,10 @@ class Broker:
 
     @classmethod
     def restore(
-        cls, path: str, commission: FixedRateCommission, slippage: FixedRateSlippage
+        cls,
+        path: str,
+        commission: FixedRateCommission = None,
+        slippage: FixedRateSlippage = None,
     ):
         with open(path, "r") as f:
             data = json.load(f)
