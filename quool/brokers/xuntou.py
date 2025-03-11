@@ -57,9 +57,11 @@ class XtBroker(Broker):
         price: float,
         remark: str,
     ):
-        return self.trader.order_stock(
-            self.account, code, type, quantity, exectype, price, order_remark=remark
-        )
+        quantity = quantity // 100 * 100
+        if quantity > 0:
+            return self.trader.order_stock(
+                self.account, code, type, quantity, exectype, price, order_remark=remark
+            )
 
     def buy(self, code: str, quantity: float, price: float = -1, remark: str = ""):
         return self.create(self.BUY, code, quantity, self.MARKET, price, remark)
@@ -75,6 +77,61 @@ class XtBroker(Broker):
 
     def update(self, time: str, data: pd.DataFrame):
         pass
+
+    def get_orders(self):
+        orders = []
+        for order in self.orders:
+            orders.append(
+                {
+                    "account_type": order.account_type,
+                    "account_id": order.account_id,
+                    "stock_code": order.stock_code,
+                    "order_id": order.order_id,
+                    "order_sysid": order.order_sysid,
+                    "order_time": order.order_time,
+                    "order_type": order.order_type,
+                    "order_volume": order.order_volume,
+                    "price_type": order.price_type,
+                    "price": order.price,
+                    "traded_volume": order.traded_volume,
+                    "traded_price": order.traded_price,
+                    "order_status": order.order_status,
+                    "status_msg": order.status_msg,
+                    "strategy_name": order.strategy_name,
+                    "order_remark": order.order_remark,
+                    "direction": order.direction,
+                    "offset_flag": order.offset_flag,
+                }
+            )
+        return pd.DataFrame(orders)
+
+    def get_pendings(self):
+        pendings = []
+        for order in self.pendings:
+            pendings.append(
+                {
+                    "account_type": order.account_type,
+                    "account_id": order.account_id,
+                    "stock_code": order.stock_code,
+                    "order_id": order.order_id,
+                    "order_sysid": order.order_sysid,
+                    "order_time": order.order_time,
+                    "order_type": order.order_type,
+                    "order_volume": order.order_volume,
+                    "price_type": order.price_type,
+                    "price": order.price,
+                    "traded_volume": order.traded_volume,
+                    "traded_price": order.traded_price,
+                    "order_status": order.order_status,
+                    "status_msg": order.status_msg,
+                    "strategy_name": order.strategy_name,
+                    "order_remark": order.order_remark,
+                    "direction": order.direction,
+                    "offset_flag": order.offset_flag,
+                }
+            )
+
+        return pd.DataFrame(pendings)
 
     def __str__(self):
         return (
