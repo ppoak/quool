@@ -132,6 +132,28 @@ class XtBroker(Broker):
             )
 
         return pd.DataFrame(pendings)
+    
+    def get_positions(self):
+        positions = []
+        for position in self.positions:
+            positions.append(
+                {
+                    "account_type": position.account_type,
+                    "account_id": position.account_id,
+                    "stock_code": position.stock_code,
+                    "volume": position.volume,
+                    "can_use_volume": position.can_use_volume,
+                    "open_price": position.open_price,
+                    "market_value": position.market_value,
+                    "frozen_volume": position.frozen_volume,
+                    "on_road_volume": position.on_road_volume,
+                    "yesterday_volume": position.yesterday_volume,
+                    "avg_price": position.avg_price,
+                    "direction": position.direction,
+                }
+            )
+
+        return pd.DataFrame(positions)
 
     def __str__(self):
         return (
