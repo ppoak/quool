@@ -69,11 +69,25 @@ class XtBroker(Broker):
     def sell(self, code: str, quantity: float, price: float = -1, remark: str = ""):
         return self.create(self.SELL, code, quantity, self.MARKET, price, remark)
 
+    def close(self, code: str, price: float = -1, remark: str = ""):
+        for pos in self.positions:
+            if pos.stock_code == code:
+                quantity = pos.can_use_volume
+                if quantity > 0:
+                    return self.create(self.SELL, code, quantity, self.MARKET, price, remark)
+
     def limit_buy(self, code: str, quantity: float, price: float, remark: str = ""):
         return self.create(self.BUY, code, quantity, self.LIMIT, price, remark)
 
     def limit_sell(self, code: str, quantity: float, price: float, remark: str = ""):
         return self.create(self.SELL, code, quantity, self.LIMIT, price, remark)
+    
+    def limit_close(self, code: str, price: float, remark: str = ""):
+        for pos in self.positions:
+            if pos.stock_code == code:
+                quantity = pos.can_use_volume
+                if quantity > 0:
+                    return self.create(self.SELL, code, quantity, self.LIMIT, price, remark)
 
     def update(self, time: str, data: pd.DataFrame):
         pass
