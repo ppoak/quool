@@ -1,8 +1,12 @@
-import requests
+import re
+import uuid
+import duckdb
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from joblib import Parallel, delayed
+from contextlib import contextmanager
+from typing import Union, List, Optional
 
 
 class ParquetManager:
@@ -497,3 +501,220 @@ class ParquetManager:
 
     def __repr__(self):
         return self.__str__()
+
+
+class DuckDBManager:
+
+    def __init__(self, path: str):
+        self.path = path
+
+    @contextmanager
+    def _connection(self):
+        conn = duckdb.connect(self.path)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def _validate_identifier(self, name: str) -> None:
+        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
+            raise ValueError(f"Invalid SQL identifier: {name}")
+
+    def _map_dtype(self, dtype_str: str) -> str:
+        type_map = {
+            "int64": "BIGINT",
+            "float64": "DOUBLE",
+            "datetime64[ns]": "TIMESTAMP",
+            "category": "VARCHAR",
+            "object": "VARCHAR",
+            "bool": "BOOLEAN",
+        }
+        return type_map.get(dtype_str, "VARCHAR")
+
+    def _build_where_clause(self, filters: dict) -> tuple:
+        where_clauses = []
+        params = []
+        valid_operators = {
+            "gt": ">",
+            "lt": "<",
+            "ge": ">=",
+            "le": "<=",
+            "eq": "=",
+            "ne": "!=",
+            "like": "LIKE",
+            "in": "IN",
+            "not_in": "NOT IN",
+        }
+
+        for key, value in filters.items():
+            col_part = key.split("__", 1)
+            col, operation = col_part if len(col_part) > 1 else (key, "eq")
+
+            self._validate_identifier(col)
+            op = valid_operators.get(operation, operation)
+
+            if operation in ("in", "not_in"):
+                placeholders = ", ".join(["?"] * len(value))
+                where_clauses.append(f"{col} {op} ({placeholders})")
+                params.extend(value)
+            else:
+                where_clauses.append(f"{col} {op} ?")
+                params.append(value)
+
+        return " AND ".join(where_clauses), params
+
+    def _table_exists(self, conn: duckdb.DuckDBPyConnection, table: str) -> bool:
+        return conn.execute(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = ?)",
+            [table],
+        ).fetchone()[0]
+
+    def _create_table(
+        self, conn: duckdb.DuckDBPyConnection, df: pd.DataFrame, table: str
+    ):
+        index_cols = [name for name in df.index.names if name]
+        if index_cols:
+            df_create = df.reset_index()
+        else:
+            df_create = df.copy()
+
+        columns = []
+        for col in df_create.columns:
+            self._validate_identifier(col)
+            dtype = self._map_dtype(str(df_create[col].dtype))
+            columns.append(f"{col} {dtype}")
+
+        unique_clause = ""
+        if index_cols:
+            missing_columns = [
+                col for col in index_cols if col not in df_create.columns
+            ]
+            if missing_columns:
+                raise ValueError(f"Missing index columns: {missing_columns}")
+            unique_cols = ", ".join(map(str, index_cols))
+            unique_clause = f", UNIQUE({unique_cols})"
+
+        create_sql = f"CREATE TABLE {table} ({', '.join(columns)} {unique_clause})"
+        conn.execute(create_sql)
+
+        if index_cols:
+            cols_hash = hash(tuple(sorted(index_cols))) & 0xFFFFFFFF
+            index_name = f"idx_{table.lower()}_{cols_hash}"
+            index_columns = ", ".join(index_cols)
+            conn.execute(f"CREATE INDEX {index_name} ON {table} ({index_columns})")
+
+        conn.commit()
+
+    def read(
+        self,
+        table: str,
+        index: Union[str, List[str], None] = None,
+        columns: Optional[List[str]] = None,
+        pivot: Optional[str] = None,
+        **filters,
+    ) -> pd.DataFrame:
+        with self._connection() as conn:
+            required_columns = set()
+            if index:
+                index_cols = [index] if isinstance(index, str) else index
+                required_columns.update(index_cols)
+
+            if columns:
+                required_columns.update(columns)
+
+            if pivot:
+                required_columns.add(pivot)
+
+            select_clause = (
+                ", ".join(sorted(required_columns)) if required_columns else "*"
+            )
+
+            where_clause, params = self._build_where_clause(filters)
+            sql_query = f"SELECT {select_clause} FROM {table}"
+            if where_clause:
+                sql_query += f" WHERE {where_clause}"
+
+            df = conn.execute(sql_query, params).fetchdf()
+
+            if pivot:
+                if not index or not columns:
+                    raise ValueError("Pivot requires both index and columns")
+                return df.pivot(index=index, columns=columns, values=pivot)
+
+            if index and not df.empty:
+                missing_index = set(
+                    index if isinstance(index, list) else [index]
+                ) - set(df.columns)
+                if missing_index:
+                    raise ValueError(f"Missing index columns: {missing_index}")
+                df = df.set_index(index)
+
+            return df
+
+    def upsert(self, df: pd.DataFrame, table: str) -> None:
+        with self._connection() as conn:
+            if not self._table_exists(conn, table):
+                self._create_table(conn, df, table)
+
+            temp_view = f"temp_{table}_{uuid.uuid4().hex[:8]}"
+            conn.register(temp_view, df.reset_index() if df.index.names[0] else df)
+
+            try:
+                index_cols = [name for name in df.index.names if name]
+                source_cols = (
+                    conn.execute(f"PRAGMA table_info({table})").df()["name"].tolist()
+                )
+
+                conflict_clause = (
+                    (
+                        f"ON CONFLICT ({', '.join(index_cols)}) DO UPDATE SET "
+                        + ", ".join(
+                            [
+                                f"{col}=EXCLUDED.{col}"
+                                for col in source_cols
+                                if col not in index_cols
+                            ]
+                        )
+                    )
+                    if index_cols
+                    else ""
+                )
+
+                insert_sql = f"""
+                    INSERT INTO {table} 
+                    SELECT * FROM {temp_view}
+                    {conflict_clause}
+                """
+                conn.execute(insert_sql)
+                conn.commit()
+            finally:
+                conn.unregister(temp_view)
+
+    def add_column(self, table: str, column: str, dtype: str) -> None:
+        self._validate_identifier(table)
+        self._validate_identifier(column)
+        with self._connection() as conn:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {dtype}")
+            conn.commit()
+
+    def drop_column(self, table: str, column: str) -> None:
+        self._validate_identifier(table)
+        self._validate_identifier(column)
+        with self._connection() as conn:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+            conn.commit()
+
+    def rename_column(self, table: str, old_name: str, new_name: str) -> None:
+        self._validate_identifier(table)
+        self._validate_identifier(old_name)
+        self._validate_identifier(new_name)
+        with self._connection() as conn:
+            conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name}")
+            conn.commit()
+
+    def change_column_type(self, table: str, column: str, new_type: str) -> None:
+        self._validate_identifier(table)
+        self._validate_identifier(column)
+        with self._connection() as conn:
+            conn.execute(f"ALTER TABLE {table} ALTER COLUMN {column} TYPE {new_type}")
+            conn.commit()

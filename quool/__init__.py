@@ -8,6 +8,7 @@ from .util import setup_logger, notify_task, proxy_request
 from .brokers import XueQiu, XueQiuBroker, XtBroker
 from .sources import (
     ParquetManager,
+    DuckDBManager,
     ParquetSource,
     DataFrameSource,
     RealtimeSource,
@@ -15,4 +16,4 @@ from .sources import (
 )
 
 
-__version__ = "7.0.7"
+__version__ = "7.0.8"
