@@ -655,16 +655,18 @@ class DuckDBManager:
         with self._connection() as conn:
             if not self._table_exists(conn, table):
                 self._create_table(conn, df, table)
+            source_cols = (
+                conn.execute(f"PRAGMA table_info({table})").df()["name"].tolist()
+            )
 
             temp_view = f"temp_{table}_{uuid.uuid4().hex[:8]}"
-            conn.register(temp_view, df.reset_index() if df.index.names[0] else df)
+            conn.register(
+                temp_view,
+                df.reset_index()[source_cols] if df.index.names[0] else df[source_cols],
+            )
 
             try:
                 index_cols = [name for name in df.index.names if name]
-                source_cols = (
-                    conn.execute(f"PRAGMA table_info({table})").df()["name"].tolist()
-                )
-
                 conflict_clause = (
                     (
                         f"ON CONFLICT ({', '.join(index_cols)}) DO UPDATE SET "
