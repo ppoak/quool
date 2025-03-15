@@ -188,7 +188,7 @@ class ParquetManager:
         def process_partition(partition):
             df = pd.read_parquet(partition)
             df.drop(columns=columns, inplace=True)
-            df.to_parquet(partition)
+            df.sort_values(by=self.index_col).to_parquet(partition)
 
         Parallel(n_jobs=n_jobs, backend="threading")(
             delayed(process_partition)(partition) for partition in self.partitions
@@ -231,7 +231,7 @@ class ParquetManager:
                         if not rev
                         else ~getattr(df[key], ops)(value)
                     )
-                df[~conditions].to_parquet(partition, index=False)
+                df[~conditions].sort_values(by=self.index_col).to_parquet(partition, index=False)
 
         filters = self._generate_filters(kwargs)
         Parallel(n_jobs=n_jobs, backend="threading")(
@@ -259,7 +259,7 @@ class ParquetManager:
         def process_partition(partition):
             df = pd.read_parquet(partition)
             df.rename(columns=kwargs, inplace=True)
-            df.to_parquet(partition)
+            df.sort_values(by=self.index_col).to_parquet(partition)
 
         Parallel(n_jobs=n_jobs, backend="threading")(
             delayed(process_partition)(partition) for partition in self.partitions
@@ -310,7 +310,9 @@ class ParquetManager:
                     dtypes = data.dtypes
                     dtypes = dtypes.loc[~dtypes.index.isin(columns)].to_dict()
                     existing_data = existing_data.astype(dtypes)
-                    existing_data.to_parquet(partition_path, index=False)
+                    existing_data.sort_values(by=self.index_col).to_parquet(
+                        partition_path, index=False
+                    )
                 return
 
             # Data for partition value is not empty
@@ -330,7 +332,9 @@ class ParquetManager:
                 combined_data = data[data[self.partition_col] == partition_value]
 
             # Save combined data
-            combined_data.to_parquet(partition_path, index=False)
+            combined_data.sort_values(by=self.index_col).to_parquet(
+                partition_path, index=False
+            )
 
         # Use joblib.Parallel for parallel processing
         if self.partition_col:
@@ -352,7 +356,9 @@ class ParquetManager:
                 )
             else:
                 combined_data = data
-            combined_data.to_parquet(partition_path, index=False)
+            combined_data.sort_values(by=self.index_col).to_parquet(
+                partition_path, index=False
+            )
 
     def update_insert(
         self,
@@ -401,7 +407,9 @@ class ParquetManager:
                 combined_data = data[data[self.partition_col] == partition_value]
 
             # Save combined data
-            combined_data.to_parquet(partition_path, index=False)
+            combined_data.sort_values(by=self.index_col).to_parquet(
+                partition_path, index=False
+            )
 
         # Use joblib.Parallel for parallel processing
         if self.partition_col:
@@ -423,7 +431,9 @@ class ParquetManager:
                 )
             else:
                 combined_data = data
-            combined_data.to_parquet(partition_path, index=False)
+            combined_data.sort_values(by=self.index_col).to_parquet(
+                partition_path, index=False
+            )
 
     def read(self, index=None, columns=None, pivot=None, **kwargs):
         """
