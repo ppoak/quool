@@ -271,7 +271,7 @@ class ParquetManager:
         partition: str | pd.Series | pd.Index | list = None,
         on: str = None,
         how: str = "inner",
-        njobs: int = 4,
+        n_jobs: int = 4,
     ):
         """
         Merges new data into the Parquet database, ensuring data is partitioned correctly and duplicates based on the index columns are removed.
@@ -338,7 +338,7 @@ class ParquetManager:
 
         # Use joblib.Parallel for parallel processing
         if self.partition_col:
-            Parallel(n_jobs=njobs, backend="threading")(
+            Parallel(n_jobs=n_jobs, backend="threading")(
                 delayed(process_partition)(partition_path)
                 for partition_path in self.partitions
             )
