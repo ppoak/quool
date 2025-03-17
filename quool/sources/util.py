@@ -490,11 +490,11 @@ class ParquetManager:
         file_size = [f.stat().st_size for f in self.partitions]
         file_size_total = sum(file_size)
         if file_size_total > 1024**3:
-            file_size_str = f"{file_size / 1024**3:.2f} GB"
+            file_size_str = f"{file_size_total / 1024**3:.2f} GB"
         elif file_size_total > 1024**2:
-            file_size_str = f"{file_size / 1024**2:.2f} MB"
+            file_size_str = f"{file_size_total / 1024**2:.2f} MB"
         else:
-            file_size_str = f"{file_size} KB"
+            file_size_str = f"{file_size_total} KB"
 
         partition_range = "N/A"
         if self.partitions:
@@ -510,7 +510,7 @@ class ParquetManager:
             f"File Count: {file_count}\n"
             f"Partition Column: {self.partition_col}\n"
             f"Partition Range: {partition_range}\n"
-            f"Columns: {self.columns}\n"
+            f"Columns: {self.columns.to_list()}\n"
             f"Total Size: {file_size_str}"
         )
 
