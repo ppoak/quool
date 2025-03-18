@@ -231,7 +231,9 @@ class ParquetManager:
                         if not rev
                         else ~getattr(df[key], ops)(value)
                     )
-                df[~conditions].sort_values(by=self.index_col).to_parquet(partition, index=False)
+                df[~conditions].sort_values(by=self.index_col).to_parquet(
+                    partition, index=False
+                )
 
         filters = self._generate_filters(kwargs)
         Parallel(n_jobs=n_jobs, backend="threading")(
@@ -452,9 +454,9 @@ class ParquetManager:
             ValueError: If `pivot` is specified but `index` or `columns` are not.
         """
         # Ensure `index_col` and `columns` are lists for consistency
-        index = index or []
-        columns = columns or []
-        pivot = pivot or []
+        index = index if index is not None else []
+        columns = columns if columns is not None else []
+        pivot = pivot if pivot is not None else []
         index = [index] if isinstance(index, str) else index
         columns = [columns] if isinstance(columns, str) else columns
         pivot = [pivot] if isinstance(pivot, str) else pivot
