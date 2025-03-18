@@ -437,7 +437,13 @@ class ParquetManager:
                 partition_path, index=False
             )
 
-    def read(self, index=None, columns=None, pivot=None, **kwargs):
+    def read(
+        self,
+        index: list | str = None,
+        columns: list | str = None,
+        pivot: list | str = None,
+        **kwargs,
+    ):
         """
         Reads data from the Parquet database, optionally filtering, indexing, and pivoting.
 
