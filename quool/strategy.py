@@ -67,7 +67,7 @@ class Strategy:
             trigger,
             kwargs={"store": store, "history": history, **kwargs},
             id=self.__class__.__name__,
-            **(trigger_kwargs or {"seconds": 30})
+            **(trigger_kwargs or {"seconds": 30}),
         )
         scheduler.start()
 
@@ -90,28 +90,24 @@ class Strategy:
                 trigger,
                 kwargs={"store": store, "history": history, **kwargs},
                 id=self.__class__.__name__,
-                **(trigger_kwargs or {"seconds": 30})
+                **(trigger_kwargs or {"seconds": 30}),
             )
         scheduler.start()
         return scheduler
 
-    def backtest(self, benchmark: pd.Series = None, **kwargs):
+    def backtest(self, benchmark: pd.Series = None, history: bool = False, **kwargs):
         self.init(**kwargs)
-        while self._run(**kwargs):
+        while self._run(history=history, **kwargs):
             self.preupdate(**kwargs)
         self.stop(**kwargs)
         return self.evaluate(benchmark=benchmark)
 
-    def __call__(self, params: dict, since: pd.Timestamp = None, n_jobs: int = -1):
-        grid_params = pd.MultiIndex.from_product(
-            [param for param in params.values()],
-            names=[name for name in params.keys()],
-        )
+    def __call__(self, params: list[dict], history: bool = False, n_jobs: int = -1):
         results = Parallel(n_jobs=n_jobs, backend="loky")(
-            delayed(self.backtest)(param, path, since) for path, param in params.items()
+            delayed(self.backtest)(history=history, **param) for param in params
         )
         evaluations = pd.concat([result["evaluation"] for result in results])
-        evaluations.index = grid_params
+        evaluations.index = pd.DataFrame(params).set_index(params.keys()).index
         return evaluations
 
     def __str__(self) -> str:
@@ -197,7 +193,8 @@ class Strategy:
         else:
             delta = (
                 value
-                - self.get_positions().get(code, 0) * self.source.data.loc[code, "close"]
+                - self.get_positions().get(code, 0)
+                * self.source.data.loc[code, "close"]
             )
             quantity = delta / self.source.data.loc[code, "close"]
         if quantity > 0:
