@@ -204,16 +204,17 @@ class Strategy:
             type = self.broker.order_type.BUY
         elif quantity < 0:
             type = self.broker.order_type.SELL
-        return self.broker.create(
-            type=type,
-            code=code,
-            quantity=abs(quantity),
-            exectype=exectype,
-            limit=limit,
-            trigger=trigger,
-            id=id,
-            valid=valid,
-        )
+        if abs(quantity) > 0:
+            return self.broker.create(
+                type=type,
+                code=code,
+                quantity=abs(quantity),
+                exectype=exectype,
+                limit=limit,
+                trigger=trigger,
+                id=id,
+                valid=valid,
+            )
 
     def order_target_percent(
         self,
