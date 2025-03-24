@@ -40,7 +40,7 @@ class Evaluator:
 
         delivery = delivery.drop(index="CASH", level=1)
         delivery["stock_cumsum"] = delivery.groupby("code")["quantity"].cumsum()
-        delivery["trade_mark"] = delivery["stock_cumsum"] == 0
+        delivery["trade_mark"] = delivery["stock_cumsum"] < 1e-5
         delivery["trade_num"] = (
             delivery.groupby("code")["trade_mark"]
             .shift(1)
@@ -55,12 +55,12 @@ class Evaluator:
                     "open_at": x[x["quantity"] > 0].index.get_level_values("time")[0],
                     "close_amount": (
                         x[x["quantity"] < 0]["amount"].sum()
-                        if x["quantity"].sum() == 0
+                        if x["quantity"].sum() < 1e-5
                         else np.nan
                     ),
                     "close_at": (
                         x[x["quantity"] < 0].index.get_level_values("time")[-1]
-                        if x["quantity"].sum() == 0
+                        if x["quantity"].sum() < 1e-5
                         else np.nan
                     ),
                 }
