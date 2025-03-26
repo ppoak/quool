@@ -106,9 +106,13 @@ class Strategy:
         results = Parallel(n_jobs=n_jobs, backend="loky")(
             delayed(self.backtest)(history=history, **param) for param in params
         )
-        evaluations = pd.concat([result["evaluation"] for result in results])
-        evaluations.index = pd.DataFrame(params).set_index(params.keys()).index
-        return evaluations
+        return [
+            {
+                "params": param,
+                "result": result,
+            }
+            for param, result in zip(params, results)
+        ]
 
     def __str__(self) -> str:
         return (

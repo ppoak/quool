@@ -27,6 +27,9 @@ class FixedRateCommission:
     def __str__(self):
         return f"{self.__class__.__name__}: rate={self.commission_rate}, stamp_duty={self.stamp_duty_rate}, min={self.min_commission}"
 
+    def __repr__(self):
+        return self.__str__()
+
 
 class FixedRateSlippage:
 
@@ -70,3 +73,6 @@ class FixedRateSlippage:
 
     def __str__(self):
         return f"{self.__class__.__name__}(slip_one_cent_rate={self.slip_rate})"
+
+    def __repr__(self):
+        return self.__str__()
