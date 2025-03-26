@@ -24,7 +24,6 @@ class Strategy:
         self.logger = logger or setup_logger(
             f"{self.__class__.__name__}", level="DEBUG"
         )
-        self.data = None
 
     def init(self, **kwargs):
         pass
@@ -42,9 +41,12 @@ class Strategy:
     def time(self):
         return self.source.time
 
+    @property
+    def data(self):
+        return self.source.data
+
     def _run(self, store: str = None, history: bool = False, **kwargs):
-        self.data = self.source.update()
-        if self.data is None:
+        if self.source.update() is None:
             return False
         for notif in self.broker.update(time=self.source.time, data=self.data):
             self.notify(notif)
