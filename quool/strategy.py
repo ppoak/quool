@@ -104,18 +104,6 @@ class Strategy:
         self.stop(**kwargs)
         return self.evaluate(benchmark=benchmark)
 
-    def __call__(self, params: list[dict], history: bool = False, n_jobs: int = -1):
-        results = Parallel(n_jobs=n_jobs, backend="loky")(
-            delayed(self.backtest)(history=history, **param) for param in params
-        )
-        return [
-            {
-                "params": param,
-                "result": result,
-            }
-            for param, result in zip(params, results)
-        ]
-
     def __str__(self) -> str:
         return (
             f"{self.__class__}({self.id})@{self.status}\n"
