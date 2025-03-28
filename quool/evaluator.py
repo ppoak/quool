@@ -126,48 +126,47 @@ class Evaluator:
 
         evaluation = pd.Series(name="evaluation")
         # Basic Performance Metrics
-        evaluation["total_return(%)"] = (net_value.iloc[-1] - 1) * 100
-        evaluation["annual_return(%)"] = (
+        evaluation["total_return"] = net_value.iloc[-1] - 1
+        evaluation["annual_return"] = (
             (
-                (1 + evaluation["total_return(%)"] / 100)
+                (1 + evaluation["total_return"])
                 ** (365 / (net_value.index[-1] - net_value.index[0]).days)
                 - 1
             )
-            * 100
             if (net_value.index[-1] - net_value.index[0]).days != 0
             else np.nan
         )
-        evaluation["annual_volatility(%)"] = (returns.std() * np.sqrt(252)) * 100
+        evaluation["annual_volatility"] = (returns.std() * np.sqrt(252))
         evaluation["sharpe_ratio"] = (
-            evaluation["annual_return(%)"] / evaluation["annual_volatility(%)"]
-            if evaluation["annual_volatility(%)"] != 0
+            evaluation["annual_return"] / evaluation["annual_volatility"]
+            if evaluation["annual_volatility"] != 0
             else np.nan
         )
         evaluation["calmar_ratio"] = (
-            evaluation["annual_return(%)"] / abs(max_drawdown * 100)
+            evaluation["annual_return"] / abs(max_drawdown)
             if max_drawdown != 0
             else np.nan
         )
         downside_std = returns[returns < 0].std()
-        evaluation["sortino_ratio(%)"] = (
-            evaluation["annual_return(%)"] / (downside_std * np.sqrt(252))
+        evaluation["sortino_ratio"] = (
+            evaluation["annual_return"] / (downside_std * np.sqrt(252))
             if downside_std != 0
             else np.nan
         )
 
         # Risk Metrics
-        evaluation["max_drawdown(%)"] = max_drawdown * 100
+        evaluation["max_drawdown"] = max_drawdown
         evaluation["max_drawdown_period"] = max_drawdown_end - max_drawdown_start
-        var_95 = np.percentile(returns, 5) * 100
-        evaluation["VaR_5%(%)"] = var_95
-        cvar_95 = returns[returns <= var_95 / 100].mean() * 100
-        evaluation["CVaR_5%(%)"] = cvar_95
+        var_95 = np.percentile(returns, 5)
+        evaluation["VaR_5%"] = var_95
+        cvar_95 = returns[returns <= var_95].mean()
+        evaluation["CVaR_5%"] = cvar_95
 
         # Turnover Ratio
         if turnover is not None:
-            evaluation["turnover_ratio(%)"] = turnover.mean() * 100
+            evaluation["turnover_ratio"] = turnover.mean()
         else:
-            evaluation["turnover_ratio(%)"] = np.nan
+            evaluation["turnover_ratio"] = np.nan
 
         # Alpha and Beta, Benchmark related
         if returns.count() > 30:
@@ -179,16 +178,16 @@ class Evaluator:
         else:
             beta = np.nan
         evaluation["beta"] = beta
-        evaluation["alpha(%)"] = (
-            (returns.mean() - beta * benchmark_returns.mean()) * 252 * 100
+        evaluation["alpha"] = (
+            (returns.mean() - beta * benchmark_returns.mean()) * 252
             if beta is not np.nan
             else np.nan
         )
-        evaluation["excess_return(%)"] = excess_returns.mean() * 252 * 100
-        evaluation["excess_volatility(%)"] = excess_returns.std() * np.sqrt(252) * 100
+        evaluation["excess_return"] = excess_returns.mean() * 252
+        evaluation["excess_volatility"] = excess_returns.std() * np.sqrt(252)
         tracking_error = (returns - benchmark_returns).std() * np.sqrt(252)
         evaluation["information_ratio"] = (
-            evaluation["excess_return(%)"] / tracking_error
+            evaluation["excess_return"] / tracking_error
             if tracking_error != 0
             else np.nan
         )
@@ -197,16 +196,16 @@ class Evaluator:
         if trades is not None and not trades.empty:
             evaluation["position_duration(days)"] = trades["duration"].mean()
             profit = trades["close_amount"] - trades["open_amount"]
-            evaluation["trade_win_rate(%)"] = (
-                profit[profit > 0].count() / profit.count() * 100
+            evaluation["trade_win_rate"] = (
+                profit[profit > 0].count() / profit.count()
                 if profit.count() != 0
                 else np.nan
             )
-            evaluation["trade_return(%)"] = profit.sum() / trades["open_amount"].sum() * 100
+            evaluation["trade_return"] = profit.sum() / trades["open_amount"].sum()
         else:
             evaluation["position_duration(days)"] = np.nan
-            evaluation["trade_win_rate(%)"] = np.nan
-            evaluation["trade_return(%)"] = np.nan
+            evaluation["trade_win_rate"] = np.nan
+            evaluation["trade_return"] = np.nan
 
         # Distribution Metrics
         evaluation["skewness"] = returns.skew()
@@ -214,10 +213,10 @@ class Evaluator:
         positive_returns = returns[
             returns.gt(0 if benchmark is None else benchmark_returns)
         ].count()
-        evaluation["day_return_win_rate(%)"] = (positive_returns / returns.count()) * 100
+        evaluation["day_return_win_rate"] = (positive_returns / returns.count())
         monthly_returns = net_value.resample("ME").last().pct_change().fillna(0)
-        evaluation["monthly_return_std(%)"] = monthly_returns.std() * 100
-        evaluation["monthly_win_rate(%)"] = (
-            (monthly_returns > 0).sum() / len(monthly_returns) * 100
+        evaluation["monthly_return_std"] = monthly_returns.std()
+        evaluation["monthly_win_rate"] = (
+            (monthly_returns > 0).sum() / len(monthly_returns)
         )
         return evaluation

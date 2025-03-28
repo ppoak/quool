@@ -6,7 +6,6 @@ from .broker import Broker
 from .util import setup_logger
 from .evaluator import Evaluator
 from .friction import FixedRateCommission, FixedRateSlippage
-from joblib import Parallel, delayed
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 
