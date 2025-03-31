@@ -10,124 +10,58 @@ from typing import Union, List, Optional
 
 
 class ParquetManager:
-    """Class to manage Parquet database operations, including data insertions, updates, and reading.
-
-    Attributes:
-        path (Path): Base path for storing parquet files.
-        partitions (list): List of existing partitions.
-        name (str): Name of the database.
-        partition (str): Column used for partitioning the data.
-        index (list): Column(s) used for indexing to avoid duplicates.
-    """
 
     def __init__(
         self,
         path: str | Path,
-        index_col: str | list = None,
-        partition_col: str = None,
+        grouper: str | list | pd.Grouper = None,
+        namer: str = None,
+        unikey: str | list = None,
     ):
-        """
-        Initializes the ParquetManager with a base path, partition column(s), and index column(s).
-
-        Args:
-            path (str or Path): The base directory where parquet files will be stored.
-            index (str, optional): Column(s) used for indexing to avoid duplicates.
-            partition (str, optional): Column used for partitioning the data. If None, it will be automatically detected for existing data.
-        """
-        if not isinstance(partition_col, (str, type(None))):
-            raise ValueError("partition must be a string.")
-
-        self.path = Path(path).expanduser().resolve()
-        self.path.mkdir(parents=True, exist_ok=True)
-        self.name = self.path.name
-        self.partition_col = (
-            self._auto_detect_partition_col()
-            if partition_col is None
-            else partition_col
-        )
-
-        if self.partitions and partition_col and partition_col != self.partition_col:
-            raise ValueError("Partition conflicts with existing data.")
-        elif not self.partitions and not partition_col:
-            raise ValueError(
-                "Partition must be specified when no existing data is present."
-            )
-
-        self.index_col = [index_col] if isinstance(index_col, str) else index_col
+        self._path = Path(path).expanduser().resolve()
+        self._path.mkdir(parents=True, exist_ok=True)
+        self._unikey = [unikey] if isinstance(unikey, str) else unikey
+        self._grouper = grouper
+        self._namer = namer or "{name}__{partition_name}.parquet"
 
     @property
-    def required_cols(self):
-        """Returns the required columns for the data."""
-        return (
-            [self.index_col]
-            if isinstance(self.index_col, str)
-            else self.index_col + [self.partition_col]
-        )
+    def name(self):
+        return self._path.name
+
+    @property
+    def path(self):
+        return self._path
+
+    @property
+    def unikey(self):
+        return self._unikey
+
+    @property
+    def grouper(self):
+        return self._grouper
+
+    @property
+    def namer(self):
+        return self._namer
 
     @property
     def columns(self):
-        file_size = [f.stat().st_size for f in self.partitions]
-        if file_size:
-            min_file = self.partitions[np.argmin(file_size)]
-            return pd.read_parquet(min_file).columns
-        return []
+        if min_partiton := self.min_partition:
+            return pd.read_parquet(min_partiton).columns
+        return pd.Index([])
 
     @property
     def partitions(self):
-        """Returns the list of existing partitions."""
-        return sorted(list(self.path.iterdir()))
+        return sorted(list(self._path.iterdir()))
 
-    def _auto_detect_partition_col(self):
-        """Automatically detects the partition column based on file naming convention."""
-        for file in self.partitions:
-            parts = file.name.split("__", maxsplit=1)
-            if len(parts) > 1:
-                return parts[1].split("=")[0]
-            return None
-
-    def _generate_partitioner(self, data, partition=None):
-        """Generates partition values for the data."""
-        data = data.copy()
-        if self.partition_col:
-            if self.partition_col not in data.columns and partition is None:
-                raise ValueError(
-                    "partition must be provided when partition_col is specified."
-                )
-
-            # Check for column name conflict
-            if self.partition_col in data.columns and partition is not None:
-                raise ValueError(
-                    f"Column name '{self.partition_col}' already exists, set partition to None."
-                )
-
-            if isinstance(partition, str):
-                # Map partition values from an existing column
-                if partition not in data.columns:
-                    raise ValueError(
-                        f"The specified partition column '{partition}' does not exist in new_data."
-                    )
-                data[self.partition_col] = data[partition].astype(str)
-            elif isinstance(partition, (pd.Series, list, tuple, pd.Index)):
-                # Use provided partition values
-                data[self.partition_col] = pd.Series(
-                    partition, index=data.index
-                ).astype(str)
-            elif callable(partition):
-                # Generate partition values using a callable function
-                data[self.partition_col] = partition(data).astype(str)
-            elif partition is not None:
-                raise ValueError(
-                    "Invalid partition input. It should be either a string representing a column name, a pd.Series, array-like, or a callable."
-                )
-        else:
-            if partition is not None:
-                raise ValueError(
-                    "partition must be None when partition_col is not specified."
-                )
-        return data
+    @property
+    def min_partition(self):
+        if self.partitions:
+            return self.partitions[
+                np.argmin([f.stat().st_size for f in self.partitions])
+            ]
 
     def _generate_filters(self, kwargs: dict):
-        """Generates filters for the data based on keyword arguments."""
         filters = []
         operator_dict = {
             "eq": "==",
@@ -151,68 +85,32 @@ class ParquetManager:
 
         return None if not filters else filters
 
-    def _get_partition_path(self, partition_value: str):
-        """Returns the path from the partition value."""
-        return (
-            self.path / f"{self.name}__{self.partition_col}={partition_value}.parquet"
+    def _get_partition_path(self, partition_name: str):
+        return self.path / self.namer.format(
+            name=re.sub(r'[\\/:*?"<>|]', "_", str(self.name)),
+            partition_name=re.sub(r'[\\/:*?"<>|]', "_", str(partition_name)),
         )
 
-    def _get_partition_value(self, partition_path: str | Path):
-        """Returns the value from the partition path."""
-        parts = Path(partition_path).stem.split("__", maxsplit=1)
-        return parts[1].split("=")[1] if len(parts) > 1 else None
-
     def drop_col(self, columns: list | str, n_jobs: int = 4):
-        """
-        Drops specified columns or rows from the Parquet database.
-
-        Args:
-            columns (str or list) List of column names to drop.
-            njobs(int, optional): Number of jobs to run in parallel. Defaults to 4.
-
-        Raises:
-            ValueError: If the current parquet database is readonly or if the specified columns are required.
-
-        Returns:
-            None
-        """
-        if not self.index_col:
-            raise ValueError(
-                "Current parquet database is readonly! Enable write by setting index"
-            )
-
         columns = [columns] if isinstance(columns, str) else columns
-        if pd.Index(columns).isin(pd.Index(self.required_cols)).any():
-            raise ValueError("Cannot drop required columns.")
+        if pd.Index(columns).isin(self.unikey).any():
+            raise ValueError("Cannot drop unique key columns.")
 
         def process_partition(partition):
             df = pd.read_parquet(partition)
             df.drop(columns=columns, inplace=True)
-            df.sort_values(by=self.index_col).to_parquet(partition)
+            if self.unikey:
+                df.sort_values(by=self.unikey, inplace=True)
+            df.to_parquet(partition)
 
         Parallel(n_jobs=n_jobs, backend="threading")(
             delayed(process_partition)(partition) for partition in self.partitions
         )
 
     def drop_row(self, n_jobs: int = 4, **kwargs):
-        """
-        Drops specified rows from the Parquet database.
-
-        Args:
-            kwargs: Keyword arguments to filter rows to be dropped.
-            njobs(int, optional): Number of jobs to run in parallel. Defaults to 4.
-
-        Returns:
-            None
-        """
-        if not self.index_col:
-            raise ValueError(
-                "Current parquet database is readonly! Enable write by setting index"
-            )
-
         def process_partition(partition):
             if not pd.read_parquet(
-                partition, filters=filters, columns=self.index_col
+                partition, filters=filters, columns=self.unikey
             ).empty:
                 df = pd.read_parquet(partition)
                 conditions = pd.Series(
@@ -231,9 +129,9 @@ class ParquetManager:
                         if not rev
                         else ~getattr(df[key], ops)(value)
                     )
-                df[~conditions].sort_values(by=self.index_col).to_parquet(
-                    partition, index=False
-                )
+                if self.unikey:
+                    df[~conditions].sort_values(by=self.unikey, inplace=True)
+                df.to_parquet(partition, index=False)
 
         filters = self._generate_filters(kwargs)
         Parallel(n_jobs=n_jobs, backend="threading")(
@@ -241,184 +139,67 @@ class ParquetManager:
         )
 
     def rename_col(self, n_jobs: int = 4, **kwargs):
-        """
-        Renames specified columns or index columns in the Parquet database.
-
-        Args:
-            kwargs: Dictionary mapping old column names to new column names.
-
-        Returns:
-            None
-        """
-        if not self.index_col:
-            raise ValueError(
-                "Current parquet database is readonly! Enable write by setting index"
-            )
-
-        self.index_col = [kwargs.get(i, i) for i in self.index_col]
-        self.partition_col = kwargs.get(self.partition_col, self.partition_col)
-
         def process_partition(partition):
             df = pd.read_parquet(partition)
             df.rename(columns=kwargs, inplace=True)
-            df.sort_values(by=self.index_col).to_parquet(partition)
+            if self.unikey:
+                df.sort_values(by=self.unikey, inplace=True)
+            df.to_parquet(partition)
 
         Parallel(n_jobs=n_jobs, backend="threading")(
             delayed(process_partition)(partition) for partition in self.partitions
         )
 
-    def merge(
+    def add_col(self, n_jobs: int = 4, **dtypes):
+        def process_partition(partition):
+            df = pd.read_parquet(partition)
+            df[dtypes.keys()] = pd.DataFrame(columns=dtypes.keys()).astype(dtypes.values())
+            if self.unikey:
+                df.sort_values(by=self.unikey, inplace=True)
+            df.to_parquet(partition)
+
+        Parallel(n_jobs=n_jobs, backend="threading")(
+            delayed(process_partition)(partition) for partition in self.partitions
+        )
+
+    def update(
         self,
         data: pd.DataFrame,
-        partition: str | pd.Series | pd.Index | list = None,
-        on: str = None,
-        how: str = "inner",
         n_jobs: int = 4,
     ):
-        """
-        Merges new data into the Parquet database, ensuring data is partitioned correctly and duplicates based on the index columns are removed.
-
-        Args:
-            data (pd.DataFrame): New data to be merged into the Parquet database.
-            partition (str, pd.Series, list, tuple, Index, or callable, optional): A string representing a column name,
-                a Series, array-like, or a callable used to determine the partition value(s) for the new data.
-                If partition_col is None, partition must also be None.
-            njobs (int): Maximum number of workers for parallel processing. Default is 4.
-
-        Raises:
-            ValueError: If partition is not valid or if partition_col is None and partition is provided.
-        """
-        if not self.index_col:
-            raise ValueError(
-                "Current parquet database is readonly! Enable write by setting index"
-            )
-
-        data = self._generate_partitioner(data, partition)
-        data = data.drop_duplicates(subset=self.index_col, keep="last")
-
-        # Helper function for processing a single partition
-        def process_partition(partition_path):
-            partition_value = self._get_partition_value(partition_path)
-
-            if data[data[self.partition_col] == partition_value].empty:
-                if partition_path.exists():
-                    existing_data = pd.read_parquet(partition_path)
-                    columns = data.columns.difference(
-                        [self.index_col]
-                        if isinstance(self.index_col, str)
-                        else self.index_col + [self.partition_col]
-                    )
-                    existing_data[columns] = np.nan
-                    dtypes = data.dtypes
-                    dtypes = dtypes.loc[~dtypes.index.isin(columns)].to_dict()
-                    existing_data = existing_data.astype(dtypes)
-                    existing_data.sort_values(by=self.index_col).to_parquet(
-                        partition_path, index=False
-                    )
-                return
-
-            # Data for partition value is not empty
-            if partition_path.exists():
-                # Load existing data and combine
-                existing_data = pd.read_parquet(partition_path)
-                combined_data = pd.merge(
-                    existing_data,
-                    data[data[self.partition_col] == partition_value],
-                    on=on or self.index_col,
-                    how=how,
-                )
-                combined_data = combined_data.drop_duplicates(
-                    subset=self.index_col, keep="last"
-                )
-            else:
-                combined_data = data[data[self.partition_col] == partition_value]
-
-            # Save combined data
-            combined_data.sort_values(by=self.index_col).to_parquet(
-                partition_path, index=False
-            )
-
-        # Use joblib.Parallel for parallel processing
-        if self.partition_col:
-            Parallel(n_jobs=n_jobs, backend="threading")(
-                delayed(process_partition)(partition_path)
-                for partition_path in self.partitions
-            )
-
-        else:
-            # No partitioning, save data to a single file
-            partition_path = self.path / f"{self.name}.parquet"
-            if partition_path.exists():
-                existing_data = pd.read_parquet(partition_path)
-                combined_data = pd.merge(
-                    existing_data, data, on=on or self.index_col, how=how
-                )
-                combined_data = combined_data.drop_duplicates(
-                    subset=self.index_col, keep="last"
-                )
-            else:
-                combined_data = data
-            combined_data.sort_values(by=self.index_col).to_parquet(
-                partition_path, index=False
-            )
-
-    def update_insert(
-        self,
-        data: pd.DataFrame,
-        partitioner: str | pd.Series | pd.Index | list = None,
-        n_jobs: int = 4,
-    ):
-        """
-        Updates or inserts new data into the Parquet database, ensuring data is partitioned correctly
-        and duplicates based on the index columns are removed. This method uses joblib for faster I/O.
-
-        Args:
-            data (pd.DataFrame): New data to be inserted or updated in the Parquet database.
-            partition (str, pd.Series, list, tuple, Index, or callable, optional): A string representing a column name,
-                a Series, array-like, or a callable used to determine the partition value(s) for the new data.
-                If partition_col is None, partition must also be None.
-            njobs (int, optional): Number of parallel jobs to run for I/O operations. Defaults to 4.
-        Raises:
-            ValueError: If the partition column is not specified when partition is None.
-        """
-        if not self.index_col:
-            raise ValueError(
-                "Current parquet database is readonly! Enable write by setting index"
-            )
-
-        if not pd.Index(self.index_col).isin(data.columns).all():
+        if self.columns.size and not (self.columns == data.columns).all():
             raise ValueError("Malformed data, please check your input")
 
-        data = self._generate_partitioner(data, partitioner)
-        data = data.drop_duplicates(subset=self.index_col, keep="last")
+        if self.unikey:
+            data = data.drop_duplicates(subset=self.unikey, keep="last")
 
         # Helper function for processing a single partition
-        def process_partition(partition_value):
-            partition_path = self._get_partition_path(partition_value)
+        def process_partition(name, value):
+            partition_path = self._get_partition_path(name)
 
             if partition_path.exists():
                 # Load existing data and combine
                 existing_data = pd.read_parquet(partition_path)
                 combined_data = pd.concat(
-                    [existing_data, data[data[self.partition_col] == partition_value]]
+                    [existing_data, value], ignore_index=True, axis=0
                 )
-                combined_data = combined_data.drop_duplicates(
-                    subset=self.index_col, keep="last"
-                )
+                if self.unikey:
+                    combined_data = combined_data.drop_duplicates(
+                        subset=self.unikey, keep="last"
+                    )
             else:
-                combined_data = data[data[self.partition_col] == partition_value]
+                combined_data = value
 
             # Save combined data
-            combined_data.sort_values(by=self.index_col).to_parquet(
-                partition_path, index=False
-            )
+            if self.unikey:
+                combined_data.sort_values(by=self.unikey, inplace=True)
+            combined_data.to_parquet(partition_path, index=False)
 
         # Use joblib.Parallel for parallel processing
-        if self.partition_col:
-            partition_values = data[self.partition_col].unique()
+        if self.grouper is not None:
             Parallel(n_jobs=n_jobs, backend="threading")(
-                delayed(process_partition)(partition_value)
-                for partition_value in partition_values
+                delayed(process_partition)(name, value)
+                for name, value in data.groupby(self.grouper)
             )
         else:
             # No partitioning, save data to a single file
@@ -427,38 +208,23 @@ class ParquetManager:
                 existing_data = pd.read_parquet(partition_path)
                 combined_data = pd.concat([existing_data, data])
                 combined_data = (
-                    combined_data.drop_duplicates(subset=self.index_col, keep="last")
-                    if self.index_col
+                    combined_data.drop_duplicates(subset=self.unikey, keep="last")
+                    if self.unikey
                     else combined_data
                 )
             else:
                 combined_data = data
-            combined_data.sort_values(by=self.index_col).to_parquet(
-                partition_path, index=False
-            )
+            if self.unikey:
+                combined_data.sort_values(by=self.unikey, inplace=True)
+            combined_data.to_parquet(partition_path, index=False)
 
     def read(
         self,
         index: list | str = None,
         columns: list | str = None,
         pivot: list | str = None,
-        **kwargs,
+        **filters,
     ):
-        """
-        Reads data from the Parquet database, optionally filtering, indexing, and pivoting.
-
-        Args:
-            index (str or list of str, optional): Column(s) to use as the index for the DataFrame.
-            columns (str or list of str, optional): Column(s) to include in the resulting DataFrame.
-            pivot (str, optional): Column to use for populating pivot values. If None, no pivoting is performed.
-            kwargs: Filters expressed as keyword arguments (e.g., column=value, column__gt=value).
-
-        Returns:
-            pd.DataFrame: The combined data read from the Parquet files, with optional indexing and pivoting.
-
-        Raises:
-            ValueError: If `pivot` is specified but `index` or `columns` are not.
-        """
         # Ensure `index_col` and `columns` are lists for consistency
         index = index if index is not None else []
         columns = columns if columns is not None else []
@@ -471,9 +237,9 @@ class ParquetManager:
         read_columns = None if not read_columns else read_columns
 
         # Generate filters
-        filters = self._generate_filters(kwargs)
+        filters = self._generate_filters(filters)
         # Read data with filters
-        df = pd.read_parquet(self.path, columns=read_columns, filters=filters)
+        df = pd.read_parquet(self._path, columns=read_columns, filters=filters)
 
         # Handle pivoting if specified
         if pivot:
@@ -501,22 +267,20 @@ class ParquetManager:
             file_size_str = f"{file_size_total / 1024**3:.2f} GB"
         elif file_size_total > 1024**2:
             file_size_str = f"{file_size_total / 1024**2:.2f} MB"
+        elif file_size_total > 1024:
+            file_size_str = f"{file_size_total / 1024:.2f} KB"
         else:
-            file_size_str = f"{file_size_total} KB"
+            file_size_str = f"{file_size_total} B"
 
         partition_range = "N/A"
         if self.partitions:
             min_file = self.partitions[0].stem
             max_file = self.partitions[-1].stem
-            if "=" not in min_file or "=" not in max_file:
-                partition_range = min_file + " - " + max_file
-            else:
-                partition_range = f"{min_file.split('=')[1]} - {max_file.split('=')[1]}"
+            partition_range = f"{min_file} - {max_file}"
 
         return (
-            f"Parquet Database '{self.name}' at '{self.path}':\n"
+            f"Parquet Database '{self.name}' at '{self._path}':\n"
             f"File Count: {file_count}\n"
-            f"Partition Column: {self.partition_col}\n"
             f"Partition Range: {partition_range}\n"
             f"Columns: {self.columns.to_list()}\n"
             f"Total Size: {file_size_str}"
