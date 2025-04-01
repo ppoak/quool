@@ -167,7 +167,7 @@ class ParquetManager:
         data: pd.DataFrame,
         n_jobs: int = 4,
     ):
-        if self.columns.size and not (self.columns == data.columns).all():
+        if self.columns.size and not (data.columns.isin(self.columns)).all():
             raise ValueError("Malformed data, please check your input")
 
         if self.unikey:
