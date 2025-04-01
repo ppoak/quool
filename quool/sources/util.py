@@ -100,7 +100,7 @@ class ParquetManager:
             df = pd.read_parquet(partition)
             df.drop(columns=columns, inplace=True)
             if self.unikey:
-                df.sort_values(by=self.unikey, inplace=True)
+                df = df.sort_values(by=self.unikey)
             df.to_parquet(partition)
 
         Parallel(n_jobs=n_jobs, backend="threading")(
@@ -130,7 +130,7 @@ class ParquetManager:
                         else ~getattr(df[key], ops)(value)
                     )
                 if self.unikey:
-                    df[~conditions].sort_values(by=self.unikey, inplace=True)
+                    df = df[~conditions].sort_values(by=self.unikey)
                 df.to_parquet(partition, index=False)
 
         filters = self._generate_filters(kwargs)
@@ -143,7 +143,7 @@ class ParquetManager:
             df = pd.read_parquet(partition)
             df.rename(columns=kwargs, inplace=True)
             if self.unikey:
-                df.sort_values(by=self.unikey, inplace=True)
+                df = df.sort_values(by=self.unikey)
             df.to_parquet(partition)
 
         Parallel(n_jobs=n_jobs, backend="threading")(
@@ -155,7 +155,7 @@ class ParquetManager:
             df = pd.read_parquet(partition)
             df[dtypes.keys()] = pd.DataFrame(columns=dtypes.keys()).astype(dtypes.values())
             if self.unikey:
-                df.sort_values(by=self.unikey, inplace=True)
+                df = df.sort_values(by=self.unikey)
             df.to_parquet(partition)
 
         Parallel(n_jobs=n_jobs, backend="threading")(
@@ -192,7 +192,7 @@ class ParquetManager:
 
             # Save combined data
             if self.unikey:
-                combined_data.sort_values(by=self.unikey, inplace=True)
+                combined_data = combined_data.sort_values(by=self.unikey)
             combined_data.to_parquet(partition_path, index=False)
 
         # Use joblib.Parallel for parallel processing
@@ -215,7 +215,7 @@ class ParquetManager:
             else:
                 combined_data = data
             if self.unikey:
-                combined_data.sort_values(by=self.unikey, inplace=True)
+                combined_data = combined_data.sort_values(by=self.unikey)
             combined_data.to_parquet(partition_path, index=False)
 
     def read(
