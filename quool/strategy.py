@@ -236,16 +236,17 @@ class Strategy:
         id: str = None,
         valid: str = None,
     ) -> Order:
-        return self.broker.create(
-            type=self.broker.order_type.SELL,
-            code=code,
-            quantity=self.broker.positions.get(code),
-            exectype=exectype,
-            limit=limit,
-            trigger=trigger,
-            id=id,
-            valid=valid,
-        )
+        if code in self.broker.positions.keys():
+            return self.broker.create(
+                type=self.broker.order_type.SELL,
+                code=code,
+                quantity=self.broker.positions[code],
+                exectype=exectype,
+                limit=limit,
+                trigger=trigger,
+                id=id,
+                valid=valid,
+            )
 
     def evaluate(self, benchmark: pd.Series = None):
         if self.broker.get_delivery().empty:
