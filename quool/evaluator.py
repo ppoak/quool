@@ -10,7 +10,7 @@ class Evaluator:
     def __init__(self, broker: Broker, source: Source):
         self.broker = broker
         self.source = source
-    
+
     def report(self, benchmark: pd.Series = None):
         delivery = self.broker.get_delivery()
         data = self.source.datas
@@ -19,7 +19,7 @@ class Evaluator:
         delivery["quantity"] *= delivery["type"].map(Delivery.QUANTITY_SIGN)
         prices = data["close"].unstack("code")
 
-        # cash, position, trades, total_value, market_value calculation
+        # cash, position, total_value, market_value calculation
         cash = delivery.groupby("time")["amount"].sum().cumsum()
         positions = (
             delivery.drop(index="CASH", level=1)
@@ -29,6 +29,21 @@ class Evaluator:
             .fillna(0)
             .cumsum()
         )
+
+        return {
+            **self.calculate(positions, cash, prices, benchmark),
+            "orders": self.broker.get_orders(),
+            "pendings": self.broker.get_pendings(),
+            "delivery": self.broker.get_delivery(),
+        }
+
+    @staticmethod
+    def calculate(
+        positions: pd.DataFrame,
+        cash: pd.Series,
+        prices: pd.DataFrame,
+        benchmark: pd.Series = None,
+    ):
         times = prices.index.union(cash.index).union(positions.index)
         cash = cash.reindex(times).ffill()
         positions = positions.reindex(times).ffill().fillna(0)
@@ -36,54 +51,54 @@ class Evaluator:
         total = cash + market
         delta = positions.diff()
         delta.iloc[0] = positions.iloc[0]
-        turnover = (delta * prices).abs().sum(axis=1) / total.shift(1).fillna(cash.iloc[0])
+        turnover = (delta * prices).abs().sum(axis=1) / total.shift(1).fillna(
+            cash.iloc[0]
+        )
+        position_diff = positions.diff()
+        position_diff.iloc[0] = positions.iloc[0]
+        position_cumsum = position_diff.cumsum()
+        position_trade_mark = (position_cumsum <= 1e-6) & (position_diff != 0)
+        position_trade_num = position_trade_mark.shift(1).astype("bool").cumsum()
+        trades = []
+        for code in positions.columns:
+            trades.append(
+                position_diff[code]
+                .where(position_diff[code] != 0)
+                .groupby(position_trade_num[code], group_keys=False)
+                .apply(
+                    lambda x: pd.Series(
+                        {
+                            "open_at": (
+                                (x.index[x > 0][0]) if x.index[x > 0].size else np.nan
+                            ),
+                            "open_amount": (
+                                (x[x > 0] * prices[code]).sum()
+                                if x.index[x > 0].size
+                                else np.nan
+                            ),
+                            "close_at": (
+                                (x.index[x < 0][-1]) if x.index[x < 0].size else np.nan
+                            ),
+                            "close_amount": (
+                                -(x[x < 0] * prices[code]).sum()
+                                if x.index[x < 0].size
+                                else np.nan
+                            ),
+                            "duration": (
+                                x.index.get_indexer_for([x.index[x < 0][-1]])[0]
+                                - x.index.get_indexer_for([x.index[x > 0][0]])[0]
+                                if x.index[x > 0].size and x.index[x < 0].size
+                                else np.nan
+                            ),
+                        }
+                    )
+                    .to_frame(f"{code}#{x.name}")
+                    .T
+                )
+            )
 
-        delivery = delivery.drop(index="CASH", level=1)
-        delivery["stock_cumsum"] = delivery.groupby("code")["quantity"].cumsum()
-        delivery["trade_mark"] = delivery["stock_cumsum"] < 1e-5
-        delivery["trade_num"] = (
-            delivery.groupby("code")["trade_mark"]
-            .shift(1)
-            .astype("bool")
-            .groupby("code")
-            .cumsum()
-        )
-        trades = delivery.groupby(["code", "trade_num"]).apply(
-            lambda x: pd.Series(
-                {
-                    "open_amount": -x[x["quantity"] > 0]["amount"].sum(),
-                    "open_at": x[x["quantity"] > 0].index.get_level_values("time")[0],
-                    "close_amount": (
-                        x[x["quantity"] < 0]["amount"].sum()
-                        if x["quantity"].sum() < 1e-5
-                        else np.nan
-                    ),
-                    "close_at": (
-                        x[x["quantity"] < 0].index.get_level_values("time")[-1]
-                        if x["quantity"].sum() < 1e-5
-                        else np.nan
-                    ),
-                }
-            )
-        )
-        if not trades.empty:
-            trades["duration"] = pd.to_datetime(trades["close_at"]) - pd.to_datetime(
-                trades["open_at"]
-            )
-            trades["return"] = (trades["close_amount"] - trades["open_amount"]) / trades[
-                "open_amount"
-            ]
-        else:
-            trades = pd.DataFrame(
-                columns=[
-                    "open_amount",
-                    "open_at",
-                    "close_amount",
-                    "close_at",
-                    "duration",
-                    "return",
-                ]
-            )
+        trades = pd.concat(trades).dropna(subset="open_at")
+        trades["return"] = trades["close_amount"] / trades["open_amount"] - 1
         return {
             "values": pd.concat(
                 [total, market, cash, turnover],
@@ -92,10 +107,7 @@ class Evaluator:
             ),
             "positions": positions,
             "trades": trades.reset_index(),
-            "evaluation": self.evaluate(total, benchmark, turnover, trades),
-            "orders": self.broker.get_orders(),
-            "pendings": self.broker.get_pendings(),
-            "delivery": self.broker.get_delivery(),
+            "evaluation": Evaluator.evaluate(total, benchmark, turnover, trades),
         }
 
     @staticmethod
@@ -136,7 +148,7 @@ class Evaluator:
             if (net_value.index[-1] - net_value.index[0]).days != 0
             else np.nan
         )
-        evaluation["annual_volatility"] = (returns.std() * np.sqrt(252))
+        evaluation["annual_volatility"] = returns.std() * np.sqrt(252)
         evaluation["sharpe_ratio"] = (
             evaluation["annual_return"] / evaluation["annual_volatility"]
             if evaluation["annual_volatility"] != 0
@@ -156,7 +168,10 @@ class Evaluator:
 
         # Risk Metrics
         evaluation["max_drawdown"] = max_drawdown
-        evaluation["max_drawdown_period"] = max_drawdown_end - max_drawdown_start
+        evaluation["max_drawdown_period"] = (
+            drawdown.index.get_indexer_for([max_drawdown_end])[0]
+            - drawdown.index.get_indexer_for([max_drawdown_start])[0]
+        )
         var_95 = np.percentile(returns, 5)
         evaluation["VaR_5%"] = var_95
         cvar_95 = returns[returns <= var_95].mean()
@@ -194,7 +209,7 @@ class Evaluator:
 
         # Trading behavior
         if trades is not None and not trades.empty:
-            evaluation["position_duration(days)"] = trades["duration"].mean()
+            evaluation["position_duration"] = trades["duration"].mean()
             profit = trades["close_amount"] - trades["open_amount"]
             evaluation["trade_win_rate"] = (
                 profit[profit > 0].count() / profit.count()
@@ -213,10 +228,10 @@ class Evaluator:
         positive_returns = returns[
             returns.gt(0 if benchmark is None else benchmark_returns)
         ].count()
-        evaluation["day_return_win_rate"] = (positive_returns / returns.count())
+        evaluation["day_return_win_rate"] = positive_returns / returns.count()
         monthly_returns = net_value.resample("ME").last().pct_change().fillna(0)
         evaluation["monthly_return_std"] = monthly_returns.std()
-        evaluation["monthly_win_rate"] = (
-            (monthly_returns > 0).sum() / len(monthly_returns)
+        evaluation["monthly_win_rate"] = (monthly_returns > 0).sum() / len(
+            monthly_returns
         )
         return evaluation
