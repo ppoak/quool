@@ -29,41 +29,53 @@ class Evaluator:
             .fillna(0)
             .cumsum()
         )
+        position_amount = (
+            delivery.drop(index="CASH", level=1)
+            .groupby(["time", "code"])["amount"]
+            .sum()
+            .unstack()
+            .fillna(0)
+        )
 
         return {
-            **self.calculate(positions, cash, prices, benchmark),
+            **self.evaluate_position(
+                positions, cash, prices, benchmark, position_amount
+            ),
             "orders": self.broker.get_orders(),
             "pendings": self.broker.get_pendings(),
             "delivery": self.broker.get_delivery(),
         }
 
     @staticmethod
-    def calculate(
+    def evaluate_position(
         positions: pd.DataFrame,
         cash: pd.Series,
         prices: pd.DataFrame,
         benchmark: pd.Series = None,
+        position_amount: pd.DataFrame = None,
     ):
         times = prices.index.union(cash.index).union(positions.index)
         cash = cash.reindex(times).ffill()
         positions = positions.reindex(times).ffill().fillna(0)
         market = (positions * prices).sum(axis=1)
-        total = cash + market
+        total = (cash + market).bfill()
         delta = positions.diff()
         delta.iloc[0] = positions.iloc[0]
         turnover = (delta * prices).abs().sum(axis=1) / total.shift(1).fillna(
             cash.iloc[0]
         )
-        position_diff = positions.diff()
-        position_diff.iloc[0] = positions.iloc[0]
-        position_cumsum = position_diff.cumsum()
-        position_trade_mark = (position_cumsum <= 1e-6) & (position_diff != 0)
+        position_amount = (
+            position_amount
+            if position_amount is not None
+            else (-delta * prices).dropna(axis=1, how="all").fillna(0)
+        )
+        position_cumsum = delta.cumsum()
+        position_trade_mark = (position_cumsum <= 1e-8) & (delta != 0)
         position_trade_num = position_trade_mark.shift(1).astype("bool").cumsum()
         trades = []
         for code in positions.columns:
             trades.append(
-                position_diff[code]
-                .where(position_diff[code] != 0)
+                position_cumsum[code]
                 .groupby(position_trade_num[code], group_keys=False)
                 .apply(
                     lambda x: pd.Series(
@@ -72,22 +84,28 @@ class Evaluator:
                                 (x.index[x > 0][0]) if x.index[x > 0].size else np.nan
                             ),
                             "open_amount": (
-                                (x[x > 0] * prices[code]).sum()
+                                -position_amount[code][position_amount[code] < 0]
+                                .loc[x.index.min() : x.index.max()]
+                                .sum()
                                 if x.index[x > 0].size
                                 else np.nan
                             ),
                             "close_at": (
-                                (x.index[x < 0][-1]) if x.index[x < 0].size else np.nan
+                                (x.index[x < 1e-8][-1])
+                                if x.index[x < 1e-8].max() > x.index[x > 0].min()
+                                else np.nan
                             ),
                             "close_amount": (
-                                -(x[x < 0] * prices[code]).sum()
-                                if x.index[x < 0].size
+                                position_amount[code][position_amount[code] > 0]
+                                .loc[x.index.min() : x.index.max()]
+                                .sum()
+                                if x.index[x < 1e-8].max() > x.index[x > 0].min()
                                 else np.nan
                             ),
                             "duration": (
-                                x.index.get_indexer_for([x.index[x < 0][-1]])[0]
-                                - x.index.get_indexer_for([x.index[x > 0][0]])[0]
-                                if x.index[x > 0].size and x.index[x < 0].size
+                                x.index.get_indexer_for([x.index[x < 1e-8][-1]])[0]
+                                - x.index.get_indexer_for([x.index[x >0][0]])[0]
+                                if x.index[x > 0].size and x.index[x < 1e-8].max() > x.index[x > 0].min()
                                 else np.nan
                             ),
                         }
@@ -108,6 +126,65 @@ class Evaluator:
             "positions": positions,
             "trades": trades.reset_index(),
             "evaluation": Evaluator.evaluate(total, benchmark, turnover, trades),
+        }
+
+    @staticmethod
+    def evaluate_index(
+        weights: pd.DataFrame,
+        prices: pd.DataFrame,
+        freq: int = 1,
+        benchmark: pd.Series = None,
+        commission: float = 0.0005,
+    ):
+        share = pd.DataFrame(
+            np.zeros_like(weights), index=weights.index, columns=weights.columns
+        )
+        cash = pd.Series(
+            np.zeros_like(weights.index), index=weights.index, dtype="float"
+        )
+        for f in range(freq):
+            _weight = weights.iloc[f::freq]
+            _cash = 1 - _weight.sum(axis=1)
+            _share = (_weight / prices).dropna(axis=0, how="all").fillna(0)
+            for i, t in enumerate(_share.index[1:], start=1):
+                _share.iloc[i] = (
+                    ((_share.iloc[i - 1] * prices.loc[t]).sum() + _cash.iloc[i - 1])
+                    * _share.iloc[i]
+                    / (1 + commission)
+                )
+            _share = _share.reindex(prices.index, method="ffill").fillna(0)
+            _cash = _cash.reindex(prices.index, method="ffill").fillna(1)
+            share = share + _share
+            cash = cash + _cash
+        return Evaluator.evaluate_position(
+            share,
+            cash,
+            prices,
+            benchmark,
+        )
+
+    @staticmethod
+    def evaluate_rebalance(
+        weights: pd.DataFrame,
+        prices: pd.DataFrame,
+        freq: int = 1,
+        benchmark: pd.Series = None,
+        commission: float = 0.0005,
+    ):
+        weights = weights.iloc[::freq]
+        delta = weights.diff()
+        delta.iloc[0] = weights.iloc[0]
+        turnover = delta.abs().sum(axis=1)
+
+        shifted = prices.shift(-1)
+        future = shifted.shift(-freq) / shifted - 1
+        future = future.loc[future.index.intersection(weights.index)]
+
+        returns = (weights * future).sum(axis=1) - turnover * commission
+        value = (1 + returns).cumprod()
+        return {
+            "values": value,
+            "evaluation": Evaluator.evaluate(value, benchmark, turnover, None),
         }
 
     @staticmethod
