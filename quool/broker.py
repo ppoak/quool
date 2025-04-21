@@ -59,8 +59,8 @@ class Broker:
 
     def create(
         self,
-        type: str,
         code: str,
+        type: str,
         quantity: float,
         exectype: str,
         limit: float = None,
@@ -72,12 +72,12 @@ class Broker:
             raise ValueError("broker must be initialized with a time")
         order = self.order_type(
             time=self._time,
-            type=type,
             code=code,
+            type=type,
             quantity=quantity,
+            exectype=exectype,
             limit=limit,
             trigger=trigger,
-            exectype=exectype,
             id=id,
             valid=valid,
         )
@@ -102,8 +102,8 @@ class Broker:
                 code="CASH",
                 type="TRANSFER",
                 quantity=0,
-                price=0,
-                amount=amount,
+                price=amount,
+                comm=0,
             )
         )
 
@@ -162,7 +162,7 @@ class Broker:
         order = self._pendings.popleft()
         while order is not None:
             self._match(order, data)
-            if not order.is_alive(self.time):
+            if not order.is_alive(self._time):
                 self._orders.append(order)
                 notify.append(order)
             else:
@@ -203,7 +203,7 @@ class Broker:
                 order.type == order.SELL and data.loc[order.code, "high"] >= order.limit
             )
         )
-        # if match condition is not satisfied
+        # if match condition is satisfied
         if market_match or limit_match:
             price, quantity = self.slippage(order, data.loc[order.code])
             if quantity > 0:
@@ -212,6 +212,7 @@ class Broker:
                 order.status = order.REJECTED
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
+        #这里的price包含滑点
         amount = price * quantity
         commission = self.commission(order, price, quantity)
         if order.type == order.BUY:
@@ -220,12 +221,12 @@ class Broker:
                 order.status = order.REJECTED
             else:
                 delivery = Delivery(
-                    time=self.time,
-                    code=order.code,
+                    time=self._time,
                     type=order.type,
+                    code=order.code,
                     quantity=quantity,
                     price=price,
-                    amount=cost,
+                    comm=commission,
                 )
                 order += delivery
                 self.deliver(delivery)
@@ -239,12 +240,12 @@ class Broker:
                 order.status = order.REJECTED
             else:
                 delivery = Delivery(
-                    time=self.time,
-                    code=order.code,
+                    time=self._time,
                     type=order.type,
+                    code=order.code,
                     quantity=quantity,
                     price=price,
-                    amount=revenue,
+                    comm=commission,
                 )
                 order += delivery
                 self.deliver(delivery)
@@ -360,7 +361,7 @@ class Broker:
 
     def __str__(self) -> str:
         return (
-            f"{self.__class__.__name__}(#{self.id}@{self.time}\n"
+            f"{self.__class__.__name__}(#{self.id}@{self._time}\n"
             f"  balance: ${self.balance:.2f}\n"
             f"  commission: {self.commission}\n"
             f"  slippage: {self.slippage}\n"
