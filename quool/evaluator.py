@@ -104,8 +104,9 @@ class Evaluator:
                             ),
                             "duration": (
                                 x.index.get_indexer_for([x.index[x < 1e-8][-1]])[0]
-                                - x.index.get_indexer_for([x.index[x >0][0]])[0]
-                                if x.index[x > 0].size and x.index[x < 1e-8].max() > x.index[x > 0].min()
+                                - x.index.get_indexer_for([x.index[x > 0][0]])[0]
+                                if x.index[x > 0].size
+                                and x.index[x < 1e-8].max() > x.index[x > 0].min()
                                 else np.nan
                             ),
                         }

@@ -17,5 +17,12 @@ class AShareBroker(Broker):
         quantity = int(quantity // 100 * 100)
         if quantity > 0:
             return super().create(
-                type, code, quantity, exectype, limit, trigger, id, valid
+                type=type,
+                code=code,
+                quantity=quantity,
+                exectype=exectype,
+                limit=limit,
+                trigger=trigger,
+                id=id,
+                valid=valid,
             )

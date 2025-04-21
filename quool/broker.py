@@ -71,7 +71,7 @@ class Broker:
         if self._time is None:
             raise ValueError("broker must be initialized with a time")
         order = self.order_type(
-            time=self._time,
+            time=self.time,
             code=code,
             type=type,
             quantity=quantity,
@@ -101,8 +101,8 @@ class Broker:
                 time=self._time,
                 code="CASH",
                 type="TRANSFER",
-                quantity=0,
-                price=amount,
+                quantity=amount,
+                price=1,
                 comm=0,
             )
         )
@@ -162,7 +162,7 @@ class Broker:
         order = self._pendings.popleft()
         while order is not None:
             self._match(order, data)
-            if not order.is_alive(self._time):
+            if not order.is_alive(self.time):
                 self._orders.append(order)
                 notify.append(order)
             else:
@@ -212,7 +212,6 @@ class Broker:
                 order.status = order.REJECTED
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
-        #这里的price包含滑点
         amount = price * quantity
         commission = self.commission(order, price, quantity)
         if order.type == order.BUY:
@@ -221,7 +220,7 @@ class Broker:
                 order.status = order.REJECTED
             else:
                 delivery = Delivery(
-                    time=self._time,
+                    time=self.time,
                     type=order.type,
                     code=order.code,
                     quantity=quantity,
@@ -240,7 +239,7 @@ class Broker:
                 order.status = order.REJECTED
             else:
                 delivery = Delivery(
-                    time=self._time,
+                    time=self.time,
                     type=order.type,
                     code=order.code,
                     quantity=quantity,
@@ -272,7 +271,7 @@ class Broker:
         pendings = pd.DataFrame([order.dump(delivery) for order in self.pendings])
         if parse_dates and not pendings.empty:
             pendings["time"] = pd.to_datetime(pendings["time"])
-            pendings["creatime"] = pd.to_datetime(pendings["creatime"])
+            pendings["create"] = pd.to_datetime(pendings["create"])
             pendings["valid"] = pd.to_datetime(pendings["valid"])
         return pendings
 
@@ -282,7 +281,7 @@ class Broker:
         orders = pd.DataFrame([order.dump(delivery) for order in self.orders])
         if parse_dates and not orders.empty:
             orders["time"] = pd.to_datetime(orders["time"])
-            orders["creatime"] = pd.to_datetime(orders["creatime"])
+            orders["create"] = pd.to_datetime(orders["create"])
             orders["valid"] = pd.to_datetime(orders["valid"])
         return orders
 
@@ -361,7 +360,7 @@ class Broker:
 
     def __str__(self) -> str:
         return (
-            f"{self.__class__.__name__}(#{self.id}@{self._time}\n"
+            f"{self.__class__.__name__}(#{self.id}@{self.time}\n"
             f"  balance: ${self.balance:.2f}\n"
             f"  commission: {self.commission}\n"
             f"  slippage: {self.slippage}\n"

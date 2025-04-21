@@ -36,6 +36,7 @@ class Delivery:
         self.quantity = quantity
         self.price = price
         self.comm = comm
+        self.amount = quantity * price + self.QUANTITY_SIGN[type] * comm
 
     def dump(self) -> dict:
         return {
@@ -45,6 +46,7 @@ class Delivery:
             "code": self.code,
             "quantity": self.quantity,
             "price": self.price,
+            "amount": self.amount,
             "commission": self.comm,
         }
 
@@ -55,15 +57,15 @@ class Delivery:
             type=data["type"],
             code=data["code"],
             quantity=data["quantity"],
-            price=data["amount"],
+            price=data["price"],
             comm=data["commission"],
             id=data["id"],
         )
 
     def __str__(self):
         return (
-            f"{self.__class__.__name__}(#{self.id[:5]}@{self.time}"
-            f"{self.type} {self.code} {self.quantity:.2f}x${self.price:.2f} {self.comm:.2f})"
+            f"{self.__class__.__name__}(#{self.id[:5]}@{self.time} "
+            f"{self.type} {self.code} {self.quantity:.2f}x${self.price:.2f}-${self.comm:.2f}=${self.amount:.2f})"
         )
 
     def __repr__(self):
@@ -99,8 +101,8 @@ class Order:
         trigger: float = None,
         id: str = None,
         valid: str = None,
-    ):  
-        self.createtime = pd.to_datetime(time)
+    ):
+        self.create = pd.to_datetime(time)
         self.time = pd.to_datetime(time)
         self.code = code
         self.type = type
@@ -108,25 +110,31 @@ class Order:
         self.exectype = exectype
         self.limit = limit
         self.trigger = trigger
+        self.price = 0
         self.status = self.CREATED
         self.filled = 0
-        self.id = id
+        self.id = id or str(uuid4())
         self.valid = pd.to_datetime(valid) if valid else None
-        self.deliverys = []
+        self.delivery = []
 
     def __add__(self, delivery: Delivery) -> "Order":
         # disabling extra quantity execution
         if delivery.quantity > self.quantity - self.filled:
             raise ValueError("Delivery quantity exceeds order remaining")
 
-        self.deliverys.append(delivery)
+        self.delivery.append(delivery)
 
         self.filled += delivery.quantity
+        self.price = (
+            self.price * (self.filled - delivery.quantity)
+            + delivery.amount / self.filled
+        )
 
         if self.filled == self.quantity:
             self.status = self.FILLED
         else:
             self.status = self.PARTIAL
+
         # latest time
         self.time = pd.to_datetime(delivery.time)
         return self
@@ -142,15 +150,12 @@ class Order:
                 return False
             return True
         return False
-    
-    @property
-    def executed(self):
-        return OrderExecuted(self)
 
     def dump(self, delivery: bool = True) -> dict:
         data = {
             "id": self.id,
-            "creatime": self.creatime.isoformat(),
+            "create": self.create.isoformat(),
+            "time": self.time.isoformat(),
             "code": self.code,
             "type": self.type,
             "quantity": self.quantity,
@@ -163,7 +168,7 @@ class Order:
         }
         # with delivery
         if delivery:
-            data["deliverys"] = [deliv.dump() for deliv in self.deliverys]
+            data["delivery"] = [deliv.dump() for deliv in self.delivery]
         return data
 
     @classmethod
@@ -183,42 +188,15 @@ class Order:
         order.status = data.get("status", cls.CREATED)
         order.filled = data.get("filled", 0)
         if data.get("delivery") is not None:
-            order.deliverys = [Delivery.load(deliv) for deliv in data["delivery"]]
+            order.delivery = [Delivery.load(deliv) for deliv in data["delivery"]]
 
         return order
 
     def __str__(self) -> str:
         return (
             f"{self.__class__.__name__}(#{self.id[:5]}@{self.time} "
-            f"{self.exectype} {self.type} {self.code} {self.quantity:.2f}x${self.trigger:.2f} [{self.status}])"
+            f"{self.exectype} {self.type} {self.code} {self.quantity:.2f}x${self.price:.2f} [{self.status}])"
         )
 
     def __repr__(self) -> str:
         return self.__str__()
-
-
-class OrderExecuted:
-    def __init__(self, order: Order):
-        self.order = order
-
-    @property
-    def comm(self) -> float:
-        """总佣金"""
-        return sum(delivery.comm for delivery in self.order.deliverys)
-    
-    @property
-    def price_eff(self):
-        """考虑滑点+手续费后均价"""
-        amount = sum(delivery.quantity for delivery in self.order.deliverys)
-        return (sum(d.price * d.quantity + d.comm for d in self.order.deliverys) / amount) if amount else 0.0
-    
-    @property
-    def price_exec(self):
-        """考虑滑点后均价"""
-        amount = sum(delivery.quantity for delivery in self.order.deliverys)
-        return (sum(d.price * d.quantity for d in self.order.deliverys) / amount) if amount else 0.0
-
-    @property
-    def quantity(self) -> float:
-        """总成交数量"""
-        return sum(delivery.quantity for delivery in self.order.deliverys)
