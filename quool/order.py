@@ -111,6 +111,7 @@ class Order:
         self.limit = limit
         self.trigger = trigger
         self.price = 0
+        self.comm = 0
         self.status = self.CREATED
         self.filled = 0
         self.id = id or str(uuid4())
@@ -129,6 +130,7 @@ class Order:
             self.price * (self.filled - delivery.quantity)
             + delivery.amount / self.filled
         )
+        self.comm += delivery.comm
 
         if self.filled == self.quantity:
             self.status = self.FILLED
@@ -195,7 +197,7 @@ class Order:
     def __str__(self) -> str:
         return (
             f"{self.__class__.__name__}(#{self.id[:5]}@{self.time} "
-            f"{self.exectype} {self.type} {self.code} {self.quantity:.2f}x${self.price:.2f} [{self.status}])"
+            f"{self.exectype} {self.type} {self.code} {self.quantity:.2f}x${self.price:.2f}-${self.comm:.2f} [{self.status}])"
         )
 
     def __repr__(self) -> str:
