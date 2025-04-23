@@ -1,10 +1,11 @@
 import logging
+import pandas as pd
 from .util import setup_logger
 
 
 class Scheduler:
 
-    def __init__(*strategies, logger: logging.Logger = None):
+    def __init__(self, *strategies, logger: logging.Logger = None):
         self.strategies = strategies
         for strategy in strategies:
             setattr(self, strategy.__name__.lower(), strategy)
@@ -32,7 +33,7 @@ class Scheduler:
             self.broker.store(store, history)
         return True
 
-    def backtest(self, **kwargs):
+    def backtest(self, benchmark: pd.Series, history: bool = False, **kwargs):
         self.init(**kwargs)
         while self._run(history=history, **kwargs):
             self.preupdate(**kwargs)
