@@ -105,7 +105,7 @@ class Strategy:
 
     def __str__(self) -> str:
         return (
-            f"{self.__class__}({self.id})@{self.status}\n"
+            f"{self.__class__}@{self.time}\n"
             f"Broker:\n{self.broker}\n"
             f"Source:\n{self.source}\n"
         )
