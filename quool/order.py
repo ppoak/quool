@@ -34,7 +34,7 @@ class Delivery:
         self.type = type
         self.code = code
         self.quantity = quantity
-        self.price = price
+        self.price = price #滑点价格
         self.comm = comm
         self.amount = quantity * price + self.QUANTITY_SIGN[type] * comm
 
@@ -110,10 +110,12 @@ class Order:
         self.exectype = exectype
         self.limit = limit
         self.trigger = trigger
-        self.price = 0
+        self.price_slip = 0
+        self.price_eff = 0
         self.comm = 0
         self.status = self.CREATED
         self.filled = 0
+        self.amount = 0
         self.id = id or str(uuid4())
         self.valid = pd.to_datetime(valid) if valid else None
         self.delivery = []
@@ -126,11 +128,11 @@ class Order:
         self.delivery.append(delivery)
 
         self.filled += delivery.quantity
-        self.price = (
-            self.price * (self.filled - delivery.quantity)
-            + delivery.amount / self.filled
-        )
+        self.amount += delivery.price * delivery.quantity
         self.comm += delivery.comm
+
+        self.price_slip = self.amount / self.filled
+        self.price_eff = (self.amount + self.comm) / self.filled
 
         if self.filled == self.quantity:
             self.status = self.FILLED

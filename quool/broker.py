@@ -212,6 +212,7 @@ class Broker:
                 order.status = order.REJECTED
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
+        """传入price为滑点价"""
         amount = price * quantity
         commission = self.commission(order, price, quantity)
         if order.type == order.BUY:

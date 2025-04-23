@@ -45,11 +45,7 @@ class FixedRateSlippage:
                 return (
                     min(
                         kline["high"],
-                        (kline["high"] - kline["low"])
-                        / kline["volume"]
-                        * quantity
-                        * self.slip_rate
-                        + kline["open"],
+                        kline["open"] * (1 + self.slip_rate),
                     ),
                     quantity,
                 )
