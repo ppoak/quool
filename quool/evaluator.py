@@ -18,7 +18,19 @@ class Evaluator:
         delivery["amount"] *= delivery["type"].map(Delivery.AMOUNT_SIGN)
         delivery["quantity"] *= delivery["type"].map(Delivery.QUANTITY_SIGN)
         prices = data["close"].unstack("code")
+        return {
+            **self.evaluate_delivery(
+                delivery=delivery, prices=prices, benchmark=benchmark
+            ),
+            "orders": self.broker.get_orders(),
+            "pendings": self.broker.get_pendings(),
+            "delivery": self.broker.get_delivery(),
+        }
 
+    @staticmethod
+    def evaluate_delivery(
+        delivery: pd.DataFrame, prices: pd.DataFrame, benchmark: pd.Series = None
+    ):
         # cash, position, total_value, market_value calculation
         cash = delivery.groupby("time")["amount"].sum().cumsum()
         positions = (
@@ -37,22 +49,17 @@ class Evaluator:
             .fillna(0)
         )
 
-        return {
-            **self.evaluate_position(
-                positions, cash, prices, benchmark, position_amount
-            ),
-            "orders": self.broker.get_orders(),
-            "pendings": self.broker.get_pendings(),
-            "delivery": self.broker.get_delivery(),
-        }
+        return Evaluator.evaluate_position(
+            positions, cash, prices, position_amount, benchmark
+        )
 
     @staticmethod
     def evaluate_position(
         positions: pd.DataFrame,
         cash: pd.Series,
         prices: pd.DataFrame,
-        benchmark: pd.Series = None,
         position_amount: pd.DataFrame = None,
+        benchmark: pd.Series = None,
     ):
         times = prices.index.union(cash.index).union(positions.index)
         cash = cash.reindex(times).ffill()
