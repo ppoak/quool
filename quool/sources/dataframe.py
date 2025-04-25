@@ -5,9 +5,8 @@ from quool import Source
 class DataFrameSource(Source):
 
     def __init__(self, data: pd.DataFrame):
-        self._data = data
         self._times = data.index.get_level_values(0).unique().sort_values()
-        self._time = self._times.min()
+        super().__init__(self._times.min(), data)
 
     @property
     def times(self):
@@ -24,7 +23,7 @@ class DataFrameSource(Source):
     def update(self) -> pd.DataFrame:
         future = self._times[self._times > self.time]
         if future.empty:
-            return None
+            return None #
         self._time = future.min()
         data = self._data.loc[self._time]
         return data

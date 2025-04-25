@@ -44,6 +44,14 @@ class Strategy:
     def data(self):
         return self.source.data
 
+    def update_step_by_step(self, datetime: str, isupdate: bool, **kwargs):
+        if self.time == datetime:
+            self.source.update()
+            for notif in self.broker.update(time=self.source.time, data=self.data):
+                    self.notify(notif)
+            if isupdate:
+                self.update(**kwargs)
+
     def _run(self, store: str = None, history: bool = False, **kwargs):
         if self.source.update() is None:
             return False
@@ -95,6 +103,8 @@ class Strategy:
             )
         scheduler.start()
         return scheduler
+
+    
 
     def backtest(self, benchmark: pd.Series = None, history: bool = False, **kwargs):
         self.init(**kwargs)
