@@ -63,6 +63,7 @@ class Evaluator:
     ):
         times = prices.index.union(cash.index).union(positions.index)
         cash = cash.reindex(times).ffill()
+        prices = prices.reindex(times).ffill()
         positions = positions.reindex(times).ffill().fillna(0)
         market = (positions * prices).sum(axis=1)
         total = (cash + market).bfill()
