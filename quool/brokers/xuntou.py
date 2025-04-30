@@ -74,20 +74,24 @@ class XtBroker(Broker):
             if pos.stock_code == code:
                 quantity = pos.can_use_volume
                 if quantity > 0:
-                    return self.create(self.SELL, code, quantity, self.MARKET, price, remark)
+                    return self.create(
+                        self.SELL, code, quantity, self.MARKET, price, remark
+                    )
 
     def limit_buy(self, code: str, quantity: float, price: float, remark: str = ""):
         return self.create(self.BUY, code, quantity, self.LIMIT, price, remark)
 
     def limit_sell(self, code: str, quantity: float, price: float, remark: str = ""):
         return self.create(self.SELL, code, quantity, self.LIMIT, price, remark)
-    
+
     def limit_close(self, code: str, price: float, remark: str = ""):
         for pos in self.positions:
             if pos.stock_code == code:
                 quantity = pos.can_use_volume
                 if quantity > 0:
-                    return self.create(self.SELL, code, quantity, self.LIMIT, price, remark)
+                    return self.create(
+                        self.SELL, code, quantity, self.LIMIT, price, remark
+                    )
 
     def update(self, time: str, data: pd.DataFrame):
         pass
@@ -146,7 +150,7 @@ class XtBroker(Broker):
             )
 
         return pd.DataFrame(pendings)
-    
+
     def get_positions(self):
         positions = []
         for position in self.positions:
@@ -168,6 +172,11 @@ class XtBroker(Broker):
             )
 
         return pd.DataFrame(positions)
+
+    def get_value(self, data):
+        return (
+            self.get_positions().set_index("stock_code")["volume"] * data["close"]
+        ).sum()
 
     def __str__(self):
         return (
