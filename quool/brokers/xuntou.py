@@ -9,7 +9,7 @@ class XtBroker(Broker):
 
         self.BUY = xtconstant.STOCK_BUY
         self.SELL = xtconstant.STOCK_SELL
-        self.MARKET = xtconstant.LATEST_PRICE
+        self.MARKET = xtconstant.MARKET_PEER_PRICE_FIRST
         self.LIMIT = xtconstant.FIX_PRICE
 
         id = int(id or pd.Timestamp.now().timestamp())
@@ -63,13 +63,13 @@ class XtBroker(Broker):
                 self.account, code, type, quantity, exectype, price, order_remark=remark
             )
 
-    def buy(self, code: str, quantity: float, price: float = -1, remark: str = ""):
+    def buy(self, code: str, quantity: float, price: float = 0, remark: str = ""):
         return self.create(self.BUY, code, quantity, self.MARKET, price, remark)
 
-    def sell(self, code: str, quantity: float, price: float = -1, remark: str = ""):
+    def sell(self, code: str, quantity: float, price: float = 0, remark: str = ""):
         return self.create(self.SELL, code, quantity, self.MARKET, price, remark)
 
-    def close(self, code: str, price: float = -1, remark: str = ""):
+    def close(self, code: str, price: float = 0, remark: str = ""):
         for pos in self.positions:
             if pos.stock_code == code:
                 quantity = pos.can_use_volume
