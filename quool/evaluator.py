@@ -285,7 +285,7 @@ class Evaluator:
             if beta is not np.nan
             else np.nan
         )
-        evaluation["excess_return"] = excess_value.iloc[-1] - 1
+        evaluation["excess_return"] = excess_value.dropna().iloc[-1] - 1
         evaluation["excess_volatility"] = excess_returns.std() * np.sqrt(252)
         tracking_error = (returns - benchmark_returns).std() * np.sqrt(252)
         evaluation["information_ratio"] = (
