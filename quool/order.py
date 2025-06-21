@@ -199,7 +199,7 @@ class Order:
     def __str__(self) -> str:
         return (
             f"{self.__class__.__name__}(#{self.id[:5]}@{self.time} "
-            f"{self.exectype} {self.type} {self.code} {self.quantity:.2f}x${self.price:.2f}-${self.comm:.2f} [{self.status}])"
+            f"{self.exectype} {self.type} {self.code} {self.quantity:.2f}x${self.price_eff:.2f}-${self.comm:.2f} [{self.status}])"
         )
 
     def __repr__(self) -> str:
