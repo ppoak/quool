@@ -292,12 +292,13 @@ class ParquetManager:
 
 class DuckDBManager:
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, read_only: bool = False):
         self.path = path
+        self.read_only = read_only
 
     @contextmanager
     def _connection(self):
-        conn = duckdb.connect(self.path)
+        conn = duckdb.connect(self.path, read_only=self.read_only)
         try:
             yield conn
         finally:
@@ -310,13 +311,18 @@ class DuckDBManager:
     def _map_dtype(self, dtype_str: str) -> str:
         type_map = {
             "int64": "BIGINT",
+            "int32": "INTEGER",
+            "int16": "SMALLINT",
+            "int8": "TINYINT",
             "float64": "DOUBLE",
-            "datetime64[ns]": "TIMESTAMP",
+            "float32": "REAL",
+            "bool": "BOOLEAN",
             "category": "VARCHAR",
             "object": "VARCHAR",
-            "bool": "BOOLEAN",
+            "datetime64[ns]": "TIMESTAMP",
+            "timedelta64[ns]": "INTERVAL",
         }
-        return type_map.get(dtype_str, "VARCHAR")
+        return type_map[dtype_str]
 
     def _build_where_clause(self, filters: dict) -> tuple:
         where_clauses = []
