@@ -336,7 +336,7 @@ class DuckDBManager:
             "ne": "!=",
             "like": "LIKE",
             "in": "IN",
-            "not_in": "NOT IN",
+            "notin": "NOT IN",
         }
 
         for key, value in filters.items():
@@ -346,7 +346,7 @@ class DuckDBManager:
             self._validate_identifier(col)
             op = valid_operators.get(operation, operation)
 
-            if operation in ("in", "not_in"):
+            if operation in ("in", "notin"):
                 placeholders = ", ".join(["?"] * len(value))
                 where_clauses.append(f"{col} {op} ({placeholders})")
                 params.extend(value)
@@ -485,21 +485,21 @@ class DuckDBManager:
             finally:
                 conn.unregister(temp_view)
 
-    def add_column(self, table: str, column: str, dtype: str) -> None:
+    def add_col(self, table: str, column: str, dtype: str) -> None:
         self._validate_identifier(table)
         self._validate_identifier(column)
         with self._connection() as conn:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {dtype}")
             conn.commit()
 
-    def drop_column(self, table: str, column: str) -> None:
+    def drop_col(self, table: str, column: str) -> None:
         self._validate_identifier(table)
         self._validate_identifier(column)
         with self._connection() as conn:
             conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
             conn.commit()
 
-    def rename_column(self, table: str, old_name: str, new_name: str) -> None:
+    def rename_col(self, table: str, old_name: str, new_name: str) -> None:
         self._validate_identifier(table)
         self._validate_identifier(old_name)
         self._validate_identifier(new_name)
@@ -507,7 +507,7 @@ class DuckDBManager:
             conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name}")
             conn.commit()
 
-    def change_column_type(self, table: str, column: str, new_type: str) -> None:
+    def change_col_type(self, table: str, column: str, new_type: str) -> None:
         self._validate_identifier(table)
         self._validate_identifier(column)
         with self._connection() as conn:
