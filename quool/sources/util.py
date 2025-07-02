@@ -320,7 +320,9 @@ class DuckDBManager:
             "category": "VARCHAR",
             "object": "VARCHAR",
             "datetime64[us]": "TIMESTAMP",
+            "datetime64[ns]": "TIMESTAMP",
             "timedelta64[us]": "INTERVAL",
+            "timedelta64[ns]": "INTERVAL",
             "string": "VARCHAR"
         }
         return type_map[dtype_str]
