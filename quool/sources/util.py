@@ -319,8 +319,9 @@ class DuckDBManager:
             "bool": "BOOLEAN",
             "category": "VARCHAR",
             "object": "VARCHAR",
-            "datetime64[ns]": "TIMESTAMP",
-            "timedelta64[ns]": "INTERVAL",
+            "datetime64[us]": "TIMESTAMP",
+            "timedelta64[us]": "INTERVAL",
+            "string": "VARCHAR"
         }
         return type_map[dtype_str]
 
