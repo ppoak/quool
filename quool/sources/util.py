@@ -153,7 +153,9 @@ class ParquetManager:
     def add_col(self, n_jobs: int = 4, **dtypes):
         def process_partition(partition):
             df = pd.read_parquet(partition)
-            df[dtypes.keys()] = pd.DataFrame(columns=dtypes.keys()).astype(dtypes.values())
+            df[dtypes.keys()] = pd.DataFrame(columns=dtypes.keys()).astype(
+                dtypes.values()
+            )
             if self.unikey:
                 df = df.sort_values(by=self.unikey)
             df.to_parquet(partition)
@@ -323,7 +325,7 @@ class DuckDBManager:
             "datetime64[ns]": "TIMESTAMP",
             "timedelta64[us]": "INTERVAL",
             "timedelta64[ns]": "INTERVAL",
-            "string": "VARCHAR"
+            "string": "VARCHAR",
         }
         return type_map[dtype_str]
 
@@ -447,6 +449,18 @@ class DuckDBManager:
 
             return df
 
+    def delete(self, table: str, **filters) -> int:
+        with self._connection() as conn:
+            where_clause, params = self._build_where_clause(filters)
+            sql = f"DELETE FROM {table} WHERE {where_clause}"
+            result = conn.execute(sql, params)
+            conn.commit()
+            return result.rowcount
+
+    def query(self, sql: str, params: Optional[List] = None) -> pd.DataFrame:
+        with self._connection() as conn:
+            return conn.execute(sql, params).fetchdf()
+
     def upsert(self, df: pd.DataFrame, table: str) -> None:
         with self._connection() as conn:
             if not self._table_exists(conn, table):
@@ -487,6 +501,11 @@ class DuckDBManager:
                 conn.commit()
             finally:
                 conn.unregister(temp_view)
+
+    def drop_table(self, table: str) -> None:
+        with self._connection() as conn:
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
+            conn.commit()
 
     def add_col(self, table: str, column: str, dtype: str) -> None:
         self._validate_identifier(table)
