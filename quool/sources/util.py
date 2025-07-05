@@ -6,7 +6,7 @@ import pandas as pd
 from pathlib import Path
 from joblib import Parallel, delayed
 from contextlib import contextmanager
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Tuple, Dict, Any
 
 
 class ParquetManager:
@@ -298,19 +298,11 @@ class DuckDBManager:
         self.path = path
         self.read_only = read_only
 
-    @contextmanager
-    def _connection(self):
-        conn = duckdb.connect(self.path, read_only=self.read_only)
-        try:
-            yield conn
-        finally:
-            conn.close()
-
     def _validate_identifier(self, name: str) -> None:
         if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
             raise ValueError(f"Invalid SQL identifier: {name}")
 
-    def _map_dtype(self, dtype_str: str) -> str:
+    def _infer_dtype(self, dtype_str: str) -> str:
         type_map = {
             "int64": "BIGINT",
             "int32": "INTEGER",
@@ -329,7 +321,15 @@ class DuckDBManager:
         }
         return type_map[dtype_str]
 
-    def _build_where_clause(self, filters: dict) -> tuple:
+    def _infer_schema(self, df: pd.DataFrame) -> Dict[str, str]:
+        schema = {}
+        for col in df.columns:
+            self._validate_identifier(col)
+            dtype = self._infer_dtype(str(df[col].dtype))
+            schema[col] = dtype
+        return schema
+
+    def _build_where_clause(self, filters: Dict[str, Any]) -> Tuple[str, List[Any]]:
         where_clauses = []
         params = []
         valid_operators = {
@@ -361,110 +361,44 @@ class DuckDBManager:
 
         return " AND ".join(where_clauses), params
 
-    def _table_exists(self, conn: duckdb.DuckDBPyConnection, table: str) -> bool:
-        return conn.execute(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = ?)",
-            [table],
-        ).fetchone()[0]
+    @contextmanager
+    def connect(self):
+        con = duckdb.connect(self.path, read_only=self.read_only)
+        try:
+            yield con
+        finally:
+            con.close()
 
-    def _create_table(
-        self, conn: duckdb.DuckDBPyConnection, df: pd.DataFrame, table: str
+    def create_table(
+        self, con: duckdb.DuckDBPyConnection, schema: Dict[str, str], table: str
     ):
         index_cols = [name for name in df.index.names if name]
         if index_cols:
-            df_create = df.reset_index()
-        else:
-            df_create = df.copy()
-
-        columns = []
-        for col in df_create.columns:
-            self._validate_identifier(col)
-            dtype = self._map_dtype(str(df_create[col].dtype))
-            columns.append(f"{col} {dtype}")
+            df = df.reset_index()
+        schema = ", ".join([f"{name} {dtype}" for name, dtype in schema.items()])
 
         unique_clause = ""
         if index_cols:
-            missing_columns = [
-                col for col in index_cols if col not in df_create.columns
-            ]
+            missing_columns = [col for col in index_cols if col not in df.columns]
             if missing_columns:
                 raise ValueError(f"Missing index columns: {missing_columns}")
             unique_cols = ", ".join(map(str, index_cols))
             unique_clause = f", UNIQUE({unique_cols})"
 
-        create_sql = f"CREATE TABLE {table} ({', '.join(columns)} {unique_clause})"
-        conn.execute(create_sql)
+        create_sql = f"CREATE TABLE IF NOT EXISTS {table} ({schema}) {unique_clause})"
+        con.execute(create_sql)
 
         if index_cols:
             cols_hash = hash(tuple(sorted(index_cols))) & 0xFFFFFFFF
             index_name = f"idx_{table.lower()}_{cols_hash}"
             index_columns = ", ".join(index_cols)
-            conn.execute(f"CREATE INDEX {index_name} ON {table} ({index_columns})")
+            con.execute(f"CREATE INDEX {index_name} ON {table} ({index_columns})")
 
-        conn.commit()
-
-    def read(
-        self,
-        table: str,
-        index: Union[str, List[str], None] = None,
-        columns: Optional[List[str]] = None,
-        pivot: Optional[str] = None,
-        **filters,
-    ) -> pd.DataFrame:
-        with self._connection() as conn:
-            required_columns = set()
-            if index:
-                index_cols = [index] if isinstance(index, str) else index
-                required_columns.update(index_cols)
-
-            if columns:
-                required_columns.update(columns)
-
-            if pivot:
-                required_columns.add(pivot)
-
-            select_clause = (
-                ", ".join(sorted(required_columns)) if required_columns else "*"
-            )
-
-            where_clause, params = self._build_where_clause(filters)
-            sql_query = f"SELECT {select_clause} FROM {table}"
-            if where_clause:
-                sql_query += f" WHERE {where_clause}"
-
-            df = conn.execute(sql_query, params).fetchdf()
-
-            if pivot:
-                if not index or not columns:
-                    raise ValueError("Pivot requires both index and columns")
-                return df.pivot(index=index, columns=columns, values=pivot)
-
-            if index and not df.empty:
-                missing_index = set(
-                    index if isinstance(index, list) else [index]
-                ) - set(df.columns)
-                if missing_index:
-                    raise ValueError(f"Missing index columns: {missing_index}")
-                df = df.set_index(index)
-
-            return df
-
-    def delete(self, table: str, **filters) -> int:
-        with self._connection() as conn:
-            where_clause, params = self._build_where_clause(filters)
-            sql = f"DELETE FROM {table} WHERE {where_clause}"
-            result = conn.execute(sql, params)
-            conn.commit()
-            return result.rowcount
-
-    def query(self, sql: str, params: Optional[List] = None) -> pd.DataFrame:
-        with self._connection() as conn:
-            return conn.execute(sql, params).fetchdf()
+        con.commit()
 
     def upsert(self, df: pd.DataFrame, table: str) -> None:
-        with self._connection() as conn:
-            if not self._table_exists(conn, table):
-                self._create_table(conn, df, table)
+        with self.connection() as conn:
+            self.create_table(conn, df, table)
             source_cols = (
                 conn.execute(f"PRAGMA table_info({table})").df()["name"].tolist()
             )
@@ -502,22 +436,146 @@ class DuckDBManager:
             finally:
                 conn.unregister(temp_view)
 
+    def read(
+        self,
+        table: str,
+        columns: Optional[List[str]] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        groupby: Optional[List[str]] = None,
+        having: Optional[Dict[str, Any]] = None,
+        orderby: Optional[Union[str, List[Union[str, Tuple[str, str]]]]] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        distinct: bool = False,
+        pivot: Optional[Dict[str, str]] = None,
+    ) -> pd.DataFrame:
+        self._validate_identifier(table)
+
+        select_clause = ", ".join(columns) if columns else "*"
+        if distinct:
+            select_clause = f"DISTINCT {select_clause}"
+
+        sql = f"SELECT {select_clause} FROM {table}"
+        params = []
+
+        # WHERE
+        if filters:
+            where_clause, where_params = self._build_where_clause(filters)
+            sql += f" WHERE {where_clause}"
+            params.extend(where_params)
+
+        # GROUP BY
+        if groupby:
+            for col in groupby:
+                self._validate_identifier(col)
+            sql += f" GROUP BY {', '.join(groupby)}"
+
+        # HAVING
+        if having:
+            having_clause, having_params = self._build_where_clause(having)
+            sql += f" HAVING {having_clause}"
+            params.extend(having_params)
+
+        # ORDER BY
+        if orderby:
+            if isinstance(orderby, str):
+                sql += f" ORDER BY {orderby}"
+            elif isinstance(orderby, list):
+                order_clause = []
+                for item in orderby:
+                    if isinstance(item, tuple):
+                        col, direction = item
+                        self._validate_identifier(col)
+                        order_clause.append(f"{col} {direction}")
+                    else:
+                        self._validate_identifier(item)
+                        order_clause.append(f"{item}")
+                sql += f" ORDER BY {', '.join(order_clause)}"
+
+        # LIMIT & OFFSET
+        if limit is not None:
+            sql += f" LIMIT {limit}"
+        if offset is not None:
+            sql += f" OFFSET {offset}"
+
+        # EXECUTE
+        with self.connect() as con:
+            df = con.execute(sql, params).fetchdf()
+
+        return df
+
+    def pivot(
+        self,
+        table: str,
+        index: str,
+        columns: str,
+        values: str,
+        aggfunc: str = "SUM",
+        categories: Optional[List[str]] = None,
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> pd.DataFrame:
+        self._validate_identifier(table)
+        self._validate_identifier(index)
+        self._validate_identifier(columns)
+        self._validate_identifier(values)
+
+        where_clause, params = "", []
+        if filters:
+            where_clause, params = self._build_where_clause(filters)
+            where_clause = f"WHERE {where_clause}"
+
+        if categories is None:
+            # Auto-fetch distinct pivot values from the column
+            with self.connect() as con:
+                q = f"SELECT DISTINCT {columns} FROM {table} {where_clause}"
+                categories = [row[0] for row in con.execute(q, params).fetchall()]
+            if not categories:
+                raise ValueError(f"No categories found in column '{columns}'.")
+
+        in_clause = ", ".join(f"'{c}'" for c in categories)
+
+        sql = f"""
+        SELECT * FROM (
+            SELECT {index}, {columns}, {values}
+            FROM {table}
+            {where_clause}
+        )
+        PIVOT (
+            {aggfunc}({values}) FOR {columns} IN ({in_clause})
+        )
+        """
+
+        with self.connect() as con:
+            return con.execute(sql, params).fetchdf()
+
+    def delete(self, table: str, **filters) -> int:
+        with self.connect() as conn:
+            where_clause, params = self._build_where_clause(filters)
+            sql = f"DELETE FROM {table} WHERE {where_clause}"
+            result = conn.execute(sql, params)
+            conn.commit()
+            return result.rowcount
+
+    def execute(self, sql: str, params: Optional[List] = None) -> pd.DataFrame:
+        with self.connect() as conn:
+            return conn.execute(sql, params).fetchall()
+
     def drop_table(self, table: str) -> None:
-        with self._connection() as conn:
+        with self.connect() as conn:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
             conn.commit()
 
     def add_col(self, table: str, column: str, dtype: str) -> None:
         self._validate_identifier(table)
         self._validate_identifier(column)
-        with self._connection() as conn:
+        with self.connect() as conn:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {dtype}")
             conn.commit()
 
     def drop_col(self, table: str, column: str) -> None:
         self._validate_identifier(table)
         self._validate_identifier(column)
-        with self._connection() as conn:
+        with self.connect() as conn:
             conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
             conn.commit()
 
@@ -525,13 +583,13 @@ class DuckDBManager:
         self._validate_identifier(table)
         self._validate_identifier(old_name)
         self._validate_identifier(new_name)
-        with self._connection() as conn:
+        with self.connect() as conn:
             conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name}")
             conn.commit()
 
     def change_col_type(self, table: str, column: str, new_type: str) -> None:
         self._validate_identifier(table)
         self._validate_identifier(column)
-        with self._connection() as conn:
+        with self.connect() as conn:
             conn.execute(f"ALTER TABLE {table} ALTER COLUMN {column} TYPE {new_type}")
             conn.commit()
