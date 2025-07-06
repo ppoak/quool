@@ -436,32 +436,35 @@ class DuckDBManager:
             finally:
                 conn.unregister(temp_view)
 
-    def read(
+    def select(
         self,
         table: str,
         columns: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        ands: Optional[List[str]] = None,
+        ors: Optional[List[str]] = None,
         groupby: Optional[List[str]] = None,
-        having: Optional[Dict[str, Any]] = None,
+        having: Optional[List[str]] = None,
         orderby: Optional[Union[str, List[Union[str, Tuple[str, str]]]]] = None,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
         distinct: bool = False,
+        params: Tuple = None,
     ) -> pd.DataFrame:
         self._validate_identifier(table)
 
+        # SELECT
         select_clause = ", ".join(columns) if columns else "*"
         if distinct:
             select_clause = f"DISTINCT {select_clause}"
 
         sql = f"SELECT {select_clause} FROM {table}"
-        params = []
 
         # WHERE
-        if filters:
-            where_clause, where_params = self._build_where_clause(filters)
-            sql += f" WHERE {where_clause}"
-            params.extend(where_params)
+        if ands:
+            sql += f" WHERE {' AND '.join(ands)}"
+        
+        if ors:
+            sql += f" WHERE {' OR '.join(ors)}"
 
         # GROUP BY
         if groupby:
@@ -471,37 +474,22 @@ class DuckDBManager:
 
         # HAVING
         if having:
-            having_clause, having_params = self._build_where_clause(having)
-            sql += f" HAVING {having_clause}"
-            params.extend(having_params)
+            sql += f" HAVING {', '.join(having)}"
 
         # ORDER BY
         if orderby:
             if isinstance(orderby, str):
                 sql += f" ORDER BY {orderby}"
             elif isinstance(orderby, list):
-                order_clause = []
-                for item in orderby:
-                    if isinstance(item, tuple):
-                        col, direction = item
-                        self._validate_identifier(col)
-                        order_clause.append(f"{col} {direction}")
-                    else:
-                        self._validate_identifier(item)
-                        order_clause.append(f"{item}")
-                sql += f" ORDER BY {', '.join(order_clause)}"
+                sql += f" ORDER BY {', '.join(orderby)}"
 
-        # LIMIT & OFFSET
         if limit is not None:
             sql += f" LIMIT {limit}"
         if offset is not None:
             sql += f" OFFSET {offset}"
 
-        # EXECUTE
         with self.connect() as con:
-            df = con.execute(sql, params).fetchdf()
-
-        return df
+            return con.execute(sql, params).fetchdf()
 
     def pivot(
         self,

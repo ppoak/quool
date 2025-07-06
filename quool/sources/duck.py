@@ -13,6 +13,7 @@ class DuckPreloadSource(DataFrameSource):
         table: str,
         begin: str,
         end: str,
+        columns: list[str] = None,
         time_col: str = "time",
         code_col: str = "code",
         open: str = "open",
@@ -22,11 +23,11 @@ class DuckPreloadSource(DataFrameSource):
         volume: str = "volume",
     ):
         self.table = table
-        begin = pd.to_datetime(begin)
-        end = pd.to_datetime(end)
+        self.begin = pd.to_datetime(begin)
+        self.end = pd.to_datetime(end)
         self.manager = DuckDBManager(path, read_only=True)
         super().__init__(
-            self.manager.read(
+            self.manager.select(
                 table,
                 columns=[
                     f"{time_col} AS time",
@@ -36,9 +37,11 @@ class DuckPreloadSource(DataFrameSource):
                     f"{low} AS low",
                     f"{close} AS close",
                     f"{volume} AS volume",
-                ],
-                filters={f"{time_col}__ge": begin, f"{time_col}__le": end},
-            ).set_index(["time", "code"]),
+                ]
+                + (columns or []),
+                ands=[f"{time_col} >= ?", f"{time_col} <= ?"],
+                params=(self.begin, self.end),
+            ).set_index(["time", "code"]).sort_index(),
         )
 
 
@@ -50,6 +53,7 @@ class DuckSource(Source):
         table: str,
         begin: pd.Timestamp | str,
         end: pd.Timestamp | str,
+        columns: list[str] = None,
         time_col: str = "time",
         code_col: str = "code",
         open: str = "open",
@@ -59,17 +63,24 @@ class DuckSource(Source):
         volume: str = "volume",
     ):
         self.table = table
-        begin = pd.to_datetime(begin)
-        end = pd.to_datetime(end)
+        self.begin = pd.to_datetime(begin)
+        self.end = pd.to_datetime(end)
+        self.columns = columns
         self.time_col = time_col
         self.code_col = code_col
         self.manager = DuckDBManager(path, read_only=True)
-        self._times = self.manager.read(
-            table,
-            columns=[time_col],
-            distinct=True,
-            filters={f"{time_col}__ge": begin, f"{time_col}__le": end},
-        ).squeeze()
+        self._times = pd.to_datetime(
+            self.manager.select(
+                table,
+                columns=[time_col],
+                distinct=True,
+                orderby=[time_col],
+                ands=[f"{time_col} >= ?", f"{time_col} <= ?"],
+                params=(self.begin, self.end),
+            )
+            .squeeze()
+            .to_list()
+        )
         super().__init__(self._times.min(), None, open, high, low, close, volume)
 
     @property
@@ -82,7 +93,7 @@ class DuckSource(Source):
 
     @property
     def data(self):
-        return self.manager.read(
+        return self.manager.select(
             self.table,
             columns=[
                 f"{self.code_col} AS code",
@@ -91,13 +102,15 @@ class DuckSource(Source):
                 f"{self.low} AS low",
                 f"{self.close} AS close",
                 f"{self.volume} AS volume",
-            ],
-            filters={f"{self.time_col}": self._time},
+            ]
+            + (self.columns or []),
+            ands=[f"{self.time_col} = ?"],
+            params=(self._time,),
         ).set_index(["code"])
 
     @property
     def datas(self):
-        return self.manager.read(
+        return self.manager.select(
             self.table,
             columns=[
                 f"{self.time_col} AS time",
@@ -108,10 +121,8 @@ class DuckSource(Source):
                 f"{self.close} AS close",
                 f"{self.volume} AS volume",
             ],
-            filters={
-                f"{self.time_col}__ge": self.begin,
-                f"{self.time_col}__le": self.end,
-            },
+            ands=[f"{self.time_col} >= ?", f"{self.time_col} <= ?"],
+            params=(self.begin, self.end),
         ).set_index(["time", "code"])
 
     def update(self):
