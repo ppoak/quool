@@ -10,6 +10,8 @@ from .sources import (
     ParquetManager,
     DuckDBManager,
     ParquetSource,
+    DuckSource,
+    DuckPreloadSource,
     DataFrameSource,
     RealtimeSource,
     XtDataPreloadSource,
