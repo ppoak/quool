@@ -3,9 +3,23 @@ import pandas as pd
 
 class Source:
 
-    def __init__(self, time: pd.Timestamp, data: pd.DataFrame):
+    def __init__(
+        self,
+        time: pd.Timestamp,
+        data: pd.DataFrame = None,
+        open: str = "open",
+        high: str = "high",
+        low: str = "low",
+        close: str = "close",
+        volume: str = "volume",
+    ):
         self._time = time
         self._data = data
+        self.open = open
+        self.high = high
+        self.low = low
+        self.close = close
+        self.volume = volume
 
     @property
     def time(self):

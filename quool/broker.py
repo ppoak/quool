@@ -2,6 +2,7 @@ import json
 import numpy as np
 import pandas as pd
 from uuid import uuid4
+from .source import Source
 from collections import deque
 from .order import Order, Delivery
 from .friction import FixedRateCommission, FixedRateSlippage
@@ -149,10 +150,7 @@ class Broker:
             valid=valid,
         )
 
-    def update(self, time: str | pd.Timestamp, data: pd.DataFrame) -> None:
-        if not isinstance(data, pd.DataFrame):
-            return []
-
+    def update(self, time: str | pd.Timestamp, source: Source) -> None:
         self._time = pd.to_datetime(time)
         if not isinstance(self._time, pd.Timestamp):
             raise ValueError("time must be a pd.Timestamp or convertible to one")
@@ -161,7 +159,7 @@ class Broker:
         self._pendings.append(None)  # Placeholder for end-of-day processing.
         order = self._pendings.popleft()
         while order is not None:
-            self._match(order, data)
+            self._match(order, source)
             if not order.is_alive(self.time):
                 self._orders.append(order)
                 notify.append(order)
@@ -170,7 +168,8 @@ class Broker:
             order = self._pendings.popleft()
         return notify
 
-    def _match(self, order: Order, data: pd.DataFrame) -> None:
+    def _match(self, order: Order, source: Source) -> None:
+        data = source.data
         if order.code not in data.index:
             return
 
@@ -179,7 +178,7 @@ class Broker:
             # Triggered when price higher than trigger for BUY,
             # or lower than trigger for SELL.
             if order.exectype == order.STOP or order.exectype == order.STOPLIMIT:
-                pricetype = "high" if order.type == order.BUY else "low"
+                pricetype = source.high if order.type == order.BUY else source.low
                 if (
                     order.type == order.BUY
                     and data.loc[order.code, pricetype] >= order.trigger
@@ -198,9 +197,9 @@ class Broker:
         # if the order type is limit or stop limit order, check if the price conditions are met
         limit_order = order.exectype == order.LIMIT or order.exectype == order.STOPLIMIT
         limit_match = limit_order and (
-            (order.type == order.BUY and data.loc[order.code, "low"] <= order.limit)
+            (order.type == order.BUY and data.loc[order.code, source.low] <= order.limit)
             or (
-                order.type == order.SELL and data.loc[order.code, "high"] >= order.limit
+                order.type == order.SELL and data.loc[order.code, source.high] >= order.limit
             )
         )
         # if match condition is satisfied
@@ -212,7 +211,6 @@ class Broker:
                 order.status = order.REJECTED
 
     def _execute(self, order: Order, price: float, quantity: int) -> None:
-        """传入price为滑点价"""
         amount = price * quantity
         commission = self.commission(order, price, quantity)
         if order.type == order.BUY:
@@ -254,8 +252,8 @@ class Broker:
                 if self._positions[order.code] == 0:
                     del self._positions[order.code]
 
-    def get_value(self, data: pd.DataFrame) -> float:
-        return (self.get_positions() * data["close"]).sum() + self.balance
+    def get_value(self, source: Source) -> float:
+        return (self.get_positions() * source.data[source.close]).sum() + self.balance
 
     def get_order(self, id: str) -> Order:
         return self._orders.get[id]
