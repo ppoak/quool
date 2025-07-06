@@ -447,7 +447,6 @@ class DuckDBManager:
         limit: Optional[int] = None,
         offset: Optional[int] = None,
         distinct: bool = False,
-        pivot: Optional[Dict[str, str]] = None,
     ) -> pd.DataFrame:
         self._validate_identifier(table)
 
