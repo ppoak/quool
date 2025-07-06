@@ -150,8 +150,8 @@ class Broker:
             valid=valid,
         )
 
-    def update(self, time: str | pd.Timestamp, source: Source) -> None:
-        self._time = pd.to_datetime(time)
+    def update(self, source: Source) -> None:
+        self._time = source.time
         if not isinstance(self._time, pd.Timestamp):
             raise ValueError("time must be a pd.Timestamp or convertible to one")
 

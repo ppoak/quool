@@ -47,7 +47,7 @@ class Strategy:
     def _run(self, store: str = None, history: bool = False, **kwargs):
         if self.source.update() is None:
             return False
-        for notif in self.broker.update(time=self.source.time, data=self.data):
+        for notif in self.broker.update(source=self.source):
             self.notify(notif)
         self.update(**kwargs)
         if store:
@@ -125,7 +125,7 @@ class Strategy:
         self.log(order)
 
     def get_value(self):
-        return self.broker.get_value(self.source.data)
+        return self.broker.get_value(self.source)
 
     def get_positions(self):
         return self.broker.get_positions()
