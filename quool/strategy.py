@@ -96,8 +96,6 @@ class Strategy:
         scheduler.start()
         return scheduler
 
-    
-
     def backtest(self, benchmark: pd.Series = None, history: bool = False, **kwargs):
         self.init(**kwargs)
         while self._run(history=history, **kwargs):
