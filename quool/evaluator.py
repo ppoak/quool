@@ -82,6 +82,7 @@ class Evaluator:
         prod = fund / (total - fund)
         prod.iloc[0] = 0
         fund = (1 + prod).fillna(1).cumprod() * fund.iloc[0]
+        net = total / fund
 
         position_amount = (
             position_amount
@@ -139,13 +140,13 @@ class Evaluator:
         trades["return"] = trades["close_amount"] / trades["open_amount"] - 1
         return {
             "values": pd.concat(
-                [total, market, cash, turnover],
+                [net, total, market, cash, turnover],
                 axis=1,
-                keys=["total", "market", "cash", "turnover"],
+                keys=["net", "total", "market", "cash", "turnover"],
             ),
             "positions": positions,
             "trades": trades.reset_index(),
-            "evaluation": Evaluator.evaluate(total, benchmark, turnover, fund, trades),
+            "evaluation": Evaluator.evaluate(net, benchmark, turnover, trades),
         }
 
     @staticmethod
@@ -204,26 +205,18 @@ class Evaluator:
         value = (1 + returns).cumprod()
         return {
             "values": value,
-            "evaluation": Evaluator.evaluate(value, benchmark, turnover, None, None),
+            "evaluation": Evaluator.evaluate(value, benchmark, turnover, None),
         }
 
     @staticmethod
     def evaluate(
-        value: pd.Series,
+        net: pd.Series,
         benchmark: pd.Series = None,
         turnover: pd.Series = None,
-        fund: pd.Series = None,
         trades: pd.DataFrame = None,
     ):
-        fund = (
-            fund
-            if isinstance(fund, pd.Series) and not fund.empty
-            else pd.Series([value.iloc[0]], index=[value.index[0]])
-        )
-        fund = fund.reindex(value.index, method="ffill")
-        net_value = value / fund
-        returns = net_value.pct_change(fill_method=None).fillna(0)
-        drawdown = net_value / net_value.cummax() - 1
+        returns = net.pct_change(fill_method=None).fillna(0)
+        drawdown = net / net.cummax() - 1
         max_drawdown = drawdown.min()
         max_drawdown_end = drawdown.idxmin()
         max_drawdown_start = drawdown.loc[:max_drawdown_end][
@@ -236,21 +229,21 @@ class Evaluator:
 
         # Benchmark Comparison Metrics
         if benchmark is None:
-            benchmark = pd.Series(np.ones_like(net_value), index=net_value.index)
+            benchmark = pd.Series(np.ones_like(net), index=net.index)
         benchmark_returns = benchmark.pct_change().fillna(0)
         excess_returns = returns - benchmark_returns
         excess_value = (1 + excess_returns).cumprod()
 
         evaluation = pd.Series(name="evaluation")
         # Basic Performance Metrics
-        evaluation["total_return"] = net_value.iloc[-1] - 1
+        evaluation["total_return"] = net.iloc[-1] - 1
         evaluation["annual_return"] = (
             (
                 (1 + evaluation["total_return"])
-                ** (365 / (net_value.index[-1] - net_value.index[0]).days)
+                ** (365 / (net.index[-1] - net.index[0]).days)
                 - 1
             )
-            if (net_value.index[-1] - net_value.index[0]).days != 0
+            if (net.index[-1] - net.index[0]).days != 0
             else np.nan
         )
         evaluation["annual_volatility"] = returns.std() * np.sqrt(252)
@@ -334,7 +327,7 @@ class Evaluator:
             returns.gt(0 if benchmark is None else benchmark_returns)
         ].count()
         evaluation["day_return_win_rate"] = positive_returns / returns.count()
-        monthly_returns = net_value.resample("ME").last().pct_change().fillna(0)
+        monthly_returns = net.resample("ME").last().pct_change().fillna(0)
         evaluation["monthly_return_std"] = monthly_returns.std()
         evaluation["monthly_win_rate"] = (monthly_returns > 0).sum() / len(
             monthly_returns
