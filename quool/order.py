@@ -34,7 +34,7 @@ class Delivery:
         self.type = type
         self.code = code
         self.quantity = quantity
-        self.price = price #滑点价格
+        self.price = price
         self.comm = comm
         self.amount = quantity * price + self.QUANTITY_SIGN[type] * comm
 
