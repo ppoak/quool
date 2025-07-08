@@ -298,11 +298,16 @@ class DuckDBManager:
         self.path = path
         self.read_only = read_only
 
-    def _validate_identifier(self, name: str) -> None:
-        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
-            raise ValueError(f"Invalid SQL identifier: {name}")
+    @contextmanager
+    def connect(self):
+        con = duckdb.connect(self.path, read_only=self.read_only)
+        try:
+            yield con
+        finally:
+            con.close()
 
-    def _infer_dtype(self, dtype_str: str) -> str:
+    def infer_schema(self, df: pd.DataFrame) -> Dict[str, Any]:
+        schema = {}
         type_map = {
             "int64": "BIGINT",
             "int32": "INTEGER",
@@ -319,122 +324,65 @@ class DuckDBManager:
             "timedelta64[ns]": "INTERVAL",
             "string": "VARCHAR",
         }
-        return type_map[dtype_str]
+        index_cols = list(df.index.names) if all(df.index.names) else []
+        schema["pk"] = index_cols
+        schema["index"] = index_cols
 
-    def _infer_schema(self, df: pd.DataFrame) -> Dict[str, str]:
-        schema = {}
+        df = df.reset_index() if index_cols else df
+        schema["columns"] = []
         for col in df.columns:
-            self._validate_identifier(col)
-            dtype = self._infer_dtype(str(df[col].dtype))
-            schema[col] = dtype
+            schema["columns"].append(
+                f'{col} {type_map.get(str(df[col].dtype), "VARCHAR")}'
+            )
         return schema
 
-    def _build_where_clause(self, filters: Dict[str, Any]) -> Tuple[str, List[Any]]:
-        where_clauses = []
-        params = []
-        valid_operators = {
-            "gt": ">",
-            "lt": "<",
-            "ge": ">=",
-            "le": "<=",
-            "eq": "=",
-            "ne": "!=",
-            "like": "LIKE",
-            "in": "IN",
-            "notin": "NOT IN",
-        }
-
-        for key, value in filters.items():
-            col_part = key.split("__", 1)
-            col, operation = col_part if len(col_part) > 1 else (key, "eq")
-
-            self._validate_identifier(col)
-            op = valid_operators.get(operation, operation)
-
-            if operation in ("in", "notin"):
-                placeholders = ", ".join(["?"] * len(value))
-                where_clauses.append(f"{col} {op} ({placeholders})")
-                params.extend(value)
-            else:
-                where_clauses.append(f"{col} {op} ?")
-                params.append(value)
-
-        return " AND ".join(where_clauses), params
-
-    @contextmanager
-    def connect(self):
-        con = duckdb.connect(self.path, read_only=self.read_only)
-        try:
-            yield con
-        finally:
-            con.close()
-
     def create_table(
-        self, con: duckdb.DuckDBPyConnection, schema: Dict[str, str], table: str
-    ):
-        index_cols = [name for name in df.index.names if name]
-        if index_cols:
-            df = df.reset_index()
-        schema = ", ".join([f"{name} {dtype}" for name, dtype in schema.items()])
+        self,
+        table: str,
+        columns: List[str],
+        pk: str | List[str] = None,
+        unique: str | List[str] = None,
+        index: str | List[str] = None,
+    ) -> None:
+        columns = ", ".join(columns)
+        pk_clause = f", PRIMARY KEY({', '.join(pk)})" if pk else ""
+        unique_clause = f", UNIQUE({', '.join(unique)})" if unique else ""
 
-        unique_clause = ""
-        if index_cols:
-            missing_columns = [col for col in index_cols if col not in df.columns]
-            if missing_columns:
-                raise ValueError(f"Missing index columns: {missing_columns}")
-            unique_cols = ", ".join(map(str, index_cols))
-            unique_clause = f", UNIQUE({unique_cols})"
+        sql = f"CREATE TABLE {table} ({columns}{pk_clause}{unique_clause});"
 
-        create_sql = f"CREATE TABLE IF NOT EXISTS {table} ({schema}) {unique_clause})"
-        con.execute(create_sql)
+        with self.connect() as con:
+            con.execute(sql)
 
-        if index_cols:
-            cols_hash = hash(tuple(sorted(index_cols))) & 0xFFFFFFFF
-            index_name = f"idx_{table.lower()}_{cols_hash}"
-            index_columns = ", ".join(index_cols)
-            con.execute(f"CREATE INDEX {index_name} ON {table} ({index_columns})")
-
-        con.commit()
+            if index:
+                for col in index:
+                    index_name = f"idx_{table}_{col}"
+                    con.execute(f"CREATE INDEX {index_name} ON {table} ({col});")
+            con.commit()
 
     def upsert(self, df: pd.DataFrame, table: str) -> None:
-        with self.connection() as conn:
-            self.create_table(conn, df, table)
-            source_cols = (
-                conn.execute(f"PRAGMA table_info({table})").df()["name"].tolist()
+        with self.connect() as con:
+            tables = (
+                con.execute("SELECT name FROM (SHOW ALL TABLES);")
+                .fetchdf()
+                .iloc[:, 0]
+                .to_list()
             )
+            if table not in tables:
+                schema = self.infer_schema(df)
+                self.create_table(table, **schema)
 
-            temp_view = f"temp_{table}_{uuid.uuid4().hex[:8]}"
-            conn.register(
-                temp_view,
-                df.reset_index()[source_cols] if df.index.names[0] else df[source_cols],
-            )
+            if all(df.index.names):
+                df = df.reset_index()
 
-            try:
-                index_cols = [name for name in df.index.names if name]
-                conflict_clause = (
-                    (
-                        f"ON CONFLICT ({', '.join(index_cols)}) DO UPDATE SET "
-                        + ", ".join(
-                            [
-                                f"{col}=EXCLUDED.{col}"
-                                for col in source_cols
-                                if col not in index_cols
-                            ]
-                        )
-                    )
-                    if index_cols
-                    else ""
-                )
+            temp_view = f"temp_view_{uuid.uuid4().hex[:8]}"
+            con.register(temp_view, df)
 
-                insert_sql = f"""
-                    INSERT INTO {table} 
-                    SELECT * FROM {temp_view}
-                    {conflict_clause}
-                """
-                conn.execute(insert_sql)
-                conn.commit()
-            finally:
-                conn.unregister(temp_view)
+            sql = f"""
+                INSERT OR REPLACE INTO {table}
+                SELECT * FROM {temp_view};
+            """
+            con.execute(sql)
+            con.unregister(temp_view)
 
     def select(
         self,
@@ -450,7 +398,6 @@ class DuckDBManager:
         distinct: bool = False,
         params: Tuple = None,
     ) -> pd.DataFrame:
-        self._validate_identifier(table)
 
         # SELECT
         select_clause = ", ".join(columns) if columns else "*"
@@ -462,14 +409,12 @@ class DuckDBManager:
         # WHERE
         if ands:
             sql += f" WHERE {' AND '.join(ands)}"
-        
+
         if ors:
             sql += f" WHERE {' OR '.join(ors)}"
 
         # GROUP BY
         if groupby:
-            for col in groupby:
-                self._validate_identifier(col)
             sql += f" GROUP BY {', '.join(groupby)}"
 
         # HAVING
@@ -501,10 +446,6 @@ class DuckDBManager:
         categories: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
     ) -> pd.DataFrame:
-        self._validate_identifier(table)
-        self._validate_identifier(index)
-        self._validate_identifier(columns)
-        self._validate_identifier(values)
 
         where_clause, params = "", []
         if filters:
@@ -553,30 +494,21 @@ class DuckDBManager:
             conn.commit()
 
     def add_col(self, table: str, column: str, dtype: str) -> None:
-        self._validate_identifier(table)
-        self._validate_identifier(column)
         with self.connect() as conn:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {dtype}")
             conn.commit()
 
     def drop_col(self, table: str, column: str) -> None:
-        self._validate_identifier(table)
-        self._validate_identifier(column)
         with self.connect() as conn:
             conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
             conn.commit()
 
     def rename_col(self, table: str, old_name: str, new_name: str) -> None:
-        self._validate_identifier(table)
-        self._validate_identifier(old_name)
-        self._validate_identifier(new_name)
         with self.connect() as conn:
             conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name}")
             conn.commit()
 
     def change_col_type(self, table: str, column: str, new_type: str) -> None:
-        self._validate_identifier(table)
-        self._validate_identifier(column)
         with self.connect() as conn:
             conn.execute(f"ALTER TABLE {table} ALTER COLUMN {column} TYPE {new_type}")
             conn.commit()
