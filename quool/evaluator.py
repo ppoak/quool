@@ -32,9 +32,10 @@ class Evaluator:
         delivery: pd.DataFrame, prices: pd.DataFrame, benchmark: pd.Series = None
     ):
         # cash, position, total_value, market_value calculation
+        fund = delivery[delivery["type"] == "TRANSFER"]["amount"].droplevel("code")
         cash = delivery.groupby("time")["amount"].sum().cumsum()
         positions = (
-            delivery.drop(index="CASH", level=1)
+            delivery[delivery["type"] != "TRANSFER"]
             .groupby(["time", "code"])["quantity"]
             .sum()
             .unstack()
@@ -42,7 +43,7 @@ class Evaluator:
             .cumsum()
         )
         position_amount = (
-            delivery.drop(index="CASH", level=1)
+            delivery[delivery["type"] != "TRANSFER"]
             .groupby(["time", "code"])["amount"]
             .sum()
             .unstack()
@@ -50,7 +51,7 @@ class Evaluator:
         )
 
         return Evaluator.evaluate_position(
-            positions, cash, prices, position_amount, benchmark
+            positions, cash, prices, position_amount, benchmark, fund
         )
 
     @staticmethod
@@ -60,6 +61,7 @@ class Evaluator:
         prices: pd.DataFrame,
         position_amount: pd.DataFrame = None,
         benchmark: pd.Series = None,
+        fund: pd.Series = None,
     ):
         times = prices.index.union(cash.index).union(positions.index)
         cash = cash.reindex(times).ffill()
@@ -72,6 +74,15 @@ class Evaluator:
         turnover = (delta * prices).abs().sum(axis=1) / total.shift(1).fillna(
             cash.iloc[0]
         )
+        fund = (
+            fund
+            if isinstance(fund, pd.Series) and not fund.empty
+            else cash.iloc[:1].reindex(times).fillna(0)
+        )
+        prod = fund / (total - fund)
+        prod.iloc[0] = 0
+        fund = (1 + prod).fillna(1).cumprod() * fund.iloc[0]
+
         position_amount = (
             position_amount
             if position_amount is not None
@@ -134,7 +145,7 @@ class Evaluator:
             ),
             "positions": positions,
             "trades": trades.reset_index(),
-            "evaluation": Evaluator.evaluate(total, benchmark, turnover, trades),
+            "evaluation": Evaluator.evaluate(total, benchmark, turnover, fund, trades),
         }
 
     @staticmethod
@@ -193,7 +204,7 @@ class Evaluator:
         value = (1 + returns).cumprod()
         return {
             "values": value,
-            "evaluation": Evaluator.evaluate(value, benchmark, turnover, None),
+            "evaluation": Evaluator.evaluate(value, benchmark, turnover, None, None),
         }
 
     @staticmethod
@@ -201,9 +212,16 @@ class Evaluator:
         value: pd.Series,
         benchmark: pd.Series = None,
         turnover: pd.Series = None,
+        fund: pd.Series = None,
         trades: pd.DataFrame = None,
     ):
-        net_value = value / value.iloc[0]
+        fund = (
+            fund
+            if isinstance(fund, pd.Series) and not fund.empty
+            else pd.Series([value.iloc[0]], index=[value.index[0]])
+        )
+        fund = fund.reindex(value.index, method="ffill")
+        net_value = value / fund
         returns = net_value.pct_change(fill_method=None).fillna(0)
         drawdown = net_value / net_value.cummax() - 1
         max_drawdown = drawdown.min()
