@@ -5,7 +5,10 @@ from quool import Source, proxy_request
 
 def is_trading_time(time: str) -> bool:
     time = pd.to_datetime(time)
-    trading_hours = [("09:30:00", "11:30:00"), ("13:00:00", "15:00:00")]
+    trading_hours = [
+        pd.to_datetime(["09:30:00", "11:30:00"]),
+        pd.to_datetime(["13:00:00", "15:00:00"]),
+    ]
 
     if time.weekday() >= 5:
         return False
