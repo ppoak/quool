@@ -442,15 +442,20 @@ class DuckDBManager:
         index: str,
         columns: str,
         values: str,
+        ands: Optional[List[str]] = None,
+        ors: Optional[List[str]] = None,
         aggfunc: str = "SUM",
         categories: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        params: Tuple = None,
     ) -> pd.DataFrame:
 
-        where_clause, params = "", []
-        if filters:
-            where_clause, params = self._build_where_clause(filters)
-            where_clause = f"WHERE {where_clause}"
+        # WHERE
+        where_clause = "WHERE "
+        if ands:
+            where_clause += f"{' AND '.join(ands)}"
+
+        if ors:
+            where_clause += f"{' OR '.join(ors)}"
 
         if categories is None:
             # Auto-fetch distinct pivot values from the column
