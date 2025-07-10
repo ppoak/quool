@@ -383,6 +383,7 @@ class DuckDBManager:
             """
             con.execute(sql)
             con.unregister(temp_view)
+            con.commit()
 
     def select(
         self,
