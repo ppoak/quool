@@ -8,10 +8,8 @@ from .util import setup_logger, notify_task, proxy_request
 from .brokers import XueQiu, XueQiuBroker, XtBroker, AShareBroker
 from .sources import (
     ParquetManager,
-    DuckDBManager,
+    DuckParquet,
     ParquetSource,
-    DuckSource,
-    DuckPreloadSource,
     DataFrameSource,
     RealtimeSource,
     XtDataPreloadSource,

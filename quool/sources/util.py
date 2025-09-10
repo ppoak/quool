@@ -302,7 +302,7 @@ class DuckParquet:
         self,
         dataset_path: str,
         name: Optional[str] = None,
-        db_path: str = ":memory:",
+        db_path: str = None,
         threads: Optional[int] = None,
     ):
         """Initializes the DuckParquet object.
@@ -325,7 +325,7 @@ class DuckParquet:
         config = {}
         self.threads = threads or 1
         config["threads"] = self.threads
-        self.con = duckdb.connect(database=db_path, config=config)
+        self.con = duckdb.connect(database=db_path or ":memory:", config=config)
         self.scan_pattern = self._infer_scan_pattern(self.dataset_path)
         if self._parquet_files_exist():
             self._create_or_replace_view()
@@ -695,7 +695,7 @@ class DuckParquet:
         try:
             return res.df()
         except Exception:
-            return pd.DataFrame()
+            return res
 
     def get_schema(self) -> pd.DataFrame:
         """Get the schema (column info) of current parquet dataset.
@@ -771,7 +771,151 @@ class DuckParquet:
         if offset is not None:
             sql.append(f"OFFSET {int(offset)}")
         final = " ".join(sql)
-        return self.con.execute(final, bind_params).df()
+        return self.raw_query(final, bind_params)
+
+    def dpivot(
+        self,
+        index: Union[str, List[str]],
+        columns: str,
+        values: str,
+        aggfunc: str = "first",
+        where: Optional[str] = None,
+        on_in: Optional[List[Any]] = None,
+        group_by: Optional[Union[str, List[str]]] = None,
+        order_by: Optional[Union[str, List[str]]] = None,
+        limit: Optional[int] = None,
+        fill_value: Any = None,
+    ) -> pd.DataFrame:
+        """
+        Pivot the parquet dataset using DuckDB PIVOT statement.
+        Args:
+            index: Output rows, will appear in SELECT and GROUP BY.
+            columns: The column to turn into wide fields (PIVOT ON).
+            values: Value column, aggregate target (PIVOT USING aggfunc(values)).
+            aggfunc: Aggregate function, default 'first'.
+            where: Filter applied in SELECT node.
+            on_in: List of column values, restrict wide columns.
+            group_by: Group by after pivot, usually same as index.
+            order_by: Order by after pivot.
+            limit: Row limit.
+            fill_value: Fill missing values.
+        Returns:
+            pd.DataFrame: Wide pivoted DataFrame.
+        """
+        # Construct SELECT query for PIVOT source
+        if isinstance(index, str):
+            index_cols = [index]
+        else:
+            index_cols = list(index)
+        select_cols = index_cols + [columns, values]
+        sel_sql = f"SELECT {', '.join(DuckParquet._quote_ident(c) for c in select_cols)} FROM {DuckParquet._quote_ident(self.view_name)}"
+        if where:
+            sel_sql += f" WHERE {where}"
+
+        # PIVOT ON
+        pivot_on = DuckParquet._quote_ident(columns)
+        # PIVOT ON ... IN (...)
+        if on_in:
+            in_vals = []
+            for v in on_in:
+                # 按str或数字
+                if isinstance(v, str):
+                    in_vals.append(f"'{v}'")
+                else:
+                    in_vals.append(str(v))
+            pivot_on += f" IN ({', '.join(in_vals)})"
+
+        # PIVOT USING
+        pivot_using = f"{aggfunc}({DuckParquet._quote_ident(values)})"
+
+        # PIVOT 语句
+        sql_lines = [f"PIVOT ({sel_sql})", f"ON {pivot_on}", f"USING {pivot_using}"]
+
+        # GROUP BY
+        if group_by:
+            if isinstance(group_by, str):
+                groupby_expr = DuckParquet._quote_ident(group_by)
+            else:
+                groupby_expr = ", ".join(DuckParquet._quote_ident(c) for c in group_by)
+            sql_lines.append(f"GROUP BY {groupby_expr}")
+
+        # ORDER BY
+        if order_by:
+            if isinstance(order_by, str):
+                order_expr = DuckParquet._quote_ident(order_by)
+            else:
+                order_expr = ", ".join(DuckParquet._quote_ident(c) for c in order_by)
+            sql_lines.append(f"ORDER BY {order_expr}")
+
+        # LIMIT
+        if limit:
+            sql_lines.append(f"LIMIT {int(limit)}")
+
+        sql = "\n".join(sql_lines)
+        df = self.raw_query(sql)
+        if fill_value is not None:
+            df = df.fillna(fill_value)
+        return df
+
+    def ppivot(
+        self,
+        index: Union[str, List[str]],
+        columns: Union[str, List[str]],
+        values: Optional[Union[str, List[str]]] = None,
+        aggfunc: str = "mean",
+        where: Optional[str] = None,
+        params: Optional[Sequence[Any]] = None,
+        order_by: Optional[Union[str, List[str]]] = None,
+        limit: Optional[int] = None,
+        fill_value: Any = None,
+        dropna: bool = True,
+        **kwargs,
+    ) -> pd.DataFrame:
+        """
+        Wide pivot using Pandas pivot_table.
+
+        Args:
+            index: Indexes of pivot table.
+            columns: Columns to expand.
+            values: The value fields to aggregate.
+            aggfunc: Pandas/numpy function name or callable.
+            where: Optional filter.
+            params: SQL bind params.
+            order_by: Order output.
+            limit: Row limit.
+            fill_value: Defaults for missing.
+            dropna: Drop missing columns.
+            **kwargs: Any pandas.pivot_table compatible args.
+
+        Returns:
+            pd.DataFrame: Wide table.
+        """
+        select_cols = []
+        for part in (index, columns, values or []):
+            if part is None:
+                continue
+            if isinstance(part, str):
+                select_cols.append(part)
+            else:
+                select_cols.extend(part)
+        select_cols = list(dict.fromkeys(select_cols))
+        df = self.select(
+            columns=select_cols,
+            where=where,
+            params=params,
+            order_by=order_by,
+            limit=limit,
+        )
+        return pd.pivot_table(
+            df,
+            index=index,
+            columns=columns,
+            values=values,
+            aggfunc=aggfunc,
+            fill_value=fill_value,
+            dropna=dropna,
+            **kwargs,
+        )
 
     def count(
         self, where: Optional[str] = None, params: Optional[Sequence[Any]] = None
@@ -889,17 +1033,3 @@ class DuckParquet:
             if os.path.exists(tmpdir):
                 shutil.rmtree(tmpdir, ignore_errors=True)
         self.refresh()
-
-
-if __name__ == "__main__":
-    # Example usage.
-    from pathlib import Path
-    from tqdm import tqdm
-
-    path = Path("d:/documents/databasebackup/quotes_day")
-    data = pd.read_parquet(path)
-    data = data[data["time"] > "2025-07-03"]
-    dp = DuckParquet("d:/documents/dataset/quotes_day_test", threads=4)
-    data["date"] = data["time"].dt.strftime("%Y-%m-%d")
-    dp.upsert_from_df(data, keys=["time", "code"], partition_by=["date"])
-    print(dp.select())
