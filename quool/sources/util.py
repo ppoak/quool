@@ -673,6 +673,12 @@ class DuckParquet:
         """Context manager exit: close connection."""
         self.close()
 
+    def __str__(self):
+        return f"DuckParquet@<{self.dataset_path}>(Columns={self.list_columns()})\n"
+    
+    def __repr__(self):
+        return self.__str__()
+
     # --- Public Query/Mutation Methods ---
 
     def refresh(self):
