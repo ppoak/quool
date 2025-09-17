@@ -298,6 +298,7 @@ class ParquetManager:
 
 
 class DuckParquet:
+
     def __init__(
         self,
         dataset_path: str,
@@ -326,6 +327,10 @@ class DuckParquet:
         self.threads = threads or 1
         config["threads"] = self.threads
         self.con = duckdb.connect(database=db_path or ":memory:", config=config)
+        try:
+            self.con.execute(f"SET threads={int(self.threads)}")
+        except Exception:
+            pass
         self.scan_pattern = self._infer_scan_pattern(self.dataset_path)
         if self._parquet_files_exist():
             self._create_or_replace_view()
@@ -417,7 +422,7 @@ class DuckParquet:
     def _create_or_replace_view(self):
         """Create or replace the DuckDB view for current dataset."""
         view_ident = DuckParquet._quote_ident(self.view_name)
-        sql = f"CREATE OR REPLACE VIEW {view_ident} AS SELECT * FROM parquet_scan('{self.scan_pattern}')"
+        sql = f"CREATE OR REPLACE VIEW {view_ident} AS SELECT * FROM parquet_scan('{self.scan_pattern}', HIVE_PARTITIONING=1)"
         self.con.execute(sql)
 
     def _base_columns(self) -> List[str]:
@@ -519,52 +524,6 @@ class DuckParquet:
                 shutil.rmtree(tmpdir, ignore_errors=True)
         self.refresh()
 
-    def _export_partition(
-        self,
-        part_row,
-        partition_by,
-        all_cols,
-        key_expr,
-        view_ident,
-        df,
-        tmpdir,
-        sql_template,
-    ):
-        """Export partition sub-data for upsert, called in parallel for each partition.
-
-        Args:
-            part_row (pd.Series): Partition key row.
-            partition_by (list): Partition columns.
-            all_cols (str): Columns to select.
-            key_expr (str): Key expression.
-            view_ident (str): View identifier.
-            df (pd.DataFrame): DataFrame to upsert.
-            tmpdir (str): Temporary directory.
-            sql_template (str): SQL COPY template.
-        """
-        temp_name = f"newdata_{uuid.uuid4().hex[:6]}"
-        where_clauses = [
-            f"{DuckParquet._quote_ident(col)} = '{part_row[col]}'"
-            for col in partition_by
-        ]
-        where_sql = " AND ".join(where_clauses)
-        sql = sql_template.format(
-            all_cols=all_cols,
-            key_expr=key_expr,
-            view_ident=view_ident,
-            tmpdir=tmpdir,
-            temp_name=DuckParquet._quote_ident(temp_name),
-            partition_subsql=f"PARTITION_BY ({', '.join(partition_by or [])}),",
-        )
-        sub_df = df.loc[(df[partition_by] == part_row[partition_by]).all(axis=1)]
-        con = duckdb.connect()
-        con.register(view_ident, self.select(where=where_sql))
-        con.register(temp_name, sub_df)
-        con.execute(sql)
-        con.unregister(view_ident)
-        con.unregister(temp_name)
-        con.close()
-
     def _upsert_existing(
         self, df: pd.DataFrame, keys: list, partition_by: Optional[list]
     ) -> None:
@@ -577,81 +536,89 @@ class DuckParquet:
         """
         tmpdir = self._local_tempdir(".")
         base_cols = self.list_columns()
-        view_ident = DuckParquet._quote_ident(self.view_name)
-        all_cols = ", ".join(
-            [
-                DuckParquet._quote_ident(c)
-                for c in base_cols
-                if c in df.columns or c in base_cols
-            ]
-        )
-        key_expr = ", ".join(keys)
-        sql_template = """
-            COPY (
-                SELECT {all_cols} FROM (
-                    SELECT *, ROW_NUMBER() OVER (PARTITION BY {key_expr} ORDER BY is_new DESC) AS rn
-                    FROM (
-                        SELECT {all_cols}, 0 as is_new FROM {view_ident}
-                        UNION ALL
-                        SELECT {all_cols}, 1 as is_new FROM {temp_name}
-                    )
-                ) WHERE rn=1
-            ) TO '{tmpdir}' (FORMAT 'parquet', {partition_subsql} OVERWRITE_OR_IGNORE true)
-        """
-        if not partition_by:
-            try:
-                temp_name = f"newdata_{uuid.uuid4().hex[:6]}"
-                sql = sql_template.format(
-                    all_cols=all_cols,
-                    key_expr=key_expr,
-                    view_ident=view_ident,
-                    tmpdir=os.path.join(tmpdir, "data_0.parquet"),
-                    temp_name=DuckParquet._quote_ident(temp_name),
-                    partition_subsql="",
-                )
-                self.con.register(view_ident, self.select())
-                self.con.register(temp_name, df)
-                self.con.execute(sql)
-                self.con.unregister(temp_name)
-                self.con.unregister(view_ident)
-                src_part_dir = os.path.join(tmpdir, "data_0.parquet")
-                dst_part_dir = os.path.join(self.dataset_path, "data_0.parquet")
-                os.remove(dst_part_dir)
-                shutil.move(src_part_dir, dst_part_dir)
-            finally:
-                shutil.rmtree(tmpdir)
-            return
+        all_cols = ", ".join(DuckParquet._quote_ident(c) for c in base_cols)
+        key_expr = ", ".join(DuckParquet._quote_ident(k) for k in keys)
 
-        affected_partitions = df[partition_by].drop_duplicates()
+        temp_name = f"newdata_{uuid.uuid4().hex[:6]}"
+        self.con.register(temp_name, df)
+
         try:
-            Parallel(n_jobs=self.threads, backend="threading")(
-                delayed(self._export_partition)(
-                    part_row,
-                    partition_by,
-                    all_cols,
-                    key_expr,
-                    view_ident,
-                    df,
-                    tmpdir,
-                    sql_template,
+            if not partition_by:
+                view_ident = DuckParquet._quote_ident(self.view_name)
+                out_path = os.path.join(tmpdir, "data_0.parquet")
+                sql = f"""
+                    COPY (
+                        SELECT {all_cols} FROM (
+                            SELECT *, ROW_NUMBER() OVER (PARTITION BY {key_expr} ORDER BY is_new DESC) AS rn
+                            FROM (
+                                SELECT {all_cols}, 0 as is_new FROM {DuckParquet._quote_ident(self.view_name)}
+                                UNION ALL
+                                SELECT {all_cols}, 1 as is_new FROM {DuckParquet._quote_ident(temp_name)}
+                            )
+                        ) WHERE rn=1
+                    ) TO '{out_path}' (FORMAT 'parquet', COMPRESSION 'zstd')
+                """
+                self.con.execute(sql)
+                dst = os.path.join(self.dataset_path, "data_0.parquet")
+                if os.path.exists(dst):
+                    os.remove(dst)
+                shutil.move(out_path, dst)
+            else:
+                parts_tbl = f"parts_{uuid.uuid4().hex[:6]}"
+                affected = df[partition_by].drop_duplicates()
+                self.con.register(parts_tbl, affected)
+
+                part_cols_ident = ", ".join(DuckParquet._quote_ident(c) for c in partition_by)
+                partition_by_clause = f"PARTITION_BY ({part_cols_ident})"
+
+                old_sql = (
+                    f"SELECT {all_cols}, 0 AS is_new "
+                    f"FROM {DuckParquet._quote_ident(self.view_name)} AS e "
+                    f"JOIN {DuckParquet._quote_ident(parts_tbl)} AS p USING ({part_cols_ident})"
                 )
-                for _, part_row in affected_partitions.iterrows()
-            )
-            subdirs = next(os.walk(tmpdir))[1]
-            for subdir in subdirs:
-                src_part_dir = os.path.join(tmpdir, subdir)
-                dst_part_dir = os.path.join(self.dataset_path, subdir)
-                if os.path.exists(dst_part_dir):
-                    if os.path.isdir(dst_part_dir):
-                        shutil.rmtree(dst_part_dir)
-                    else:
-                        os.remove(dst_part_dir)
-                os.makedirs(os.path.dirname(dst_part_dir), exist_ok=True)
-                shutil.move(src_part_dir, dst_part_dir)
+
+                sql = f"""
+                    COPY (
+                        SELECT {all_cols} FROM (
+                            SELECT *, ROW_NUMBER() OVER (PARTITION BY {key_expr} ORDER BY is_new DESC) AS rn
+                            FROM (
+                                {old_sql}
+                                UNION ALL
+                                SELECT {all_cols}, 1 as is_new FROM {DuckParquet._quote_ident(temp_name)}
+                            )
+                        ) WHERE rn=1
+                    ) TO '{tmpdir}'
+                      (FORMAT 'parquet', COMPRESSION 'zstd', {partition_by_clause})
+                """
+                self.con.execute(sql)
+
+                for subdir in next(os.walk(tmpdir))[1]:
+                    src = os.path.join(tmpdir, subdir)
+                    dst = os.path.join(self.dataset_path, subdir)
+                    if os.path.exists(dst):
+                        if os.path.isdir(dst):
+                            shutil.rmtree(dst)
+                        else:
+                            os.remove(dst)
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    shutil.move(src, dst)
         finally:
+            for name in (temp_name, 'parts_tbl'):
+                try:
+                    pass
+                except Exception:
+                    pass
+            try:
+                self.con.unregister(temp_name)
+            except Exception:
+                pass
+            try:
+                self.con.unregister(parts_tbl)  # type: ignore
+            except Exception:
+                pass
             if os.path.exists(tmpdir):
                 shutil.rmtree(tmpdir, ignore_errors=True)
-        self.refresh()
+            self.refresh()
 
     # --- Context/Resource Management ---
     def close(self):
@@ -675,7 +642,7 @@ class DuckParquet:
 
     def __str__(self):
         return f"DuckParquet@<{self.dataset_path}>(Columns={self.list_columns()})\n"
-    
+
     def __repr__(self):
         return self.__str__()
 
