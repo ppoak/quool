@@ -173,15 +173,9 @@ cython_debug/
 **/mlruns
 **/*.db
 
-.vscode/launch.json
 data
 output
 dev
 logs
 drafts
-test
-test*
-script
-strategy/coilysis.py
-
-.quool_history
+temp
