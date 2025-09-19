@@ -1,6 +1,6 @@
 import logging
 import pandas as pd
-from .util import setup_logger
+from parquool import setup_logger
 
 
 class Scheduler:

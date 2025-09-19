@@ -1,6 +1,7 @@
 import pandas as pd
 from collections import deque
-from quool import Source, proxy_request
+from quool import Source
+from parquool import proxy_request
 
 
 def is_trading_time(time: str) -> bool:

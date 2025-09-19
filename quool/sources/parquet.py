@@ -1,12 +1,12 @@
 from quool import Source
-from .util import ParquetManager
+from parquool import DuckParquet
 
 
-class ParquetSource(Source):
+class DuckParquetSource(Source):
 
     def __init__(
         self,
-        manager: ParquetManager,
+        manager: DuckParquet,
         begin: str,
         end: str,
         extra: list = None,
@@ -15,8 +15,11 @@ class ParquetSource(Source):
         adj_col: str = "adjfactor",
     ):
         self.manager = manager
-        self._times = self.manager.read(
-            self, index=date_col, **{f"{date_col}__ge": begin, f"{date_col}__le": end}
+        self._times = self.manager.select(
+            self,
+            columns=[date_col],
+            where=f"{date_col} >= ? and {date_col} <= ?",
+            params=[begin, end],
         ).index.unique()
         self._time = self._times.min()
         self.extra = extra or []
@@ -28,18 +31,16 @@ class ParquetSource(Source):
     @property
     def data(self):
         if self.adj_col:
-            data = ParquetManager.read(
-                self,
-                index=self.code_col,
-                columns=self.fields + [self.adj_col],
-                **{self.date_col: self._time},
+            data = self.manager.select(
+                columns=[self.code_col] + self.fields + [self.adj_col],
+                where=f"{self.date_col} = ?",
+                params=[self._time],
             )
             multipler = ["open", "high", "low", "close"]
             data[multipler] = data[multipler].mul(data[self.adj_col], axis=0)
             data = data.drop(columns=self.adj_col)
         else:
-            data = ParquetManager.read(
-                self,
+            data = self.manager.select(
                 index=self.code_col,
                 columns=self.fields,
                 **{self.date_col: self._time},
@@ -49,21 +50,19 @@ class ParquetSource(Source):
     @property
     def datas(self):
         if self.adj_col:
-            data = ParquetManager.read(
-                self,
-                index=self.code_col,
-                columns=self.fields + [self.adj_col],
-                **{f"{self.date_col}__ge": self._time},
+            data = self.manager.select(
+                columns=[self.code_col] + self.fields + [self.adj_col],
+                where=f"{self.date_col} = ?",
+                params=[self._time],
             )
             multipler = ["open", "high", "low", "close"]
             data[multipler] = data[multipler].mul(data[self.adj_col], axis=0)
             data = data.drop(columns=self.adj_col)
         else:
-            data = ParquetManager.read(
-                self,
-                index=self.code_col,
-                columns=self.fields,
-                **{f"{self.date_col}__ge": self._time},
+            data = self.manager.select(
+                columns=[self.code_col] + self.fields + [self.adj_col],
+                where=f"{self.date_col} = ?",
+                params=[self._time],
             )
         return data
 

@@ -4,12 +4,11 @@ from .strategy import Strategy
 from .source import Source
 from .friction import FixedRateCommission, FixedRateSlippage
 from .evaluator import Evaluator
-from .util import setup_logger, notify_task, proxy_request
 from .brokers import XueQiu, XueQiuBroker, XtBroker, AShareBroker
 from .sources import (
     ParquetManager,
     DuckParquet,
-    ParquetSource,
+    DuckParquetSource,
     DataFrameSource,
     RealtimeSource,
     XtDataPreloadSource,

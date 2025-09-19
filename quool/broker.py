@@ -2,8 +2,8 @@ import json
 import numpy as np
 import pandas as pd
 from uuid import uuid4
-from .source import Source
 from collections import deque
+from .source import Source
 from .order import Order, Delivery
 from .friction import FixedRateCommission, FixedRateSlippage
 

@@ -364,6 +364,25 @@ wheels = [
 ]
 
 [[package]]
+name = "parquool"
+version = "0.0.1"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
+dependencies = [
+    { name = "duckdb" },
+    { name = "joblib" },
+    { name = "markdown" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.3.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }, marker = "python_full_version >= '3.11'" },
+    { name = "pandas" },
+    { name = "requests" },
+    { name = "retry" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/06/cd/500905dd4ec8c20419fb334dd4ac3c92e32770d945567e7fef8ce75dd35b/parquool-0.0.1.tar.gz", hash = "sha256:0acea969a38e198351f92037cf8c83e200e78a88d1c3e9719a01262084e21530" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/04/27/601d49704df62ef1fd7572c49efa92ab4e57047fbc53fcdd97e5da212bc9/parquool-0.0.1-py3-none-any.whl", hash = "sha256:4b79223d0d02ec62d488b605de168f7c42c5d4910def37095a18966d531baa5d" },
+]
+
+[[package]]
 name = "py"
 version = "1.11.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
@@ -448,6 +467,7 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }, marker = "python_full_version >= '3.11'" },
     { name = "pandas" },
+    { name = "parquool" },
     { name = "pyarrow" },
     { name = "requests" },
     { name = "retry" },
@@ -462,6 +482,7 @@ requires-dist = [
     { name = "markdown", specifier = ">=3.8.2" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.0" },
+    { name = "parquool", specifier = ">=0.0.1" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "retry", specifier = ">=0.9.2" },
