@@ -228,7 +228,7 @@ class Evaluator:
             max_drawdown_start = max_drawdown_start.index[-1]
 
         # Benchmark Comparison Metrics
-        if benchmark is None:
+        if benchmark is None or benchmark.empty:
             benchmark = pd.Series(np.ones_like(net), index=net.index)
         benchmark_returns = benchmark.pct_change().fillna(0)
         excess_returns = returns - benchmark_returns
