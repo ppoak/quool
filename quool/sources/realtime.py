@@ -5,6 +5,22 @@ from parquool import proxy_request
 
 
 def is_trading_time(time: str) -> bool:
+    """Check whether a given timestamp falls within A-share trading hours.
+
+    Trading hours considered:
+      - Weekdays only (Monday to Friday).
+      - Morning session: 09:30:00–11:30:00.
+      - Afternoon session: 13:00:00–15:00:00.
+
+    Args:
+      time (str): Timestamp string parsable by pandas.to_datetime (e.g., '2025-01-01 10:15:00').
+
+    Returns:
+      bool: True if the time falls within trading hours on a weekday; False otherwise.
+
+    Raises:
+      ValueError: If the input cannot be parsed into a timestamp.
+    """
     time = pd.to_datetime(time)
     trading_hours = [
         pd.to_datetime(["09:30:00", "11:30:00"]),
@@ -20,6 +36,26 @@ def is_trading_time(time: str) -> bool:
 
 
 def read_realtime(proxies: list[dict] = None):
+    """Fetch real-time A-share market data from EastMoney API.
+
+    Performs a GET request to EastMoney's list endpoint and returns a pandas DataFrame
+    of selected fields for all symbols available in the response. If no data is returned,
+    an empty DataFrame is provided.
+
+    Args:
+      proxies (list[dict], optional): List of proxy configurations for requests. Defaults to None.
+
+    Returns:
+      pandas.DataFrame: DataFrame indexed by 'code', with columns such as:
+        - 'serial_num', 'name', 'close', 'change_pct', 'change_amt', 'volume', 'turnover',
+        - 'amplitude', 'high', 'low', 'open', 'prev_close', 'volume_ratio', 'turnover_rate',
+        - 'pe_ratio', 'pb_ratio', 'market_cap', 'float_market_cap', 'rise_speed',
+        - '5min_change', '60day_change', 'ytd_change'.
+
+    Raises:
+      requests.RequestException: If the underlying proxy_request encounters network issues.
+      ValueError: If response parsing fails or returns unexpected structure.
+    """
     url = "https://82.push2.eastmoney.com/api/qt/clist/get"
     params = {
         "pn": "1",
@@ -129,8 +165,30 @@ def read_realtime(proxies: list[dict] = None):
 
 
 class RealtimeSource(Source):
+    """Real-time market data source using EastMoney and an in-memory rolling buffer.
+
+    RealtimeSource maintains a deque of recent snapshots up to a specified limit,
+    each labeled with a timestamp. It appends new data only during trading hours
+    and provides both the latest snapshot and a concatenated historical view.
+
+    Attributes:
+      limit (int): Maximum number of snapshots to retain in memory.
+      proxies (list | dict): Proxy configuration(s) used for HTTP requests.
+      times (collections.deque[pandas.Timestamp]): Timestamps corresponding to stored snapshots.
+      datas (pandas.DataFrame): Historical concatenation of snapshots with a MultiIndex ('datetime', 'code').
+      data (pandas.DataFrame): Most recent snapshot indexed by 'code'.
+    """
 
     def __init__(self, proxies: list | dict = None, limit: int = 3000):
+        """Initialize the real-time source with proxy settings and buffer size.
+
+        Fetches an initial snapshot and sets the current time to now. Subsequent
+        updates will append new snapshots if the time is within trading hours.
+
+        Args:
+          proxies (list | dict, optional): Proxy configuration(s) for HTTP requests. Defaults to None.
+          limit (int, optional): Maximum number of snapshots to keep in memory. Defaults to 3000.
+        """
         self.limit = limit
         self.proxies = proxies
         self._datas = deque([read_realtime(self.proxies)], maxlen=self.limit)
@@ -139,23 +197,53 @@ class RealtimeSource(Source):
 
     @property
     def times(self):
+        """Return the deque of timestamps for stored snapshots.
+
+        Returns:
+          collections.deque[pandas.Timestamp]: Timestamps corresponding to each stored snapshot.
+        """
         return self._times
 
     @property
     def time(self):
+        """Return the timestamp of the most recent snapshot.
+
+        Returns:
+          pandas.Timestamp: Current timestamp representing the latest snapshot.
+        """
         return self._times[-1]
 
     @property
     def datas(self):
+        """Return the concatenated historical snapshots as a DataFrame.
+
+        The result uses a two-level MultiIndex: 'datetime' (snapshot time) and 'code' (symbol).
+
+        Returns:
+          pandas.DataFrame: Historical data concatenated over time and code.
+        """
         return pd.concat(
             self._datas, axis=0, keys=self._times, names=["datetime", "code"]
         )
 
     @property
     def data(self):
+        """Return the most recent snapshot.
+
+        Returns:
+          pandas.DataFrame: Latest DataFrame indexed by 'code' with price/volume fields.
+        """
         return self._datas[-1]
 
     def update(self):
+        """Fetch and append a new snapshot if the current time is within trading hours.
+
+        Advances the internal time to now and appends the newly fetched snapshot.
+        If the last recorded time is outside trading hours, no update is performed.
+
+        Returns:
+          pandas.DataFrame or None: The latest snapshot if appended; None if no update occurred.
+        """
         now = pd.Timestamp("now")
         if not is_trading_time(self._times[-1]):
             return None
