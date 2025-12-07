@@ -1,4 +1,4 @@
 from .dataframe import DataFrameSource
-from .parquet import DuckParquetSource
+from .duck import DuckPQSource
 from .realtime import RealtimeSource
 from .xuntou import XtDataPreloadSource

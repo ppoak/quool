@@ -7,7 +7,7 @@ from .evaluator import Evaluator
 
 from .brokers import XueQiuBroker, XtBroker, AShareBroker
 from .sources import (
-    DuckParquetSource,
+    DuckPQSource,
     DataFrameSource,
     RealtimeSource,
     XtDataPreloadSource,

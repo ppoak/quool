@@ -1,16 +1,16 @@
 from quool import Source
-from parquool import DuckParquet
+from parquool import DuckPQ
 
 
-class DuckParquetSource(Source):
+class DuckPQSource(Source):
     """Market data source powered by DuckDB parquet manager with optional price adjustment.
 
-    DuckParquetSource queries data from a DuckParquet manager within a specified date
+    DuckPQSource queries data from a DuckPQ manager within a specified date
     range and exposes data at the current time. If an adjustment column is provided,
     OHLC prices are adjusted by multiplying with the adjustment factor.
 
     Attributes:
-      manager (DuckParquet): DuckDB parquet manager used for queries.
+      manager (DuckPQ): DuckDB parquet manager used for queries.
       times (pandas.Index): Available timestamps within the [begin, end] range.
       time (pandas.Timestamp): Current timestamp.
       fields (list[str]): Requested base fields ['open', 'high', 'low', 'close', 'volume'] plus extras.
@@ -21,7 +21,7 @@ class DuckParquetSource(Source):
 
     def __init__(
         self,
-        manager: DuckParquet,
+        manager: DuckPQ,
         begin: str,
         end: str,
         extra: list = None,
@@ -29,14 +29,14 @@ class DuckParquetSource(Source):
         code_col: str = "code",
         adj_col: str = "adjfactor",
     ):
-        """Initialize the DuckParquet-backed source and set the initial time range.
+        """Initialize the DuckPQ-backed source and set the initial time range.
 
         Queries available timestamps from the manager within [begin, end] and sets the
         current time to the earliest timestamp. Base OHLCV fields can be extended with
         extras, and an adjustment factor column can be specified to adjust OHLC prices.
 
         Args:
-          manager (DuckParquet): Parquet manager that provides select queries.
+          manager (DuckPQ): Parquet manager that provides select queries.
           begin (str): Start date (inclusive), parsable by DuckDB (e.g., 'YYYY-MM-DD').
           end (str): End date (inclusive), parsable by DuckDB.
           extra (list, optional): Additional field names to include beyond OHLCV. Defaults to None.
