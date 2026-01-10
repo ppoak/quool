@@ -80,9 +80,16 @@ class DuckPQSource(Source):
                 AND {self.datetime_col} <= '{end.date()}'
         """.strip()
         ).iloc[:, 0]
-        self._datas = []
-        self._data = None
-        self._time = self._times.min() - pd.Timedelta(days=1)
+        super().__init__(
+            self._times.min() - pd.Timedelta(days=1),
+            None,
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+        )
+        self._datas = {}
         self.update()
 
     @property
@@ -147,7 +154,7 @@ class DuckPQSource(Source):
                 f"ON {a}.datetime = {key_time} AND {a}.code = {key_code}\n"
             )
 
-        select_cols: List[str] = [f"{key_time} AS datetime", f"{key_code} AS code"]
+        select_cols: List[str] = [f"{key_code} AS code"]
         for c in self._by_table[self._base_table]:
             select_cols.append(c.split(" AS ")[-1])
         i = 0
@@ -161,8 +168,7 @@ class DuckPQSource(Source):
 
         sql = "SELECT\n    " + ",\n    ".join(select_cols) + "\n" + sql_from
         df = self.source.query(sql)
-        df["datetime"] = pd.to_datetime(df["datetime"])
-        df = df.set_index(["datetime", "code"]).sort_index()
+        df = df.set_index(["code"]).sort_index()
         self._data = df
-        self._datas.append(self._data)
+        self._datas[self._time] = self._data
         return df
