@@ -1,127 +1,108 @@
+from typing import Optional, List, Dict, Tuple
+
+import pandas as pd
+
 from quool import Source
 from parquool import DuckPQ
 
 
+def parse_factor_path(path: str, sep: str = "/") -> Tuple[str, str]:
+    if not isinstance(path, str):
+        raise TypeError(f"factor path must be str, got {type(path)}: {path}")
+    s = path.strip()
+    if not s:
+        raise ValueError("empty factor path")
+    parts = s.split(sep)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise ValueError(f"invalid factor path: {path!r}, expected 'table{sep}factor'")
+    return parts[0], parts[1]
+
+
 class DuckPQSource(Source):
-    """Market data source powered by DuckDB parquet manager with optional price adjustment.
-
-    DuckPQSource queries data from a DuckPQ manager within a specified date
-    range and exposes data at the current time. If an adjustment column is provided,
-    OHLC prices are adjusted by multiplying with the adjustment factor.
-
-    Attributes:
-      manager (DuckPQ): DuckDB parquet manager used for queries.
-      times (pandas.Index): Available timestamps within the [begin, end] range.
-      time (pandas.Timestamp): Current timestamp.
-      fields (list[str]): Requested base fields ['open', 'high', 'low', 'close', 'volume'] plus extras.
-      date_col (str): Column name for date.
-      code_col (str): Column name for instrument code.
-      adj_col (str or None): Column name for adjustment factor; if provided, OHLC fields are adjusted.
-    """
 
     def __init__(
         self,
-        manager: DuckPQ,
+        source: DuckPQ,
         begin: str,
         end: str,
-        extra: list = None,
-        date_col: str = "date",
+        datetime_col: str = "date",
         code_col: str = "code",
-        adj_col: str = "adjfactor",
+        bar: Optional[Dict[str, str]] = None,
+        extra: Optional[Dict[str, str]] = None,
+        sep: str = "/",
     ):
-        """Initialize the DuckPQ-backed source and set the initial time range.
-
-        Queries available timestamps from the manager within [begin, end] and sets the
-        current time to the earliest timestamp. Base OHLCV fields can be extended with
-        extras, and an adjustment factor column can be specified to adjust OHLC prices.
-
-        Args:
-          manager (DuckPQ): Parquet manager that provides select queries.
-          begin (str): Start date (inclusive), parsable by DuckDB (e.g., 'YYYY-MM-DD').
-          end (str): End date (inclusive), parsable by DuckDB.
-          extra (list, optional): Additional field names to include beyond OHLCV. Defaults to None.
-          date_col (str, optional): Name of the date column in the underlying storage. Defaults to "date".
-          code_col (str, optional): Name of the instrument code column. Defaults to "code".
-          adj_col (str, optional): Name of the adjustment factor column used to adjust OHLC.
-            If None, no adjustment is applied. Defaults to "adjfactor".
-
-        Raises:
-          ValueError: If no timestamps are found within the specified range.
-        """
-        self.manager = manager
-        self._times = self.manager.select(
-            self,
-            columns=[date_col],
-            where=f"{date_col} >= ? and {date_col} <= ?",
-            params=[begin, end],
-        ).index.unique()
-        self._time = self._times.min()
-        self.extra = extra or []
-        self.fields = ["open", "high", "low", "close", "volume"] + self.extra
-        self.date_col = date_col
+        self.source = source
+        self.sep = sep
+        self.datetime_col = datetime_col
         self.code_col = code_col
-        self.adj_col = adj_col
+        if bar is None:
+            self.bar = {
+                "open": f"target{self.sep}open_post",
+                "high": f"target{self.sep}high_post",
+                "low": f"target{self.sep}low_post",
+                "close": f"target{self.sep}close_post",
+                "volume": f"target{self.sep}volume",
+            }
+        else:
+            self.bar = bar
+        if extra is None:
+            self.extra = {}
+        else:
+            self.extra = extra
+
+        # Parse data paths and group requested columns by table.
+        self._by_table: Dict[str, List[str]] = {}
+        for k, p in self.bar.items():
+            t, c = parse_factor_path(p, sep=self.sep)
+            self._by_table.setdefault(t, [])
+            if c not in self._by_table[t]:
+                self._by_table[t].append(f"{c} AS {k}")
+            if len(self._by_table) > 1:
+                raise ValueError("Bar data should be in same table!")
+        self._base_table = list(self._by_table.keys())[0]
+        for k, p in self.extra.items():
+            t, c = parse_factor_path(p, sep=self.sep)
+            self._by_table.setdefault(t, [])
+            if c not in self._by_table[t]:
+                self._by_table[t].append(f"{c} AS {k}")
+
+        tables = list(self._by_table.keys())
+        for table in tables:
+            self.source.register(table)
+
+        begin = pd.to_datetime(begin)
+        end = pd.to_datetime(end)
+        self._times = self.source.query(
+            f"""
+            SELECT DISTINCT {self.datetime_col} AS datetime
+            FROM {self._base_table} 
+            WHERE {self.datetime_col} >= '{begin.date()}'
+                AND {self.datetime_col} <= '{end.date()}'
+        """.strip()
+        ).iloc[:, 0]
+        self._datas = []
+        self._data = None
+        self._time = self._times.min() - pd.Timedelta(days=1)
+        self.update()
 
     @property
     def data(self):
-        """Return the data at the current time, optionally adjusted by the adjfactor.
-
-        If adj_col is set, OHLC fields ['open', 'high', 'low', 'close'] are multiplied
-        by the adjustment factor before returning. The adjustment column is dropped
-        from the returned DataFrame.
+        """Return the current market snapshot.
 
         Returns:
-          pandas.DataFrame: Rows for the current time, indexed by code_col, containing
-          requested fields (OHLCV plus extras), with OHLC adjusted if adj_col is provided.
-
-        Raises:
-          KeyError: If expected columns (e.g., adjfactor or OHLC fields) are missing.
+          pandas.DataFrame or None: The current data frame of market prices and
+          volume. May be None if no snapshot is available.
         """
-        if self.adj_col:
-            data = self.manager.select(
-                columns=[self.code_col] + self.fields + [self.adj_col],
-                where=f"{self.date_col} = ?",
-                params=[self._time],
-            )
-            multipler = ["open", "high", "low", "close"]
-            data[multipler] = data[multipler].mul(data[self.adj_col], axis=0)
-            data = data.drop(columns=self.adj_col)
-        else:
-            data = self.manager.select(
-                index=self.code_col,
-                columns=self.fields,
-                **{self.date_col: self._time},
-            )
-        return data
+        return self._data
 
     @property
     def datas(self):
         """Return the data at the current time with the requested fields.
 
-        Note:
-          This property returns the same-time snapshot (not cumulative history). If adj_col
-          is provided, it returns the adjusted OHLCV similarly to data; otherwise returns
-          raw fields for the current time.
-
         Returns:
           pandas.DataFrame: Data snapshot at the current time with requested fields.
         """
-        if self.adj_col:
-            data = self.manager.select(
-                columns=[self.code_col] + self.fields + [self.adj_col],
-                where=f"{self.date_col} = ?",
-                params=[self._time],
-            )
-            multipler = ["open", "high", "low", "close"]
-            data[multipler] = data[multipler].mul(data[self.adj_col], axis=0)
-            data = data.drop(columns=self.adj_col)
-        else:
-            data = self.manager.select(
-                columns=[self.code_col] + self.fields + [self.adj_col],
-                where=f"{self.date_col} = ?",
-                params=[self._time],
-            )
-        return data
+        return pd.concat(self._datas, axis=0)
 
     def update(self):
         """Advance to the next available timestamp and return the data snapshot.
@@ -132,8 +113,56 @@ class DuckPQSource(Source):
           pandas.DataFrame or None: Data at the new current time. Returns None if there
           are no future timestamps to advance to.
         """
-        future = self._timepoint[self._timepoint > self.time]
+        future = self._times[self._times > self.time]
         if future.empty:
             return None
         self._time = future.min()
-        return self.data
+
+        # Build a single SQL statement joining per-table subqueries.
+        def subquery(table: str) -> str:
+            cols = ", ".join(self._by_table[table])
+            return f"""
+                SELECT
+                    CAST({self.datetime_col} AS TIMESTAMP) AS datetime,
+                    {self.code_col} AS code,
+                    {cols}
+                FROM {table}
+                WHERE datetime >= '{self._time.date()}' AND datetime <= '{self._time.date()}'
+            """.strip()
+
+        tables = list(self._by_table.keys())
+        base_alias = "b"
+        sql_from = f"FROM ({subquery(self._base_table)}) AS {base_alias}\n"
+        key_time = f"{base_alias}.datetime"
+        key_code = f"{base_alias}.code"
+
+        i = 0
+        for t in tables:
+            if t == self._base_table:
+                continue
+            i += 1
+            a = f"t{i}"
+            sql_from += (
+                f"LEFT JOIN ({subquery(t)}) AS {a}\n"
+                f"ON {a}.{self.datetime_col} = {key_time} AND {a}.{self.code_col} = {key_code}\n"
+            )
+
+        select_cols: List[str] = [f"{key_time} AS datetime", f"{key_code} AS code"]
+        for c in self._by_table[self._base_table]:
+            select_cols.append(c.split(" AS ")[-1])
+        i = 0
+        for t in tables:
+            if t == self._base_table:
+                continue
+            i += 1
+            a = f"t{i}"
+            for c in self._by_table[t]:
+                select_cols.append(c.split(" AS ")[-1])
+
+        sql = "SELECT\n    " + ",\n    ".join(select_cols) + "\n" + sql_from
+        df = self.source.query(sql)
+        df["datetime"] = pd.to_datetime(df["datetime"])
+        df = df.set_index(["datetime", "code"]).sort_index()
+        self._data = df
+        self._datas.append(self._data)
+        return df

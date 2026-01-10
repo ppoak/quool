@@ -841,7 +841,7 @@ wheels = [
 
 [[package]]
 name = "parquool"
-version = "0.0.8"
+version = "0.0.10"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
 dependencies = [
     { name = "dotenv" },
@@ -855,9 +855,9 @@ dependencies = [
     { name = "requests" },
     { name = "retry" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/da/b2/05f4ab94b4619539839c3a9326877a03fc1045a7d867fbffd169447a2dfa/parquool-0.0.8.tar.gz", hash = "sha256:a6ca8fd8eeaec3db7bc7d41fe024d21323f227b96a69547278e878de5b155387" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/1a/b4/5d59b0fff1f5b66140d9d0c83cdcb27f1d55430213c5c7a88954511c8fa9/parquool-0.0.10.tar.gz", hash = "sha256:61a90eda64bf4320537f0cc8d639bdd65c42279bf17454ecf8423c59f0d90135" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/bf/4e/1f139ee70905b1ad1553fabb0e927b7bf4f4cc71adff3ca9b3261d8fafc5/parquool-0.0.8-py3-none-any.whl", hash = "sha256:d418c5217d0c27a3299ae21bff321abc21537f5c34dddeec047b0cc18be06cb7" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/9a/0d/496d11e0dd7b51e16a66d6b5034480976757ba8635c3b43b96720911cbee/parquool-0.0.10-py3-none-any.whl", hash = "sha256:f71852fbe06ca7502cd184d247de3bfc14f2c09c038174d4772c7dbcd171f732" },
 ]
 
 [[package]]
@@ -1170,7 +1170,7 @@ requires-dist = [
     { name = "markdown", specifier = ">=3.8.2" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.0" },
-    { name = "parquool", specifier = ">=0.0.8" },
+    { name = "parquool", specifier = ">=0.0.10" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "retry", specifier = ">=0.9.2" },
