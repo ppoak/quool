@@ -31,4 +31,4 @@ dependencies = [
 Homepage = "https://github.com/ppoak/quool"
 
 [tool.setuptools.packages.find]
-include = ["quool"]
+include = ["quool", "quool.*"]

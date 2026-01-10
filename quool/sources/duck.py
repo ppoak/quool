@@ -144,7 +144,7 @@ class DuckPQSource(Source):
             a = f"t{i}"
             sql_from += (
                 f"LEFT JOIN ({subquery(t)}) AS {a}\n"
-                f"ON {a}.{self.datetime_col} = {key_time} AND {a}.{self.code_col} = {key_code}\n"
+                f"ON {a}.datetime = {key_time} AND {a}.code = {key_code}\n"
             )
 
         select_cols: List[str] = [f"{key_time} AS datetime", f"{key_code} AS code"]
