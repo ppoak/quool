@@ -50,7 +50,8 @@ class AShareBroker(Broker):
           ValueError: If the base broker has no current time set or if its creation
             validation fails.
         """
-        quantity = int(quantity // 100 * 100)
+        if type == self.order_type.BUY:
+            quantity = int(quantity // 100 * 100)
         if quantity > 0:
             return super().create(
                 type=type,

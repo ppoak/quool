@@ -411,7 +411,7 @@ class Evaluator:
         # Benchmark Comparison Metrics
         if benchmark is None or benchmark.empty:
             benchmark = pd.Series(np.ones_like(net), index=net.index)
-        benchmark_returns = benchmark.pct_change().fillna(0)
+        benchmark_returns = benchmark.pct_change(fill_method=None).fillna(0)
         excess_returns = returns - benchmark_returns
         excess_value = (1 + excess_returns).cumprod()
 
@@ -508,7 +508,7 @@ class Evaluator:
             returns.gt(0 if benchmark is None else benchmark_returns)
         ].count()
         evaluation["day_return_win_rate"] = positive_returns / returns.count()
-        monthly_returns = net.resample("ME").last().pct_change().fillna(0)
+        monthly_returns = net.resample("ME").last().pct_change(fill_method=None).fillna(0)
         evaluation["monthly_return_std"] = monthly_returns.std()
         evaluation["monthly_win_rate"] = (monthly_returns > 0).sum() / len(
             monthly_returns
