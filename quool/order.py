@@ -170,6 +170,8 @@ class Order:
         - LIMIT
         - STOP
         - STOPLIMIT
+        - TARGET
+        - TARGETLIMIT
 
     Order side constants:
         - BUY
@@ -207,6 +209,8 @@ class Order:
     LIMIT = "LIMIT"
     STOP = "STOP"
     STOPLIMIT = "STOPLIMIT"
+    TARGET = "TARGET"
+    TARGETLIMIT = "TARGETLIMIT"
 
     BUY = "BUY"
     SELL = "SELL"
@@ -363,6 +367,8 @@ class Order:
             "type": self.type,
             "quantity": self.quantity,
             "exectype": self.exectype,
+            "price_slip": self.price_slip,
+            "price_eff": self.price_eff,
             "limit": self.limit,
             "trigger": self.trigger,
             "valid": self.valid.isoformat() if self.valid else None,

@@ -408,13 +408,33 @@ class Broker:
                     # order triggered
                     order.trigger = None
                 return
+            elif order.exectype == order.TARGET or order.exectype == order.TARGETLIMIT:
+                pricetype = source.low if order.type == order.BUY else source.high
+                if (
+                    order.type == order.BUY
+                    and data.loc[order.code, pricetype] <= order.trigger
+                ) or (
+                    order.type == order.SELL
+                    and data.loc[order.code, pricetype] >= order.trigger
+                ):
+                    # order triggered
+                    order.trigger = None
+                return
             else:
                 raise ValueError("Invalid order type for trigger.")
 
         # if the order type is market or stop order, match condition satisfies
-        market_match = order.exectype == order.MARKET or order.exectype == order.STOP
+        market_match = (
+            order.exectype == order.MARKET
+            or order.exectype == order.STOP
+            or order.exectype == order.TARGET
+        )
         # if the order type is limit or stop limit order, check if the price conditions are met
-        limit_order = order.exectype == order.LIMIT or order.exectype == order.STOPLIMIT
+        limit_order = (
+            order.exectype == order.LIMIT
+            or order.exectype == order.STOPLIMIT
+            or order.exectype == order.TARGETLIMIT
+        )
         limit_match = limit_order and (
             (
                 order.type == order.BUY

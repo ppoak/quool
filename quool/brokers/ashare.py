@@ -52,14 +52,13 @@ class AShareBroker(Broker):
         """
         if type == self.order_type.BUY:
             quantity = int(quantity // 100 * 100)
-        if quantity > 0:
-            return super().create(
-                type=type,
-                code=code,
-                quantity=quantity,
-                exectype=exectype,
-                limit=limit,
-                trigger=trigger,
-                id=id,
-                valid=valid,
-            )
+        return super().create(
+            type=type,
+            code=code,
+            quantity=quantity,
+            exectype=exectype,
+            limit=limit,
+            trigger=trigger,
+            id=id,
+            valid=valid,
+        )

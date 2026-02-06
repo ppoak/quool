@@ -137,7 +137,11 @@ class FixedRateSlippage:
         if quantity == 0:
             return 0, 0
         if order.type == order.BUY:
-            if order.exectype == order.MARKET:
+            if (
+                order.exectype == order.MARKET
+                or order.exectype == order.STOP
+                or order.exectype == order.TARGET
+            ):
                 return (
                     min(
                         kline["high"],
@@ -145,10 +149,18 @@ class FixedRateSlippage:
                     ),
                     quantity,
                 )
-            elif order.exectype == order.LIMIT:
-                return min(order.price, kline["high"]), quantity
+            elif (
+                order.exectype == order.LIMIT
+                or order.exectype == order.STOPLIMIT
+                or order.exectype == order.TARGETLIMIT
+            ):
+                return min(order.limit, kline["high"]), quantity
         else:
-            if order.exectype == order.MARKET:
+            if (
+                order.exectype == order.MARKET
+                or order.exectype == order.STOP
+                or order.exectype == order.TARGET
+            ):
                 return (
                     max(
                         kline["low"],
@@ -160,8 +172,12 @@ class FixedRateSlippage:
                     ),
                     quantity,
                 )
-            elif order.exectype == order.LIMIT:
-                return max(order.price, kline["low"]), quantity
+            elif (
+                order.exectype == order.LIMIT
+                or order.exectype == order.STOPLIMIT
+                or order.exectype == order.TARGETLIMIT
+            ):
+                return max(order.limit, kline["low"]), quantity
 
     def __str__(self):
         return f"{self.__class__.__name__}(slip_one_cent_rate={self.slip_rate})"
