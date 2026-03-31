@@ -587,7 +587,7 @@ class XueQiuBroker(XueQiu, Broker):
                     type=order.type,
                     quantity=quantity,
                     price=price,
-                    amount=cost,
+                    comm=commission,
                 )
                 result = self._execute_transaction(
                     symbol=order.code,
@@ -619,7 +619,7 @@ class XueQiuBroker(XueQiu, Broker):
                     type=order.type,
                     quantity=quantity,
                     price=price,
-                    amount=revenue,
+                    comm=commission,
                 )
                 result = self._execute_transaction(
                     symbol=order.code,

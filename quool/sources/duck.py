@@ -19,6 +19,23 @@ def parse_factor_path(path: str, sep: str = "/") -> Tuple[str, str]:
 
 
 class DuckPQSource(Source):
+    """Market data source backed by DuckDB/Parquet storage via parquool.
+
+    DuckPQSource queries a DuckPQ store for OHLCV bars and optional extra fields
+    within a specified date range. It advances time through available timestamps
+    and returns per-timestamp snapshots suitable for broker-driven backtesting.
+
+    Attributes:
+      source (DuckPQ): parquool handle to the DuckDB/Parquet store.
+      sep (str): Path separator used in factor paths.
+      datetime_col (str): Column name for the datetime field in the database.
+      code_col (str): Column name for the instrument code field in the database.
+      bar (dict[str, str]): Mapping from OHLCV field name to factor path.
+      extra (dict[str, str]): Mapping from extra field name to factor path.
+      times (pandas.Index): Available timestamps within the configured date range.
+      datas (dict): Historical data accumulated over time (populated on update).
+      data (pandas.DataFrame or None): Current snapshot at the current time.
+    """
 
     def __init__(
         self,
@@ -31,6 +48,31 @@ class DuckPQSource(Source):
         extra: Optional[Dict[str, str]] = None,
         sep: str = "/",
     ):
+        """Initialize a DuckPQ-backed source and preload available timestamps.
+
+        Registers required tables with the DuckPQ store, queries distinct timestamps
+        in the [begin, end] window, sets the initial current time to one day before
+        begin, and performs an initial update to populate the data snapshot.
+
+        Args:
+          source (DuckPQ): parquool DuckPQ instance connected to the data store.
+          begin (str): Start date/time for the data window (pandas-parsable).
+          end (str): End date/time for the data window (pandas-parsable).
+          datetime_col (str, optional): Name of the datetime column in the DB.
+            Defaults to "date".
+          code_col (str, optional): Name of the instrument code column in the DB.
+            Defaults to "code".
+          bar (dict[str, str], optional): Mapping of OHLCV field names to factor paths
+            in the form "table/column". Defaults to target/open_post, target/high_post,
+            target/low_post, target/close_post, target/volume.
+          extra (dict[str, str], optional): Additional fields to fetch, mapping name
+            to factor path. Defaults to {}.
+          sep (str, optional): Separator used in factor paths. Defaults to "/".
+
+        Raises:
+          ValueError: If bar data spans multiple tables (all bar fields must be in one table).
+          Exception: Any errors raised by the DuckPQ store during registration or querying.
+        """
         self.source = source
         self.sep = sep
         self.datetime_col = datetime_col
@@ -114,11 +156,12 @@ class DuckPQSource(Source):
     def update(self):
         """Advance to the next available timestamp and return the data snapshot.
 
-        Moves the current time forward to the next timestamp in the available series.
+        Moves the current time forward to the next timestamp in the available series,
+        queries the DuckDB store for all instruments at that date, and stores the result.
 
         Returns:
-          pandas.DataFrame or None: Data at the new current time. Returns None if there
-          are no future timestamps to advance to.
+          pandas.DataFrame or None: Data at the new current time indexed by code.
+            Returns None if there are no future timestamps to advance to.
         """
         future = self._times[self._times > self.time]
         if future.empty:

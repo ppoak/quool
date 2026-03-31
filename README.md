@@ -1,69 +1,138 @@
 # Quool
 
-Quool is a Python framework designed specifically for quantitative investment research. It aims to provide a flexible and efficient set of tools to help researchers and developers quickly implement data management, factor analysis, trading recording, and strategy evaluation functionalities. With Quool, users can focus on strategy and factor research without spending excessive time on data management and infrastructure setup.
+**Quantitative Toolkit** — an event-driven backtesting and live trading framework for quantitative strategies.
 
-## Features
-
-- **Data Management**: Offers a unified interface for managing and accessing financial market data, supporting both intraday and daily data processing.
-- **Factor Research**: Simplifies the process of factor development and testing, supporting factor definition, storage, analysis, and performance evaluation.
-- **Trading Recording**: Provides flexible Recorder classes for recording and managing trade data and model execution data.
-- **Strategy Evaluation**: Integrates strategy evaluation tools, supporting calculations of various performance metrics and result visualization.
+Quool provides a modular architecture built around three pillars: `Source` (market data), `Broker` (execution & accounting), and `Strategy` (logic). It supports both backtesting with historical data and paper/live trading with broker integrations.
 
 ## Installation
 
-Currently, the Quool framework is not available on PyPI. You can install it from the source code as follows:
-
 ```bash
-git clone https://github.com/your-username/quool.git
-cd quool
-pip install .
+pip install quool
 ```
+
+Requires Python >= 3.10.
 
 ## Quick Start
 
-Here are the basic steps to conduct factor research and strategy evaluation using Quool:
-
-### Define a Factor
-
-First, inherit the `BaseFactor` class to define your own factor. For example, define a factor that calculates the Volume Weighted Average Price (VWAP):
-
 ```python
-from quool import BaseFactor
+import pandas as pd
+from quool import DataFrameSource, Broker, Strategy
+from quool import FixedRateCommission, FixedRateSlippage
 
-class VWAPFactor(BaseFactor):
-    def get_vwap(self, date: pd.Timestamp):
-        # Implement the calculation logic for VWAP
+# 1. Market data source (MultiIndex DataFrame: time x code)
+source = DataFrameSource(market_data)
+
+# 2. Broker with commission and slippage models
+broker = Broker(
+    commission=FixedRateCommission(),
+    slippage=FixedRateSlippage(),
+)
+broker.transfer(pd.Timestamp("2024-01-01"), 1_000_000)  # initial cash
+
+# 3. Implement strategy
+class MyStrategy(Strategy):
+    def init(self):       # called once before backtest
         pass
+
+    def update(self):     # called every timestamp
+        # self.buy("000001", 100)   # buy 100 shares at market
+        # self.order_target_percent("000001", 0.1)  # target 10% portfolio
+        pass
+
+# 4. Run backtest
+strategy = MyStrategy(source, broker)
+results = strategy.backtest()
 ```
 
-### Calculate Factor Values
+## Architecture
 
-Instantiate your factor class and use the `get` method to calculate factor values for a specific date range:
-
-```python
-vwap_factor = VWAPFactor(uri="./path/to/factor/data")
-vwap_values = vwap_factor.get("vwap", start="2021-01-01", stop="2021-12-31")
+```
+┌─────────────────────────────────────────────────────────┐
+│                      Strategy                            │
+│  init() → preupdate() → update() → stop()               │
+└──────────────┬─────────────────────────┬────────────────┘
+               │                         │
+        ┌──────▼──────┐            ┌──────▼──────┐
+        │   Source    │            │   Broker    │
+        │ (market    │            │ (execution  │
+        │   data)    │            │  & accounting)
+        └────────────┘            └──────┬──────┘
+                                          │
+                                   ┌──────▼──────┐
+                                   │   Order /   │
+                                   │  Delivery   │
+                                   └─────────────┘
 ```
 
-### Evaluate Strategies
+### Core Concepts
 
-Use the `TradeRecorder` or other recorder classes to record your trading activities and use the `evaluate` method to assess strategy performance:
+#### Source
 
-```python
-from quool import TradeRecorder
+`Source` is the abstract market data provider. Subclasses implement `update()` to advance time and return OHLCV snapshots.
 
-# Record trading activities
-trade_recorder = TradeRecorder(uri="./path/to/trade/data")
-trade_recorder.record(date="2021-01-01", ...)
+| Class | Description |
+|-------|-------------|
+| `DataFrameSource` | Historical data from a pandas DataFrame (MultiIndex: time × code) |
+| `DuckPQSource` | DuckDB/Parquet queries via parquool |
+| `RealtimeSource` | Real-time EastMoney API with a rolling buffer |
+| `XtDataPreloadSource` | XtQuant historical data preloaded into a DataFrame |
 
-# Evaluate strategy performance
-performance = trade_recorder.evaluate(...)
-```
+#### Broker
 
-## Contributing
+`Broker` manages order execution, portfolio accounting (cash & positions), and order matching for backtesting. For live trading, broker subclasses integrate with external systems.
 
-Contributions in the form of issue reports and pull requests are welcome on GitHub.
+| Class | Description |
+|-------|-------------|
+| `Broker` | Core simulated broker with pluggable commission/slippage models |
+| `AShareBroker` | Enforces A-share 100-share lot-size rules |
+| `XueQiuBroker` | XueQiu paper trading integration |
+| `XtBroker` | XtQuant live trading gateway |
+
+#### Order & Delivery
+
+- `Order` tracks the full lifecycle: CREATED → SUBMITTED → PARTIAL → FILLED/CANCELED/EXPIRED/REJECTED
+- `Delivery` records individual fills (execution details: price, quantity, commission)
+- Execution types: MARKET, LIMIT, STOP, STOPLIMIT, TARGET, TARGETLIMIT
+
+#### Strategy
+
+Base class for trading strategies. Provides:
+- Lifecycle hooks: `init()`, `preupdate()`, `update()`, `stop()`
+- Execution helpers: `buy()`, `sell()`, `close()`, `order_target_value()`, `order_target_percent()`
+- Backtesting: `backtest()` — blocking loop; `run()` / `arun()` — real-time scheduling
+- Persistence: `dump()`, `load()`, `store()`, `restore()`
+
+#### Evaluator
+
+Computes comprehensive performance metrics from broker deliveries:
+
+- **Return**: total_return, annual_return, annual_volatility
+- **Risk-adjusted**: sharpe_ratio, calmar_ratio, sortino_ratio
+- **Drawdown**: max_drawdown, max_drawdown_period
+- **Risk**: VaR_5%, CVaR_5%
+- **Benchmark**: beta, alpha, excess_return, information_ratio
+- **Trading**: position_duration, trade_win_rate, trade_return
+- **Distribution**: skewness, kurtosis, day_return_win_rate, monthly_win_rate
+
+#### Friction Models
+
+| Class | Description |
+|-------|-------------|
+| `FixedRateCommission` | Flat-rate commission with minimum fee and stamp duty |
+| `FixedRateSlippage` | Slippage model adjusting execution price based on volume |
+
+## API Reference
+
+For detailed API documentation, see:
+
+- [doc/README.md](doc/README.md) — Full module index and detailed documentation
+- [doc/Order.md](doc/Order.md) — Order and Delivery models
+- [doc/Broker.md](doc/Broker.md) — Broker and execution
+- [doc/Strategy.md](doc/Strategy.md) — Strategy lifecycle and helpers
+- [doc/Source.md](doc/Source.md) — Data source implementations
+- [doc/Evaluator.md](doc/Evaluator.md) — Performance evaluation
+- [doc/Friction.md](doc/Friction.md) — Transaction cost models
 
 ## License
 
-Quool is released under the MIT license.
+MIT

@@ -538,7 +538,7 @@ class Broker:
         Raises:
           KeyError: If the order is not found.
         """
-        return self._orders.get[id]
+        return self._order_dict[id]
 
     def get_delivery(self, parse_dates: bool = True) -> pd.DataFrame:
         """Return deliveries as a DataFrame.
@@ -709,7 +709,7 @@ class Broker:
         # Restore pending orders
         for order_data in data["pendings"]:
             order = Order.load(order_data)
-            broker._pendings.put(order)
+            broker._pendings.append(order)
 
         # Restore orders
         for order_data in data.get("orders", []):
