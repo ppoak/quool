@@ -9,7 +9,7 @@
 - **包管理**：uv
 - **主要依赖**：numpy, pandas, pyarrow, duckdb, apscheduler, requests, joblib
 
-## 安装及运行
+## 环境
 
 ```bash
 uv sync
