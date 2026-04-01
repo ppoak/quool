@@ -10,7 +10,7 @@
 |----------|-------------|
 | [Order.md](Order.md) | `Order`, `Delivery` — order lifecycle and execution records |
 | [Broker.md](Broker.md) | `Broker`, `AShareBroker`, `XueQiuBroker`, `XtBroker` |
-| [Strategy.md](Strategy.md) | `Strategy`, `Scheduler` — strategy lifecycle and orchestration |
+| [Strategy.md](Strategy.md) | `Strategy` — strategy lifecycle and helpers |
 | [Source.md](Source.md) | `Source`, `DataFrameSource`, `DuckPQSource`, `RealtimeSource`, `XtDataPreloadSource` |
 | [Evaluator.md](Evaluator.md) | `Evaluator` — performance metrics computation |
 | [Friction.md](Friction.md) | `FixedRateCommission`, `FixedRateSlippage` |
@@ -31,7 +31,6 @@
 | `source.py` | `Source` |
 | `evaluator.py` | `Evaluator` |
 | `friction.py` | `FixedRateCommission`, `FixedRateSlippage` |
-| `scheduler.py` | `Scheduler` |
 | `storage.py` | `DuckTable`, `DuckPQ` — Parquet storage with DuckDB |
 | `util.py` | `setup_logger`, `notify_task`, `proxy_request`, etc. |
 

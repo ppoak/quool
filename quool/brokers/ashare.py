@@ -44,7 +44,8 @@ class AShareBroker(Broker):
           valid (str, optional): Good-till timestamp as a pandas-parsable string. Defaults to None.
 
         Returns:
-          Order or None: The created order if the adjusted quantity > 0; otherwise None.
+          Order: The result of base Broker.create(), including cases where the
+            adjusted quantity is zero (order will be submitted with quantity 0).
 
         Raises:
           ValueError: If the base broker has no current time set or if its creation

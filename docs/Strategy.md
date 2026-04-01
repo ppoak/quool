@@ -1,4 +1,4 @@
-# Strategy & Scheduler
+# Strategy
 
 ## `Strategy`
 
@@ -233,50 +233,3 @@ strategy.notify(order: Order)
 ```
 
 Override to handle filled orders, rejections, or cancellations.
-
----
-
-## `Scheduler`
-
-**File:** `quool/scheduler.py`
-
-Multi-strategy orchestrator coordinating backtest across multiple strategies.
-
-```python
-from quool import Scheduler
-```
-
-### `Scheduler.__init__`
-
-```python
-Scheduler(
-    *strategies,                    # Variable number of Strategy instances
-    logger: logging.Logger = None,   # Logger (default: DEBUG-level)
-)
-```
-
-Each strategy is assigned as an attribute named by lowercasing the class name.
-
-**Before running:** Set `scheduler.source` and `scheduler.broker` to the shared instances.
-
-### `Scheduler.backtest`
-
-```python
-scheduler.backtest(
-    benchmark: pd.Series,
-    history: bool = False,
-    **kwargs,
-) -> Any
-```
-
-Workflow: `init()` → loop `_run()` + `preupdate()` → `stop()` → return evaluation.
-
-### Logging
-
-#### `Scheduler.log`
-
-```python
-scheduler.log(message: str, level: str = "DEBUG")
-```
-
-Prefixes log message with current source timestamp.

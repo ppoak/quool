@@ -244,8 +244,11 @@ class Evaluator:
                 )
             )
 
-        trades = pd.concat(trades).dropna(subset="open_at")
-        trades["return"] = trades["close_amount"] / trades["open_amount"] - 1
+        if not trades:
+            trades = pd.DataFrame(columns=["open_at", "close_at", "open_amount", "close_amount", "duration", "return"])
+        else:
+            trades = pd.concat(trades).dropna(subset="open_at")
+            trades["return"] = trades["close_amount"] / trades["open_amount"] - 1
         return {
             "values": pd.concat(
                 [net, total, market, cash, turnover],

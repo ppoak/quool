@@ -1,7 +1,6 @@
 from .order import Delivery, Order
 from .broker import Broker
 from .strategy import Strategy
-from .scheduler import Scheduler
 from .source import Source
 from .friction import FixedRateCommission, FixedRateSlippage
 from .evaluator import Evaluator
