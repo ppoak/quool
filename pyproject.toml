@@ -11,7 +11,16 @@ authors = [
     { name = "ppoak", email = "ppoak@foxmail.com" }
 ]
 keywords = ["quant", "framework", "finance"]
-classifiers = ["quant", "framework", "finance"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=2.0",
