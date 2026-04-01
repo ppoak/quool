@@ -33,7 +33,9 @@ class DuckPQSource(Source):
       bar (dict[str, str]): Mapping from OHLCV field name to factor path.
       extra (dict[str, str]): Mapping from extra field name to factor path.
       times (pandas.Index): Available timestamps within the configured date range.
-      datas (dict): Historical data accumulated over time (populated on update).
+      limit (int or None): Maximum number of historical time snapshots visible in
+        `datas`. None or -1 means unlimited. When set, `datas` only queries the
+        most recent `limit` timestamps, bounding memory usage.
       data (pandas.DataFrame or None): Current snapshot at the current time.
     """
 
@@ -47,6 +49,7 @@ class DuckPQSource(Source):
         bar: Optional[Dict[str, str]] = None,
         extra: Optional[Dict[str, str]] = None,
         sep: str = "/",
+        limit: Optional[int] = None,
     ):
         """Initialize a DuckPQ-backed source and preload available timestamps.
 
@@ -68,6 +71,8 @@ class DuckPQSource(Source):
           extra (dict[str, str], optional): Additional fields to fetch, mapping name
             to factor path. Defaults to {}.
           sep (str, optional): Separator used in factor paths. Defaults to "/".
+          limit (int, optional): Maximum number of historical time snapshots visible in
+            `datas`. Defaults to None (unlimited). -1 also means unlimited.
 
         Raises:
           ValueError: If bar data spans multiple tables (all bar fields must be in one table).
@@ -131,7 +136,7 @@ class DuckPQSource(Source):
             "close",
             "volume",
         )
-        self._datas = {}
+        self.limit = limit if limit != -1 else None
         self.update()
 
     @property
@@ -146,12 +151,68 @@ class DuckPQSource(Source):
 
     @property
     def datas(self):
-        """Return the data at the current time with the requested fields.
+        """Return historical data up to the current time.
+
+        Queries DuckPQ directly for a bounded time window, avoiding in-memory
+        accumulation of snapshots. When ``limit`` is set, only the most recent
+        ``limit`` timestamps are included; -1 or None means unlimited.
 
         Returns:
-          pandas.DataFrame: Data snapshot at the current time with requested fields.
+          pandas.DataFrame: Data indexed by (datetime, code).
         """
-        return pd.concat(self._datas, axis=0)
+        # Determine the query window based on limit
+        visible = self._times[self._times <= self.time]
+        if self.limit is not None:
+            visible = visible[-self.limit:]
+
+        if visible.empty:
+            start = end = self.time
+        else:
+            start, end = visible.min(), visible.max()
+
+        # Build per-table subqueries for the bounded time window [start, end]
+        def subquery(table: str, st: pd.Timestamp, ed: pd.Timestamp) -> str:
+            cols = ", ".join(self._by_table[table])
+            return f"""
+                SELECT
+                    CAST({self.datetime_col} AS TIMESTAMP) AS datetime,
+                    {self.code_col} AS code,
+                    {cols}
+                FROM {table}
+                WHERE datetime >= '{st.date()}' AND datetime <= '{ed.date()}'
+            """.strip()
+
+        tables = list(self._by_table.keys())
+        base_alias = "b"
+        sql_from = f"FROM ({subquery(self._base_table, start, end)}) AS {base_alias}\n"
+        key_time = f"{base_alias}.datetime"
+        key_code = f"{base_alias}.code"
+
+        i = 0
+        for t in tables:
+            if t == self._base_table:
+                continue
+            i += 1
+            a = f"t{i}"
+            sql_from += (
+                f"LEFT JOIN ({subquery(t, start, end)}) AS {a}\n"
+                f"ON {a}.datetime = {key_time} AND {a}.code = {key_code}\n"
+            )
+
+        select_cols: List[str] = [f"{key_time} AS datetime", f"{key_code} AS code"]
+        for c in self._by_table[self._base_table]:
+            select_cols.append(c.split(" AS ")[-1])
+        i = 0
+        for t in tables:
+            if t == self._base_table:
+                continue
+            i += 1
+            a = f"t{i}"
+            for c in self._by_table[t]:
+                select_cols.append(c.split(" AS ")[-1])
+
+        sql = "SELECT\n    " + ",\n    ".join(select_cols) + "\n" + sql_from
+        return self.source.query(sql).set_index(["datetime", "code"]).sort_index()
 
     def update(self):
         """Advance to the next available timestamp and return the data snapshot.
@@ -213,5 +274,4 @@ class DuckPQSource(Source):
         df = self.source.query(sql)
         df = df.set_index(["code"]).sort_index()
         self._data = df
-        self._datas[self._time] = self._data
         return df
