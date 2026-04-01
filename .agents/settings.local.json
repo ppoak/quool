@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(D:/Desktop/coilysis/.venv/Scripts/python:*)",
+      "Bash(D:/Desktop/coilysis/.venv/scripts/python:*)",
+      "Bash(D:/Desktop/coilysis/.venv/Scripts/python:*)",
+      "Bash(D:/Desktop/coilysis/.venv/scripts/python:*)",
+      "Bash(D:/Desktop/coilysis/.venv/Scripts/python -c:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(.venv/scripts/python:*)",
+      "Bash(.venv/Scripts/python -c \":*)",
+      "Bash(.venv/scripts/python -c \":*)"
+    ]
+  },
+  "enabledPlugins": {
+    "document-skills@anthropic-agent-skills": true
+  }
+}
