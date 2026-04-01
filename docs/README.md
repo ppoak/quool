@@ -14,6 +14,8 @@
 | [Source.md](Source.md) | `Source`, `DataFrameSource`, `DuckPQSource`, `RealtimeSource`, `XtDataPreloadSource` |
 | [Evaluator.md](Evaluator.md) | `Evaluator` — performance metrics computation |
 | [Friction.md](Friction.md) | `FixedRateCommission`, `FixedRateSlippage` |
+| [Storage.md](Storage.md) | `DuckTable`, `DuckPQ` — DuckDB-backed Parquet storage |
+| [Util.md](Util.md) | `setup_logger`, `notify_task`, `proxy_request`, `google_search`, `read_url` |
 
 ---
 
@@ -30,6 +32,8 @@
 | `evaluator.py` | `Evaluator` |
 | `friction.py` | `FixedRateCommission`, `FixedRateSlippage` |
 | `scheduler.py` | `Scheduler` |
+| `storage.py` | `DuckTable`, `DuckPQ` — Parquet storage with DuckDB |
+| `util.py` | `setup_logger`, `notify_task`, `proxy_request`, etc. |
 
 ### Brokers (`quool/brokers/`)
 
@@ -122,6 +126,22 @@ class MyStrategy(Strategy):
 results = MyStrategy(source, broker).backtest(benchmark=benchmark)
 ```
 
+### DuckDB/Parquet Storage
+
+```python
+from quool import DuckPQ, DuckTable
+
+# Manage multiple tables
+db = DuckPQ(root_path='/data/warehouse')
+db.register()
+
+# Query with SQL
+df = db.select(table='ohlcv', columns=['date', 'close'], where="symbol = '000001'")
+
+# Upsert with partitioning
+db.upsert(table='ohlcv', df=new_data, keys=['date', 'symbol'], partition_by=['symbol'])
+```
+
 ### Live Trading — XueQiu Paper Trading
 
 ```python
@@ -145,6 +165,26 @@ source = XtDataPreloadSource(path="<data_path>", begin="20240101", end="20241231
 
 ```python
 from quool import AShareBroker  # quantities automatically floored to 100-share lots
+```
+
+### Logging
+
+```python
+from quool import setup_logger
+
+logger = setup_logger('my_strategy', level='INFO', file='/var/log/strategy.log')
+logger.info('Backtest started')
+```
+
+### Task Notification
+
+```python
+from quool import notify_task
+
+@notify_task(sender='bot@example.com', receiver='admin@example.com', smtp_server='smtp.example.com')
+def long_running_task():
+    # ... task code ...
+    return result
 ```
 
 ---

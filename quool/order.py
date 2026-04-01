@@ -411,7 +411,7 @@ class Order:
         """
 
         order = cls(
-            time=pd.to_datetime(data["creatime"]),
+            time=pd.to_datetime(data["create"]),
             code=data["code"],
             type=data["type"],
             quantity=data["quantity"],

@@ -1,6 +1,6 @@
 # Quool
 
-**Quantitative Toolkit** — an event-driven backtesting and live trading framework for quantitative strategies.
+**Quantitative Toolkit** — an extensible event-driven backtesting and live trading framework for quantitative strategies.
 
 Quool provides a modular architecture built around three pillars: `Source` (market data), `Broker` (execution & accounting), and `Strategy` (logic). It supports both backtesting with historical data and paper/live trading with broker integrations.
 
@@ -73,7 +73,7 @@ results = strategy.backtest()
 | Class | Description |
 |-------|-------------|
 | `DataFrameSource` | Historical data from a pandas DataFrame (MultiIndex: time × code) |
-| `DuckPQSource` | DuckDB/Parquet queries via parquool |
+| `DuckPQSource` | DuckDB/Parquet queries |
 | `RealtimeSource` | Real-time EastMoney API with a rolling buffer |
 | `XtDataPreloadSource` | XtQuant historical data preloaded into a DataFrame |
 
@@ -121,17 +121,38 @@ Computes comprehensive performance metrics from broker deliveries:
 | `FixedRateCommission` | Flat-rate commission with minimum fee and stamp duty |
 | `FixedRateSlippage` | Slippage model adjusting execution price based on volume |
 
+#### Storage
+
+DuckDB-backed Parquet storage for efficient historical data management:
+
+| Class | Description |
+|-------|-------------|
+| `DuckTable` | Single Parquet dataset with SQL querying |
+| `DuckPQ` | Multiple Parquet tables with shared DuckDB connection |
+
+#### Utilities
+
+| Function | Description |
+|----------|-------------|
+| `setup_logger` | Configurable logging with file handlers |
+| `notify_task` | Email notification decorator |
+| `proxy_request` | HTTP requests with proxy failover |
+| `google_search` | Web search via SerpAPI |
+| `read_url` | Fetch web page content |
+
 ## API Reference
 
 For detailed API documentation, see:
 
-- [doc/README.md](doc/README.md) — Full module index and detailed documentation
-- [doc/Order.md](doc/Order.md) — Order and Delivery models
-- [doc/Broker.md](doc/Broker.md) — Broker and execution
-- [doc/Strategy.md](doc/Strategy.md) — Strategy lifecycle and helpers
-- [doc/Source.md](doc/Source.md) — Data source implementations
-- [doc/Evaluator.md](doc/Evaluator.md) — Performance evaluation
-- [doc/Friction.md](doc/Friction.md) — Transaction cost models
+- [docs/README.md](docs/README.md) — Full module index and detailed documentation
+- [docs/Order.md](docs/Order.md) — Order and Delivery models
+- [docs/Broker.md](docs/Broker.md) — Broker and execution
+- [docs/Strategy.md](docs/Strategy.md) — Strategy lifecycle and helpers
+- [docs/Source.md](docs/Source.md) — Data source implementations
+- [docs/Evaluator.md](docs/Evaluator.md) — Performance evaluation
+- [docs/Friction.md](docs/Friction.md) — Transaction cost models
+- [docs/Storage.md](docs/Storage.md) — DuckDB/Parquet storage
+- [docs/Util.md](docs/Util.md) — Utility functions
 
 ## License
 

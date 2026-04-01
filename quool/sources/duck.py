@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Tuple
 import pandas as pd
 
 from quool import Source
-from parquool import DuckPQ
+from quool import DuckPQ
 
 
 def parse_factor_path(path: str, sep: str = "/") -> Tuple[str, str]:
@@ -19,14 +19,14 @@ def parse_factor_path(path: str, sep: str = "/") -> Tuple[str, str]:
 
 
 class DuckPQSource(Source):
-    """Market data source backed by DuckDB/Parquet storage via parquool.
+    """Market data source backed by DuckDB/Parquet storage.
 
     DuckPQSource queries a DuckPQ store for OHLCV bars and optional extra fields
     within a specified date range. It advances time through available timestamps
     and returns per-timestamp snapshots suitable for broker-driven backtesting.
 
     Attributes:
-      source (DuckPQ): parquool handle to the DuckDB/Parquet store.
+      source (DuckPQ): handle to the DuckDB/Parquet store.
       sep (str): Path separator used in factor paths.
       datetime_col (str): Column name for the datetime field in the database.
       code_col (str): Column name for the instrument code field in the database.
@@ -55,7 +55,7 @@ class DuckPQSource(Source):
         begin, and performs an initial update to populate the data snapshot.
 
         Args:
-          source (DuckPQ): parquool DuckPQ instance connected to the data store.
+          source (DuckPQ): DuckPQ instance connected to the data store.
           begin (str): Start date/time for the data window (pandas-parsable).
           end (str): End date/time for the data window (pandas-parsable).
           datetime_col (str, optional): Name of the datetime column in the DB.

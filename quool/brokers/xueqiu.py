@@ -1,5 +1,5 @@
 import pandas as pd
-from parquool import proxy_request
+from quool import proxy_request
 from quool import Delivery, Order, Broker, FixedRateCommission, FixedRateSlippage
 
 
