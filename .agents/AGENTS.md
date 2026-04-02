@@ -2,13 +2,6 @@
 
 > Quool 是一个以事件驱动回测为核心的量化工具库（Quantitative Toolkit），支持回测与实盘交易。
 
-## 项目概况
-
-- **类型**：事件驱动回测引擎
-- **语言**：Python >= 3.10
-- **包管理**：uv
-- **主要依赖**：numpy, pandas, pyarrow, duckdb, apscheduler, requests, joblib
-
 ## 环境
 
 ```bash
@@ -20,7 +13,10 @@ uv sync
 
 ## Rules
 
-- 代码编写用英文，回答用户用中文。
+请在代码编写、仓库修改、运行测试时严格遵守如下规则。
+
+- 代码编写、注释编写请完全使用英文，回答用户用中文。
+- 所有的新增、修改、删除编码完成后，都需要检查修改、新增或完善docs和对应代码的Google风格的Docstring
 - 添加依赖：`uv add <package>`
 - 运行脚本：`<project>/.venv/scripts/python <script>`
 - 所有 quool 公共接口均通过 `from quool import ...` 导入

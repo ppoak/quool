@@ -179,3 +179,5 @@ dev
 logs
 drafts
 temp
+.claude
+**/*.local*
