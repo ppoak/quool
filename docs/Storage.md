@@ -266,6 +266,54 @@ def select(
 ) -> pd.DataFrame
 ```
 
+##### `load()`
+
+Query one or more tables using short-hand `table/field` notation. Automatically handles cross-table JOINs when columns span multiple tables.
+
+```python
+def load(
+    self,
+    columns: Union[str, List[str]],
+    where: Optional[str] = None,
+    params: Optional[Sequence[Any]] = None,
+    group_by: Optional[Union[str, List[str]]] = None,
+    having: Optional[str] = None,
+    order_by: Optional[Union[str, List[str]]] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    distinct: bool = False,
+    sep: str = "/",
+) -> pd.DataFrame
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `Union[str, List[str]]` | Column specs in `table/field` or `table/field AS alias` form |
+| `where` | `Optional[str]` | WHERE clause filter |
+| `params` | `Optional[Sequence[Any]]` | Bind parameters for WHERE clause |
+| `group_by` | `Optional[Union[str, List[str]]]` | GROUP BY clause |
+| `having` | `Optional[str]` | HAVING clause |
+| `order_by` | `Optional[Union[str, List[str]]]` | ORDER BY clause |
+| `limit` | `Optional[int]` | Row limit |
+| `offset` | `Optional[int]` | Row offset |
+| `distinct` | `bool` | Select DISTINCT rows |
+| `sep` | `str` | Separator in column specs, defaults to `/` |
+
+**Returns:** `pd.DataFrame` - Query results.
+
+**Examples:**
+
+```python
+# Single-table query
+db.load(["target/close", "target/volume"], where="code = '000001'")
+
+# Cross-table query (datetime + code are used as JOIN keys)
+db.load(["target/close", "quotes/volume"], where="date = '2024-01-01'")
+
+# Explicit alias
+db.load(["target/close_post AS close", "quotes/vwap AS vwap"])
+```
+
 ##### `upsert()`
 
 Upsert rows from a DataFrame into a Parquet-backed table.

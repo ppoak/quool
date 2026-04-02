@@ -9,6 +9,7 @@ from typing import (
     List,
     Optional,
     Sequence,
+    Tuple,
     Union,
 )
 
@@ -1004,6 +1005,245 @@ class DuckPQ:
             compression=compression,
             max_workers=max_workers,
             engine=engine,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Convenience query: load
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _parse_load_columns(
+        columns: Union[str, List[str], object],
+        sep: str = "/",
+    ) -> List[Tuple[str, str, str]]:
+        """Parse column specs into (table, alias, field) tuples.
+
+        Args:
+            columns: Column spec - single "table/field", list of "table/field",
+                or "table/field AS alias" when an explicit alias is needed.
+            sep: Separator between table and field.
+
+        Returns:
+            List of (table, alias, field) tuples.
+
+        Raises:
+            ValueError: If format is invalid.
+        """
+        if columns == "*":
+            return [("*", "*", "*")]
+
+        if isinstance(columns, str):
+            columns = [columns]
+
+        result: List[Tuple[str, str, str]] = []
+        for col in columns:
+            if not isinstance(col, str):
+                raise TypeError(f"column spec must be str, got {type(col)}: {col!r}")
+            col = col.strip()
+            if sep not in col:
+                raise ValueError(
+                    f"invalid column spec {col!r}, expected 'table{sep}field'"
+                )
+            # Handle "table/field" and "table/field AS alias"
+            as_idx = col.upper().find(" AS ")
+            if as_idx != -1:
+                # "table/field AS alias" format
+                table_field = col[:as_idx].strip()
+                alias = col[as_idx + 4 :].strip()
+                parts = table_field.split(sep)
+                if len(parts) != 2 or not parts[0] or not parts[1]:
+                    raise ValueError(
+                        f"invalid column spec {col!r}, expected 'table{sep}field AS alias'"
+                    )
+                table, field = parts[0].strip(), parts[1].strip()
+            else:
+                # "table/field" format - alias defaults to field
+                parts = col.split(sep)
+                if len(parts) != 2 or not parts[0] or not parts[1]:
+                    raise ValueError(
+                        f"invalid column spec {col!r}, expected 'table{sep}field'"
+                    )
+                table, field = parts[0].strip(), parts[1].strip()
+                alias = field
+            result.append((table, alias, field))
+        return result
+
+    def _load_cross_table(
+        self,
+        table_cols: List[Tuple[str, str, str]],
+        where: Optional[str],
+        params: Optional[Sequence[Any]],
+        group_by: Optional[Union[str, List[str]]],
+        having: Optional[str],
+        order_by: Optional[Union[str, List[str]]],
+        limit: Optional[int],
+        offset: Optional[int],
+        distinct: bool,
+        datetime_col: str = "date",
+        code_col: str = "code",
+    ) -> pd.DataFrame:
+        """Build and execute a cross-table LEFT JOIN query.
+
+        Args:
+            table_cols: List of (table, alias, field) tuples.
+            where: Optional WHERE clause.
+            params: Bind parameters.
+            group_by: Optional GROUP BY clause.
+            having: Optional HAVING clause.
+            order_by: Optional ORDER BY clause.
+            limit: Optional row limit.
+            offset: Optional row offset.
+            distinct: Whether to select DISTINCT.
+            datetime_col: Datetime column name for JOIN key.
+            code_col: Instrument code column name for JOIN key.
+
+        Returns:
+            pd.DataFrame with query results.
+        """
+        # Group columns by table: table -> [f"field AS alias"]
+        by_table: Dict[str, List[str]] = {}
+        tbl_index: Dict[str, int] = {}  # table -> join order index
+        for tbl, alias, field in table_cols:
+            by_table.setdefault(tbl, [])
+            by_table[tbl].append(f"{field} AS {alias}")
+        tables = list(by_table.keys())
+        tbl_index = {t: i for i, t in enumerate(sorted(tables))}
+        base_table = min(tables, key=lambda t: tbl_index[t])
+
+        def subquery(tbl: str) -> str:
+            cols = ", ".join(by_table[tbl])
+            return (
+                f"SELECT CAST({datetime_col} AS TIMESTAMP) AS datetime, "
+                f"{code_col} AS code, {cols} FROM {tbl}"
+            )
+
+        # Build FROM and JOIN clauses
+        base_alias = "b"
+        key_time = f"{base_alias}.datetime"
+        key_code = f"{base_alias}.code"
+
+        sql_from = f"FROM ({subquery(base_table)}) AS {base_alias}\n"
+        join_aliases: Dict[str, str] = {base_table: base_alias}
+
+        idx = 0
+        for tbl in sorted(tables, key=lambda t: tbl_index[t]):
+            if tbl == base_table:
+                continue
+            idx += 1
+            alias = f"t{idx}"
+            join_aliases[tbl] = alias
+            sql_from += (
+                f"LEFT JOIN ({subquery(tbl)}) AS {alias}\n"
+                f"ON {alias}.datetime = {key_time} AND {alias}.code = {key_code}\n"
+            )
+
+        # Build SELECT columns: datetime, code, then all aliased columns
+        select_cols: List[str] = [f"{key_time} AS datetime", f"{key_code} AS code"]
+        for tbl in sorted(tables, key=lambda t: tbl_index[t]):
+            select_cols.extend(by_table[tbl])
+
+        sql_parts: List[str] = ["SELECT"]
+        if distinct:
+            sql_parts.append("DISTINCT")
+        sql_parts.append(",\n    ".join(select_cols))
+        sql_parts.append(sql_from)
+
+        bind_params = list(params or [])
+        if where:
+            sql_parts.append("WHERE")
+            sql_parts.append(where)
+        if group_by:
+            group_sql = group_by if isinstance(group_by, str) else ", ".join(group_by)
+            sql_parts.append("GROUP BY " + group_sql)
+        if having:
+            sql_parts.append("HAVING " + having)
+        if order_by:
+            order_sql = order_by if isinstance(order_by, str) else ", ".join(order_by)
+            sql_parts.append("ORDER BY " + order_sql)
+        if limit is not None:
+            sql_parts.append(f"LIMIT {int(limit)}")
+        if offset is not None:
+            sql_parts.append(f"OFFSET {int(offset)}")
+
+        sql = " ".join(sql_parts)
+        return self.query(sql, bind_params)
+
+    def load(
+        self,
+        columns: Union[str, List[str]],
+        where: Optional[str] = None,
+        params: Optional[Sequence[Any]] = None,
+        group_by: Optional[Union[str, List[str]]] = None,
+        having: Optional[str] = None,
+        order_by: Optional[Union[str, List[str]]] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        distinct: bool = False,
+        sep: str = "/",
+    ) -> pd.DataFrame:
+        """Query one or more tables using short-hand "table/field" notation.
+
+        This method provides a convenient alternative to :meth:`select` when
+        your columns are spread across multiple tables. Instead of specifying
+        a table name upfront, columns are written as ``"table/field"`` and the
+        method automatically determines which tables are needed and builds
+        the appropriate cross-table query.
+
+        Args:
+            columns: Column specification as a single string or list of strings
+                in the form ``"table/field"``. For example,
+                ``["target/close", "quotes/volume"]``.
+            where: Optional WHERE clause string.
+            params: Optional sequence of bind parameters for WHERE.
+            group_by: Optional GROUP BY columns or expression.
+            having: Optional HAVING clause.
+            order_by: Optional ORDER BY columns or expression.
+            limit: Optional row limit.
+            offset: Optional row offset.
+            distinct: Whether to select DISTINCT rows.
+            sep: Separator used in ``"table/field"`` column specs.
+                Defaults to ``"/"``.
+
+        Returns:
+            pandas.DataFrame with query results.
+
+        Examples:
+            >>> db = DuckPQ(root_path="database")
+            >>> # Single-table query
+            >>> db.load(["target/close", "target/volume"], where="code = '000001'")
+            >>> # Cross-table query (datetime and code are used as JOIN keys)
+            >>> db.load(["target/close", "quotes/volume"], where="date = '2024-01-01'")
+        """
+        parsed = self._parse_load_columns(columns, sep=sep)
+        tables = list(dict.fromkeys(t[0] for t in parsed))
+
+        if len(tables) == 1:
+            # Single table: extract field names and delegate to select
+            col_list = [f for _, f, _ in parsed]
+            return self.select(
+                table=tables[0],
+                columns=col_list,
+                where=where,
+                params=params,
+                group_by=group_by,
+                having=having,
+                order_by=order_by,
+                limit=limit,
+                offset=offset,
+                distinct=distinct,
+            )
+
+        # Multi-table: build cross-table query
+        return self._load_cross_table(
+            table_cols=parsed,
+            where=where,
+            params=params,
+            group_by=group_by,
+            having=having,
+            order_by=order_by,
+            limit=limit,
+            offset=offset,
+            distinct=distinct,
         )
 
     # ------------------------------------------------------------------ #

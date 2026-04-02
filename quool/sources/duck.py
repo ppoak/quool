@@ -170,49 +170,24 @@ class DuckPQSource(Source):
         else:
             start, end = visible.min(), visible.max()
 
-        # Build per-table subqueries for the bounded time window [start, end]
-        def subquery(table: str, st: pd.Timestamp, ed: pd.Timestamp) -> str:
-            cols = ", ".join(self._by_table[table])
-            return f"""
-                SELECT
-                    CAST({self.datetime_col} AS TIMESTAMP) AS datetime,
-                    {self.code_col} AS code,
-                    {cols}
-                FROM {table}
-                WHERE datetime >= '{st.date()}' AND datetime <= '{ed.date()}'
-            """.strip()
+        # Build column specs in "table/field AS alias" format from _by_table
+        col_specs: List[str] = []
+        for table, col_aliases in self._by_table.items():
+            for ca in col_aliases:
+                col_specs.append(f"{table}{self.sep}{ca}")
 
-        tables = list(self._by_table.keys())
-        base_alias = "b"
-        sql_from = f"FROM ({subquery(self._base_table, start, end)}) AS {base_alias}\n"
-        key_time = f"{base_alias}.datetime"
-        key_code = f"{base_alias}.code"
-
-        i = 0
-        for t in tables:
-            if t == self._base_table:
-                continue
-            i += 1
-            a = f"t{i}"
-            sql_from += (
-                f"LEFT JOIN ({subquery(t, start, end)}) AS {a}\n"
-                f"ON {a}.datetime = {key_time} AND {a}.code = {key_code}\n"
+        where = (
+            f"{self.datetime_col} >= '{start.date()}' AND {self.datetime_col} <= '{end.date()}'"
+        )
+        return (
+            self.source.load(
+                columns=col_specs,
+                where=where,
+                sep=self.sep,
             )
-
-        select_cols: List[str] = [f"{key_time} AS datetime", f"{key_code} AS code"]
-        for c in self._by_table[self._base_table]:
-            select_cols.append(c.split(" AS ")[-1])
-        i = 0
-        for t in tables:
-            if t == self._base_table:
-                continue
-            i += 1
-            a = f"t{i}"
-            for c in self._by_table[t]:
-                select_cols.append(c.split(" AS ")[-1])
-
-        sql = "SELECT\n    " + ",\n    ".join(select_cols) + "\n" + sql_from
-        return self.source.query(sql).set_index(["datetime", "code"]).sort_index()
+            .set_index(["datetime", "code"])
+            .sort_index()
+        )
 
     def update(self):
         """Advance to the next available timestamp and return the data snapshot.
