@@ -21,17 +21,17 @@ def is_trading_time(time: str) -> bool:
     Raises:
       ValueError: If the input cannot be parsed into a timestamp.
     """
-    time = pd.to_datetime(time)
-    trading_hours = [
-        pd.to_datetime(["09:30:00", "11:30:00"]),
-        pd.to_datetime(["13:00:00", "15:00:00"]),
-    ]
-
-    if time.weekday() >= 5:
+    ts = pd.to_datetime(time)
+    if ts.weekday() >= 5:
         return False
-    for start, end in trading_hours:
-        if start <= time <= end:
-            return True
+    t = ts.time()
+    from datetime import time as dtime
+    morning_start = dtime(9, 30)
+    morning_end = dtime(11, 30)
+    afternoon_start = dtime(13, 0)
+    afternoon_end = dtime(15, 0)
+    if morning_start <= t <= morning_end or afternoon_start <= t <= afternoon_end:
+        return True
     return False
 
 
