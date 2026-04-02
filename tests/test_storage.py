@@ -17,9 +17,11 @@ def temp_root():
 @pytest.fixture
 def duckpq_in_memory():
     """In-memory DuckPQ for tests that don't need files."""
-    db = DuckPQ(root_path=".", database=":memory:")
+    path = tempfile.mkdtemp(prefix="quool_test_")
+    db = DuckPQ(root_path=path, database=":memory:")
     yield db
     db.close()
+    shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.fixture
