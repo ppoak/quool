@@ -61,7 +61,9 @@ def sample_multiindex_df():
 @pytest.fixture
 def duckpq_in_memory():
     """Create an in-memory DuckPQ instance with a test table."""
-    db = DuckPQ(root_path=".", database=":memory:")
+    import tempfile, shutil
+    path = tempfile.mkdtemp(prefix="quool_test_")
+    db = DuckPQ(root_path=path, database=":memory:")
     # Register a test table with sample OHLCV data
     test_df = pd.DataFrame({
         "date": pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"]),
@@ -75,6 +77,7 @@ def duckpq_in_memory():
     db.attach("target", test_df, replace=True)
     yield db
     db.close()
+    shutil.rmtree(path, ignore_errors=True)
 
 
 # =============================================================================

@@ -219,9 +219,11 @@ class TestDuckPQ:
 
     def test_create_in_memory(self):
         """DuckPQ can be created with in-memory database."""
-        db = DuckPQ(root_path=".", database=":memory:")
+        path = tempfile.mkdtemp(prefix="quool_test_")
+        db = DuckPQ(root_path=path, database=":memory:")
         assert db is not None
         db.close()
+        shutil.rmtree(path, ignore_errors=True)
 
     def test_attach_dataframe(self, duckpq_in_memory):
         """attach(name, df) registers a DataFrame in DuckDB."""
@@ -322,10 +324,14 @@ class TestDuckPQ:
 
     def test_context_manager(self):
         """DuckPQ can be used as context manager."""
-        with DuckPQ(root_path=".", database=":memory:") as db:
-            db.attach("test", pd.DataFrame({"a": [1]}))
-            result = db.query("SELECT * FROM test")
-            assert len(result) == 1
+        path = tempfile.mkdtemp(prefix="quool_test_")
+        try:
+            with DuckPQ(root_path=path, database=":memory:") as db:
+                db.attach("test", pd.DataFrame({"a": [1]}))
+                result = db.query("SELECT * FROM test")
+                assert len(result) == 1
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
 
     def test_str_repr(self, duckpq_in_memory):
         """String representation includes tables."""
