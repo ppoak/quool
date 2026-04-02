@@ -2,7 +2,6 @@ import inspect
 import textwrap
 import os
 import re
-import random
 import time
 import traceback
 import mimetypes
@@ -1598,7 +1597,7 @@ def _generate_function_usage(
     return markdown
 
 
-def _generate_usage(
+def generate_usage(
     target: object,
     output_path: Optional[str] = None,
     *,
@@ -1632,7 +1631,30 @@ def _generate_usage(
 ) -> str:
     """Generate usage documentation for a class or callable.
 
-    Internal function for auto-generating markdown documentation.
+    This function inspects a class or callable and produces a Markdown document
+    describing its public interface, including attributes, methods, parameters,
+    return types, raises, and examples.
+
+    Args:
+        target: A class or function/callable to document.
+        output_path: If provided, write the generated Markdown to this file path.
+        include_private: Include private members (starting with underscore). Default False.
+        include_inherited: Include members inherited from base classes. Default False.
+        include_properties: Include @property members. Default True.
+        include_methods: Include methods. Default True.
+        method_kinds: Which kinds of methods to include. Default ("instance", "class", "static").
+        method_include: If provided, only include these method names.
+        method_exclude: If provided, exclude these method names.
+        attribute_include: If provided, only include these attribute names.
+        attribute_exclude: If provided, exclude these attribute names.
+        sort_methods: Sort order for methods. Options: "name", "kind", "none". Default "name".
+        render_tables: Render parameters/attributes as markdown tables. Default True.
+        include_signature: Include method signatures in the output. Default True.
+        include_sections: If provided, only include these sections.
+        heading_level: Base heading level for the output. Default 2.
+
+    Returns:
+        str: The generated Markdown documentation.
     """
     is_class = inspect.isclass(target)
     is_callable = callable(target)
@@ -1668,187 +1690,3 @@ def _generate_usage(
         heading_level=heading_level,
     )
 
-
-def google_search(
-    query: str,
-    location: Optional[
-        Literal["China", "United States", "Germany", "France"]
-    ] = "China",
-    country: str = "cn",
-    language: str = "zh-cn",
-    to_be_searched: Optional[str] = None,
-    start: str = "1",
-    num: str = "10",
-):
-    """
-    Google search page result tool. When asked about a question, you can use this tool to get an original google search page result.
-    After browsing the search page result, you can pick some of the valuable result links to view by the `read_url` tool.
-
-    Args:
-        query (str): Parameter defines the query you want to search.
-            You can use anything that you would use in a regular Google search. e.g. inurl:, site:, intitle:.
-            We also support advanced search query parameters such as as_dt and as_eq.
-        location (str): Parameter defines from where you want the search to originate.
-            If several locations match the location requested, we'll pick the most popular one.
-            If location is omitted, the search may take on the location of the proxy.
-            When only the location parameter is set, Google may still take into account the proxy’s country, which can influence some results.
-            For more consistent country-specific filtering, use the `country` parameter alongside location.
-        country (str): Parameter defines the country to use for the Google search.
-            It's a two-letter country code. (e.g., cn for China, us for the United States, uk for United Kingdom, or fr for France).
-            Your country code should be supported by Google countries codes.
-        language (str): Parameter defines the language to use for the Google search.
-            It's a two-letter language code. (e.g., zh-cn for Chinese(Simplified), en for English, es for Spanish, or fr for French).
-            Your language code should be supported by Google languages.
-        to_be_searched (str): parameter defines advanced search parameters that aren't possible in the regular query field.
-            (e.g., advanced search for patents, dates, news, videos, images, apps, or text contents).
-        start (str): Parameter defines the result offset. It skips the given number of results.
-            It's used for pagination. (e.g., 0 (default) is the first page of results, 10 is the 2nd page of results, 20 is the 3rd page of results, etc.).
-            Google Local Results only accepts multiples of 20 (e.g. 20 for the second page results, 40 for the third page results, etc.) as the start value.
-        num (str): Parameter defines the maximum number of results to return.
-            (e.g., 10 (default) returns 10 results, 40 returns 40 results, and 100 returns 100 results).
-            The use of num may introduce latency, and/or prevent the inclusion of specialized result types.
-            It is better to omit this parameter unless it is strictly necessary to increase the number of results per page.
-            Results are not guaranteed to have the number of results specified in num.
-
-    Return:
-        (str) The search report in markdown format.
-    """
-
-    try:
-        import serpapi
-    except ImportError as e:
-        return 'No web search backend found, install by `pip install "parquool[websearch]"`'
-
-    api_keys = [key.strip() for key in os.getenv("SERPAPI_KEY").split(",")]
-    random.shuffle(api_keys)
-    param_names = ["location", "gl", "hl", "tbs", "start", "num"]
-    param_vars = [location, country, language, to_be_searched, start, num]
-    params = {"engine": "google", "q": query}
-    for name, param in zip(param_names, param_vars):
-        if param is not None:
-            params[name] = param
-
-    for api_key in api_keys:
-        try:
-            result = serpapi.search(params, api_key=api_key)
-        except Exception as e:
-            continue
-        result = result.as_dict()
-        break
-
-    else:
-        return f"Request failed, please check your parameter and try again."
-
-    search_metadata = result["search_metadata"]
-    search_report = (
-        f"# Search Report for Query {query}\n\n"
-        f"Created at {search_metadata['created_at']}, processed at {search_metadata['processed_at']}."
-        f"You can get access to json file at {search_metadata['json_endpoint']}, html file at {search_metadata['raw_html_file']}."
-        f"{result['search_information']['total_results']} Found. {search_metadata['total_time_taken']} seconds taken.\n\n"
-    )
-    for ores in result.get("organic_results", []):
-        search_report += (
-            f"## [{ores['title']}]({ores['link']})\n\n"
-            + f"[{ores['source']}] {ores['snippet']}\n\n"
-            + (f"> date: {ores['date']}\n" if "date" in ores.keys() else "")
-        )
-    return search_report
-
-
-def read_url(
-    url_or_urls: Union[str, List],
-    engine: Literal["direct", "browser"] = "browser",
-    return_format: Literal["markdown", "html", "text", "screeshot"] = "markdown",
-    with_links_summary: Literal["all", "true"] = "true",
-    with_image_summary: Literal["all", "true"] = "true",
-    retain_image: bool = False,
-    do_not_track: bool = True,
-    set_cookie: Optional[str] = None,
-    max_length_each: int = 100000,
-):
-    """Fetch and summarize the readable content of one or more URLs via the r.jina.ai reader proxy.
-
-    The agent should call this tool when it needs the actual page text or a snapshot of the page to
-    extract facts, quotes, or to decide whether the page is worth further processing.
-
-    Args:
-        url_or_urls (Union[str, List]): A single URL string or a list of URL strings to read.
-            Provide full URLs as produced by search results (e.g., "https://example.com/page").
-        engine (Literal["direct", "browser"], optional): Which fetching engine the proxy
-            should use. "direct" performs a direct HTTP fetch, "browser" uses a headless
-            browser to render the page (recommended for JS-heavy sites). If omitted, the
-            proxy service default is used.
-        return_format (Literal["markdown", "html", "text", "screeshot"], optional):
-            Desired format of the proxy's returned content:
-            - "markdown": proxy attempts to extract and return a clean Markdown version.
-            - "html": returns raw or minimally processed HTML.
-            - "text": plain text extraction.
-            - "screeshot": request an image capture of the page (note the implementation
-            currently expects the literal "screeshot").
-            If omitted, the proxy service default is used.
-        with_links_summary (Literal["all", "true"], optional):
-            Wether to summarize all the links in the end of the result page:
-            - "all": list all the links in the page and summarize them in the end.
-            - "true": list all the unique links in the page and summarize them in the end.
-            - None: keep links in-line in result.
-        with_image_summary (Literal["all", "true"], optional):
-            Wether to summarize all the images in the end of the result page:
-            - "all": list all the images in the page and summarize them in the end.
-            - "true": list all the unique images in the page and summarize them in the end.
-            - None: keep images in-line in result.
-        retain_image (bool, optional): If True (default), the returned HTML/Markdown may
-            include image references. If False, images are disabled/removed by the proxy.
-        do_not_track (bool, optional): If True (default), the header DNT: 1 is sent to
-            indicate "do not track" preference to the proxy.
-        set_cookie (str, optional): If provided, sets a Cookie header value to be passed
-            to the proxy (useful for accessing pages that require a specific cookie).
-        max_length_each (int, optional): Maximum number of characters to include from each
-            successful response in the returned report. Defaults to 7168. Longer pages will
-            be truncated to this length.
-
-    Returns:
-        str: A Markdown-formatted report string describing the results for each requested URL.
-        The report contains:
-        - A summary header with the number of input URLs.
-        - "Success Requests" section listing each successful URL and the first
-            max_length_each characters of the returned content.
-        - "Failure Requests" section listing each URL that failed and the associated
-            error message.
-    """
-    urls = url_or_urls if isinstance(url_or_urls, list) else [url_or_urls]
-    headers = {}
-    if engine:
-        headers["X-Engine"] = engine
-    if return_format:
-        headers["X-Return-Format"] = return_format
-    if with_links_summary:
-        headers["X-With-Links-Summary"] = with_links_summary
-    if with_image_summary:
-        headers["X-With-Images-Summary"] = with_image_summary
-    if not retain_image:
-        headers["X-Retain-Images"] = "none"
-    if do_not_track:
-        headers["DNT"] = "1"
-    if set_cookie:
-        headers["X-Set-Cookie"] = set_cookie
-    failure = []
-    success = []
-
-    for url in urls:
-        try:
-            response = requests.get(f"https://r.jina.ai/{url}", headers=headers)
-            response.raise_for_status()
-            success.append((url, response.text[:max_length_each]))
-        except Exception as e:
-            failure.append((url, str(e)))
-
-    read_report = f"# Read results for {len(urls)}\n\n"
-    read_report += "## Success Resquests\n\n"
-    for suc in success:
-        read_report += f"### {suc[0]}\n\n{suc[1]}"
-
-    read_report += "## Failure Resquests\n\n"
-    for fai in failure:
-        read_report += f"### {fai[0]}\n\n{fai[1]}"
-
-    return read_report

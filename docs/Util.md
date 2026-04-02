@@ -1,6 +1,6 @@
 # Util Module
 
-Utility functions for logging, HTTP requests, email notifications, documentation generation, and web search.
+Utility functions for logging, HTTP requests, email notifications, and documentation generation.
 
 ## Functions
 
@@ -183,91 +183,6 @@ response = proxy_request(
 
 ---
 
-### google_search()
-
-Google search via SerpAPI.
-
-```python
-from quool import google_search
-```
-
-```python
-def google_search(
-    query: str,
-    location: Literal["China", "United States", "Germany", "France"] = "China",
-    country: str = "cn",
-    language: str = "zh-cn",
-    to_be_searched: Optional[str] = None,
-    start: str = "1",
-    num: str = "10",
-) -> str
-```
-
-**Requires:** `SERPAPI_KEY` environment variable (comma-separated for multiple keys)
-
-**Returns:** `str` - Markdown-formatted search report
-
-**Example:**
-```python
-from quool import google_search
-
-results = google_search(
-    "DuckDB Parquet upsert",
-    location="United States",
-    num="5"
-)
-```
-
----
-
-### read_url()
-
-Fetch and summarize web page content via Jina reader proxy.
-
-```python
-from quool import read_url
-```
-
-```python
-def read_url(
-    url_or_urls: Union[str, List],
-    engine: Literal["direct", "browser"] = "browser",
-    return_format: Literal["markdown", "html", "text", "screeshot"] = "markdown",
-    with_links_summary: Literal["all", "true"] = "true",
-    with_image_summary: Literal["all", "true"] = "true",
-    retain_image: bool = False,
-    do_not_track: bool = True,
-    set_cookie: Optional[str] = None,
-    max_length_each: int = 100000,
-) -> str
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `url_or_urls` | `Union[str, List]` | Required | Single URL or list of URLs |
-| `engine` | `Literal` | `"browser"` | Fetching engine ("direct" or "browser") |
-| `return_format` | `Literal` | `"markdown"` | Return format |
-| `with_links_summary` | `Literal` | `"true"` | Include links summary |
-| `with_image_summary` | `Literal` | `"true"` | Include image summary |
-| `retain_image` | `bool` | `False` | Retain image references |
-| `do_not_track` | `bool` | `True` | Send DNT header |
-| `set_cookie` | `Optional[str]` | `None` | Cookie header value |
-| `max_length_each` | `int` | `100000` | Max characters per page |
-
-**Returns:** `str` - Markdown-formatted report with results
-
-**Example:**
-```python
-from quool import read_url
-
-content = read_url("https://example.com/article")
-
-results = read_url([
-    "https://example.com/page1",
-    "https://example.com/page2"
-])
-```
-
 ---
 
 ## Usage Examples
@@ -308,17 +223,15 @@ def process_sales_data(date: str) -> pd.DataFrame:
     return df
 ```
 
-### Web Search and Reading
+### Documentation Generation
 
 ```python
-from quool import google_search, read_url
+from quool import generate_usage
 
-# Search for information
-search_results = google_search("quool backtesting framework")
+# Generate markdown documentation for a class
+doc = generate_usage(MyStrategy, output_path="docs/MyStrategy.md", style=2)
+print(doc)
 
-# Read specific pages
-pages = read_url([
-    "https://github.com/ppoak/quool",
-    "https://github.com/ppoak/quool/docs"
-])
+# Generate documentation for a function
+doc = generate_usage(setup_logger, include_sections=["summary", "parameters", "returns"])
 ```

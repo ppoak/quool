@@ -15,7 +15,7 @@
 | [Evaluator.md](Evaluator.md) | `Evaluator` — performance metrics computation |
 | [Friction.md](Friction.md) | `FixedRateCommission`, `FixedRateSlippage` |
 | [Storage.md](Storage.md) | `DuckTable`, `DuckPQ` — DuckDB-backed Parquet storage |
-| [Util.md](Util.md) | `setup_logger`, `notify_task`, `proxy_request`, `google_search`, `read_url` |
+| [Util.md](Util.md) | `setup_logger`, `notify_task`, `proxy_request`, `generate_usage` |
 
 ---
 
@@ -32,7 +32,7 @@
 | `evaluator.py` | `Evaluator` |
 | `friction.py` | `FixedRateCommission`, `FixedRateSlippage` |
 | `storage.py` | `DuckTable`, `DuckPQ` — Parquet storage with DuckDB |
-| `util.py` | `setup_logger`, `notify_task`, `proxy_request`, etc. |
+| `util.py` | `setup_logger`, `notify_task`, `proxy_request`, `generate_usage` |
 
 ### Brokers (`quool/brokers/`)
 

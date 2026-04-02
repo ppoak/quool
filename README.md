@@ -137,8 +137,7 @@ DuckDB-backed Parquet storage for efficient historical data management:
 | `setup_logger` | Configurable logging with file handlers |
 | `notify_task` | Email notification decorator |
 | `proxy_request` | HTTP requests with proxy failover |
-| `google_search` | Web search via SerpAPI |
-| `read_url` | Fetch web page content |
+| `generate_usage` | Auto-generate Markdown documentation for classes/callables |
 
 ## API Reference
 
