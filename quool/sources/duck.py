@@ -121,10 +121,10 @@ class DuckPQSource(Source):
         end = pd.to_datetime(end)
         self._times = self.source.query(
             f"""
-            SELECT DISTINCT {self.datetime_col} AS datetime
-            FROM {self._base_table} 
-            WHERE {self.datetime_col} >= '{begin.date()}'
-                AND {self.datetime_col} <= '{end.date()}'
+            SELECT DISTINCT CAST({self.datetime_col} AS DATE) AS datetime
+            FROM {self._base_table}
+            WHERE CAST({self.datetime_col} AS DATE) >= '{begin.date()}'
+                AND CAST({self.datetime_col} AS DATE) <= '{end.date()}'
         """.strip()
         ).iloc[:, 0]
         super().__init__(
@@ -177,7 +177,7 @@ class DuckPQSource(Source):
                 col_specs.append(f"{table}{self.sep}{ca}")
 
         where = (
-            f"{self.datetime_col} >= '{start.date()}' AND {self.datetime_col} <= '{end.date()}'"
+            f"CAST({self.datetime_col} AS DATE) >= '{start.date()}' AND CAST({self.datetime_col} AS DATE) <= '{end.date()}'"
         )
         return (
             self.source.load(
@@ -209,11 +209,12 @@ class DuckPQSource(Source):
             cols = ", ".join(self._by_table[table])
             return f"""
                 SELECT
-                    CAST({self.datetime_col} AS TIMESTAMP) AS datetime,
+                    CAST({self.datetime_col} AS DATE) AS datetime,
                     {self.code_col} AS code,
                     {cols}
                 FROM {table}
-                WHERE datetime >= '{self._time.date()}' AND datetime <= '{self._time.date()}'
+                WHERE CAST({self.datetime_col} AS DATE) >= '{self._time.date()}'
+                    AND CAST({self.datetime_col} AS DATE) <= '{self._time.date()}'
             """.strip()
 
         tables = list(self._by_table.keys())
