@@ -158,7 +158,8 @@ class DuckPQSource(Source):
         ``limit`` timestamps are included; -1 or None means unlimited.
 
         Returns:
-          pandas.DataFrame: Data indexed by (datetime, code).
+          pandas.DataFrame: Data indexed by (datetime_col, code_col), where
+            datetime_col and code_col are the configured column names.
         """
         # Determine the query window based on limit
         visible = self._times[self._times <= self.time]
@@ -198,7 +199,7 @@ class DuckPQSource(Source):
                 where=where,
                 sep=self.sep,
             )
-            .set_index(["datetime", "code"])
+            .set_index([self.datetime_col, self.code_col])
             .sort_index()
         )
 
@@ -233,8 +234,8 @@ class DuckPQSource(Source):
                 cond = f"CAST({self.datetime_col} AS TIMESTAMP) > '{prev_time}'::TIMESTAMP AND CAST({self.datetime_col} AS TIMESTAMP) <= '{self._time}'::TIMESTAMP"
             return f"""
                 SELECT
-                    CAST({self.datetime_col} AS DATE) AS datetime,
-                    {self.code_col} AS code,
+                    CAST({self.datetime_col} AS DATE) AS {self.datetime_col},
+                    {self.code_col} AS {self.code_col},
                     {cols}
                 FROM {table}
                 WHERE {cond}
@@ -243,8 +244,8 @@ class DuckPQSource(Source):
         tables = list(self._by_table.keys())
         base_alias = "b"
         sql_from = f"FROM ({subquery(self._base_table)}) AS {base_alias}\n"
-        key_time = f"{base_alias}.datetime"
-        key_code = f"{base_alias}.code"
+        key_time = f"{base_alias}.{self.datetime_col}"
+        key_code = f"{base_alias}.{self.code_col}"
 
         i = 0
         for t in tables:
@@ -254,10 +255,10 @@ class DuckPQSource(Source):
             a = f"t{i}"
             sql_from += (
                 f"LEFT JOIN ({subquery(t)}) AS {a}\n"
-                f"ON {a}.datetime = {key_time} AND {a}.code = {key_code}\n"
+                f"ON {a}.{self.datetime_col} = {key_time} AND {a}.{self.code_col} = {key_code}\n"
             )
 
-        select_cols: List[str] = [f"{key_code} AS code"]
+        select_cols: List[str] = [f"{key_code} AS {self.code_col}"]
         for c in self._by_table[self._base_table]:
             select_cols.append(c.split(" AS ")[-1])
         i = 0
@@ -271,6 +272,6 @@ class DuckPQSource(Source):
 
         sql = "SELECT\n    " + ",\n    ".join(select_cols) + "\n" + sql_from
         df = self.source.query(sql)
-        df = df.set_index(["code"]).sort_index()
+        df = df.set_index([self.code_col]).sort_index()
         self._data = df
         return df
