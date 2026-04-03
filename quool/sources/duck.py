@@ -121,10 +121,10 @@ class DuckPQSource(Source):
         end = pd.to_datetime(end)
         self._times = self.source.query(
             f"""
-            SELECT DISTINCT CAST({self.datetime_col} AS DATE) AS datetime
+            SELECT DISTINCT {self.datetime_col} AS datetime
             FROM {self._base_table}
-            WHERE CAST({self.datetime_col} AS DATE) >= '{begin.date()}'
-                AND CAST({self.datetime_col} AS DATE) <= '{end.date()}'
+            WHERE CAST({self.datetime_col} AS TIMESTAMP) >= '{begin}'::TIMESTAMP
+                AND CAST({self.datetime_col} AS TIMESTAMP) <= '{end}'::TIMESTAMP
         """.strip()
         ).iloc[:, 0]
         super().__init__(
@@ -176,9 +176,22 @@ class DuckPQSource(Source):
             for ca in col_aliases:
                 col_specs.append(f"{table}{self.sep}{ca}")
 
-        where = (
-            f"CAST({self.datetime_col} AS DATE) >= '{start.date()}' AND CAST({self.datetime_col} AS DATE) <= '{end.date()}'"
-        )
+        # Use (prev_visible_min, end] interval to avoid re-fetching already-returned data
+        # prev_visible_min is the item BEFORE visible.min() in _times
+        times_list = self._times.tolist()
+        visible_min = visible.min()
+        visible_min_idx = times_list.index(visible_min)
+        prev_visible_min = times_list[visible_min_idx - 1] if visible_min_idx > 0 else None
+
+        if prev_visible_min is None:
+            # First call: use >= to avoid full table scan
+            where = (
+                f"CAST({self.datetime_col} AS TIMESTAMP) >= '{start}'::TIMESTAMP AND CAST({self.datetime_col} AS TIMESTAMP) <= '{end}'::TIMESTAMP"
+            )
+        else:
+            where = (
+                f"CAST({self.datetime_col} AS TIMESTAMP) > '{prev_visible_min}'::TIMESTAMP AND CAST({self.datetime_col} AS TIMESTAMP) <= '{end}'::TIMESTAMP"
+            )
         return (
             self.source.load(
                 columns=col_specs,
@@ -205,16 +218,26 @@ class DuckPQSource(Source):
         self._time = future.min()
 
         # Build a single SQL statement joining per-table subqueries.
+        # Use (prev_time, _time] interval: left-open (no future info), right-closed (current point included)
+        # For the first time point, use [_time, _time] to avoid scanning all historical data
+        times_list = self._times.tolist()
+        time_idx = times_list.index(self._time)
+        prev_time = times_list[time_idx - 1] if time_idx > 0 else None
+
         def subquery(table: str) -> str:
             cols = ", ".join(self._by_table[table])
+            if prev_time is None:
+                # First time point: exact match to avoid full table scan
+                cond = f"CAST({self.datetime_col} AS TIMESTAMP) >= '{self._time}'::TIMESTAMP AND CAST({self.datetime_col} AS TIMESTAMP) <= '{self._time}'::TIMESTAMP"
+            else:
+                cond = f"CAST({self.datetime_col} AS TIMESTAMP) > '{prev_time}'::TIMESTAMP AND CAST({self.datetime_col} AS TIMESTAMP) <= '{self._time}'::TIMESTAMP"
             return f"""
                 SELECT
                     CAST({self.datetime_col} AS DATE) AS datetime,
                     {self.code_col} AS code,
                     {cols}
                 FROM {table}
-                WHERE CAST({self.datetime_col} AS DATE) >= '{self._time.date()}'
-                    AND CAST({self.datetime_col} AS DATE) <= '{self._time.date()}'
+                WHERE {cond}
             """.strip()
 
         tables = list(self._by_table.keys())
