@@ -1079,8 +1079,7 @@ class DuckPQ:
         limit: Optional[int],
         offset: Optional[int],
         distinct: bool,
-        datetime_col: str = "date",
-        code_col: str = "code",
+        join_key: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """Build and execute a cross-table LEFT JOIN query.
 
@@ -1094,33 +1093,49 @@ class DuckPQ:
             limit: Optional row limit.
             offset: Optional row offset.
             distinct: Whether to select DISTINCT.
-            datetime_col: Datetime column name for JOIN key.
-            code_col: Instrument code column name for JOIN key.
+            join_key: Optional list of column names to use as JOIN keys.
+                If None, defaults to ["date", "code"] for backward compatibility.
 
         Returns:
             pd.DataFrame with query results.
+
+        Raises:
+            ValueError: If join_key columns are not found in all tables.
         """
+        # Default join key for backward compatibility
+        if join_key is None:
+            join_key = ["date", "code"]
+
+        # Validate join_key columns exist in all tables
+        tables = list(dict.fromkeys(t[0] for t in table_cols))
+        for tbl in tables:
+            dp = self._get_or_create_table(tbl)
+            missing = [c for c in join_key if c not in dp.columns]
+            if missing:
+                raise ValueError(
+                    f"join_key column(s) {missing} not found in table '{tbl}' "
+                    f"(available columns: {dp.columns})"
+                )
+
         # Group columns by table: table -> [f"field AS alias"]
         by_table: Dict[str, List[str]] = {}
         tbl_index: Dict[str, int] = {}  # table -> join order index
         for tbl, alias, field in table_cols:
             by_table.setdefault(tbl, [])
             by_table[tbl].append(f"{field} AS {alias}")
-        tables = list(by_table.keys())
         tbl_index = {t: i for i, t in enumerate(sorted(tables))}
         base_table = min(tables, key=lambda t: tbl_index[t])
 
         def subquery(tbl: str) -> str:
             cols = ", ".join(by_table[tbl])
+            key_cols = ", ".join(join_key)
             return (
-                f"SELECT CAST({datetime_col} AS TIMESTAMP) AS datetime, "
-                f"{code_col} AS code, {cols} FROM {tbl}"
+                f"SELECT {key_cols}, {cols} FROM {tbl}"
             )
 
         # Build FROM and JOIN clauses
         base_alias = "b"
-        key_time = f"{base_alias}.datetime"
-        key_code = f"{base_alias}.code"
+        base_key = [f"{base_alias}.{c}" for c in join_key]
 
         sql_from = f"FROM ({subquery(base_table)}) AS {base_alias}\n"
         join_aliases: Dict[str, str] = {base_table: base_alias}
@@ -1132,13 +1147,16 @@ class DuckPQ:
             idx += 1
             alias = f"t{idx}"
             join_aliases[tbl] = alias
+            join_conditions = " AND ".join(
+                f"{alias}.{c} = {base_key[i]}" for i, c in enumerate(join_key)
+            )
             sql_from += (
                 f"LEFT JOIN ({subquery(tbl)}) AS {alias}\n"
-                f"ON {alias}.datetime = {key_time} AND {alias}.code = {key_code}\n"
+                f"ON {join_conditions}\n"
             )
 
-        # Build SELECT columns: datetime, code, then all aliased columns
-        select_cols: List[str] = [f"{key_time} AS datetime", f"{key_code} AS code"]
+        # Build SELECT columns: join_key columns, then all aliased columns
+        select_cols: List[str] = [f"{base_key[i]} AS {join_key[i]}" for i in range(len(join_key))]
         for tbl in sorted(tables, key=lambda t: tbl_index[t]):
             select_cols.extend(by_table[tbl])
 
@@ -1180,6 +1198,7 @@ class DuckPQ:
         offset: Optional[int] = None,
         distinct: bool = False,
         sep: str = "/",
+        join_key: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """Query one or more tables using short-hand "table/field" notation.
 
@@ -1203,6 +1222,10 @@ class DuckPQ:
             distinct: Whether to select DISTINCT rows.
             sep: Separator used in ``"table/field"`` column specs.
                 Defaults to ``"/"``.
+            join_key: Optional list of column names to use as JOIN keys for
+                cross-table queries. If None, defaults to ``["date", "code"]``.
+                Required when querying multiple tables; if not provided for
+                multi-table queries, a ValueError is raised.
 
         Returns:
             pandas.DataFrame with query results.
@@ -1211,8 +1234,10 @@ class DuckPQ:
             >>> db = DuckPQ(root_path="database")
             >>> # Single-table query
             >>> db.load(["target/close", "target/volume"], where="code = '000001'")
-            >>> # Cross-table query (datetime and code are used as JOIN keys)
+            >>> # Cross-table query with default join keys (date, code)
             >>> db.load(["target/close", "quotes/volume"], where="date = '2024-01-01'")
+            >>> # Cross-table query with custom join keys
+            >>> db.load(["target/close", "quotes/volume"], join_key=["date", "code"])
         """
         parsed = self._parse_load_columns(columns, sep=sep)
         tables = list(dict.fromkeys(t[0] for t in parsed))
@@ -1244,6 +1269,7 @@ class DuckPQ:
             limit=limit,
             offset=offset,
             distinct=distinct,
+            join_key=join_key,
         )
 
     # ------------------------------------------------------------------ #
