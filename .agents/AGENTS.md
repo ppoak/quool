@@ -21,6 +21,14 @@ uv sync
 - 运行脚本：`<project>/.venv/scripts/python <script>`
 - 所有 quool 公共接口均通过 `from quool import ...` 导入
 
+## GitHub Issue 处理流程
+
+**两步确认**：
+1. PR 描述（含 `fixes #N` 关键字）→ 需用户确认后再执行 `gh pr create`
+2. 合并操作 → 需用户再次确认后再执行 `gh pr merge`
+
+**描述模板**：`fixes #<id>` 写入 PR 描述即可自动关闭 issue。
+
 ## 代码架构
 
 ```
