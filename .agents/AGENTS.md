@@ -27,7 +27,8 @@ uv sync
 1. PR 描述（含 `fixes #N` 关键字）→ 需用户确认后再执行 `gh pr create`
 2. 合并操作 → 需用户再次确认后再执行 `gh pr merge`
 
-**描述模板**：`fixes #<id>` 写入 PR 描述即可自动关闭 issue。
+- **描述模板**：`fixes #<id>` 写入 PR 描述即可自动关闭 issue。
+- **合并规则**：所有修改都优先合并入dev分支，dev分支合并到main的PR需由人工明确指定，严禁处理PR时直接合并进入main分支。
 
 ## 代码架构
 
